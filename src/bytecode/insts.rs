@@ -1,3 +1,37 @@
+/// Type of instruction operand.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OperandType {
+  /// Signed operand.
+  Signed,
+  /// Unsigned operand.
+  Unsigned,
+}
+
+/// Operand of instruction.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Operand {
+  /// Signed operand.
+  Signed(i64),
+  /// Unsigned operand.
+  Unsigned(u64),
+}
+
+impl Operand {
+  fn unwrap_signed(self) -> i64 {
+    match self {
+      Self::Signed(opr) => opr,
+      _ => panic!("signed operand expected"),
+    }
+  }
+
+  fn unwrap_unsigned(self) -> u64 {
+    match self {
+      Self::Unsigned(opr) => opr,
+      _ => panic!("unsigned operand expected"),
+    }
+  }
+}
+
 /// Defines opcode and instruction.
 macro_rules! def_opc_inst {
   ($($(#[$a:meta])* $opc:ident $(($t:tt))?),+ $(,)?) => {
@@ -8,6 +42,15 @@ macro_rules! def_opc_inst {
       $($(#[$a])* $opc),+
     }
 
+    impl Opcode {
+      /// Returns the operand type of the current opcode.
+      pub fn opr_type(&self) -> Option<OperandType> {
+        match self {
+          $(Self::$opc => def_opc_inst!(@opr_type $opc $(($t))?),)+
+        }
+      }
+    }
+
     /// VM instructions.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum Inst {
@@ -15,16 +58,33 @@ macro_rules! def_opc_inst {
     }
 
     impl Inst {
+      /// Creates a new instruction.
+      ///
+      /// # Panics
+      ///
+      /// Panics if `opr` does not match the instruction operand.
+      pub fn new(opcode: Opcode, opr: Option<Operand>) -> Self {
+        match opcode {
+          $(Opcode::$opc => def_opc_inst!(@new_inst opr $opc $(($t))?),)+
+        }
+      }
+
       /// Returns the corresponding [`Opcode`] of the current instruction.
       pub fn opcode(&self) -> Opcode {
         match self {
-          $(def_opc_inst!(@pat $opc $(($t))?) => Opcode::$opc,)+
+          $(def_opc_inst!(@inst_pat $opc $(($t))?) => Opcode::$opc,)+
         }
       }
     }
   };
-  (@pat $opc:ident) => { Self::$opc };
-  (@pat $opc:ident ($t:tt)) => { Self::$opc(..) };
+  (@opr_type $opc:ident) => { None };
+  (@opr_type $opc:ident (i64)) => { Some(OperandType::Signed) };
+  (@opr_type $opc:ident (u64)) => { Some(OperandType::Unsigned) };
+  (@new_inst $opr:ident $opc:ident) => { Self::$opc };
+  (@new_inst $opr:ident $opc:ident (i64)) => { Self::$opc($opr.unwrap().unwrap_signed()) };
+  (@new_inst $opr:ident $opc:ident (u64)) => { Self::$opc($opr.unwrap().unwrap_unsigned()) };
+  (@inst_pat $opc:ident) => { Self::$opc };
+  (@inst_pat $opc:ident ($t:tt)) => { Self::$opc(..) };
 }
 
 def_opc_inst! {
