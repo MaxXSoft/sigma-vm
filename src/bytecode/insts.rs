@@ -251,4 +251,16 @@ def_opc_inst! {
   DivD,
   /// Modulo (double).
   ModD,
+  /// Integer to float.
+  I2F,
+  /// Integer to double.
+  I2D,
+  /// Float to integer.
+  F2I,
+  /// Float to double.
+  F2D,
+  /// Double to integer.
+  D2I,
+  /// Double to float.
+  D2F,
 }
