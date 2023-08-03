@@ -97,64 +97,66 @@ def_opc_inst! {
   /// Discard the value at the top of the stack.
   Pop,
   /// Load address s0, and push the signed 8-bit result to stack.
-  LoadB,
+  LdB,
   /// Load address s0, and push the unsigned 8-bit result to stack.
-  LoadBU,
+  LdBU,
   /// Load address s0, and push the signed 16-bit result to stack.
-  LoadH,
+  LdH,
   /// Load address s0, and push the unsigned 16-bit result to stack.
-  LoadHU,
+  LdHU,
   /// Load address s0, and push the signed 32-bit result to stack.
-  LoadW,
+  LdW,
   /// Load address s0, and push the unsigned 32-bit result to stack.
-  LoadWU,
+  LdWU,
   /// Load address s0, and push the signed 64-bit result to stack.
-  LoadD,
+  LdD,
   /// Load address s0 with offset opr,
   /// and push the signed 8-bit result to stack.
-  LoadBO(i64),
+  LdBO(i64),
   /// Load address s0 with offset opr,
   /// and push the unsigned 8-bit result to stack.
-  LoadBUO(i64),
+  LdBUO(i64),
   /// Load address s0 with offset opr,
   /// and push the signed 16-bit result to stack.
-  LoadHO(i64),
+  LdHO(i64),
   /// Load address s0 with offset opr,
   /// and push the unsigned 16-bit result to stack.
-  LoadHUO(i64),
+  LdHUO(i64),
   /// Load address s0 with offset opr,
   /// and push the signed 32-bit result to stack.
-  LoadWO(i64),
+  LdWO(i64),
   /// Load address s0 with offset opr,
   /// and push the unsigned 32-bit result to stack.
-  LoadWUO(i64),
+  LdWUO(i64),
   /// Load address s0 with offset opr,
   /// and push the signed 64-bit result to stack.
-  LoadDO(i64),
+  LdDO(i64),
   /// Load variable opr, and push the result to stack.
-  LoadV(u64),
+  LdV(u64),
   /// Store 8-bit value s0 to address s1.
-  StoreB,
+  StB,
   /// Store 16-bit value s0 to address s1.
-  StoreH,
+  StH,
   /// Store 32-bit value s0 to address s1.
-  StoreW,
+  StW,
   /// Store 64-bit value s0 to address s1.
-  StoreD,
+  StD,
   /// Store 8-bit value s0 to address s1 with offset opr.
-  StoreBO(i64),
+  StBO(i64),
   /// Store 16-bit value s0 to address s1 with offset opr.
-  StoreHO(i64),
+  StHO(i64),
   /// Store 32-bit value s0 to address s1 with offset opr.
-  StoreWO(i64),
+  StWO(i64),
   /// Store 64-bit value s0 to address s1 with offset opr.
-  StoreDO(i64),
+  StDO(i64),
   /// Store value s0 to variable opr.
-  StoreV(u64),
+  StV(u64),
   /// Store arguments s0, ..., s{opr}.
-  StoreA(u64),
+  StA(u64),
   /// Allocate heap memory, with size s0 and managed pointer number opr.
   Alloc(u64),
+  /// Delete the allocated heap memory s0.
+  Del,
   /// Branch to pc + opr if s0 is not zero.
   Bnz(i64),
   /// Jump to pc + opr.
