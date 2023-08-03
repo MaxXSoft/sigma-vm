@@ -94,8 +94,12 @@ def_opc_inst! {
   PushI(i64),
   /// Push unsigned integer opr constant to stack.
   PushU(u64),
-  /// Discard the value at the top of the stack.
+  /// Discard s0.
   Pop,
+  /// Duplicate s0.
+  Dup,
+  /// Swap s0 and s1.
+  Swap,
   /// Load address s0, and push the signed 8-bit result to stack.
   LdB,
   /// Load address s0, and push the unsigned 8-bit result to stack.
@@ -133,6 +137,8 @@ def_opc_inst! {
   LdDO(i64),
   /// Load variable opr, and push the result to stack.
   LdV(u64),
+  /// Load the address of the constant opr.
+  LdC(u64),
   /// Store 8-bit value s0 to address s1.
   StB,
   /// Store 16-bit value s0 to address s1.
@@ -153,8 +159,12 @@ def_opc_inst! {
   StV(u64),
   /// Store arguments s0, ..., s{opr}.
   StA(u64),
-  /// Allocate heap memory, with size s0 and managed pointer number opr.
-  Alloc(u64),
+  /// Allocate heap memory with size s0.
+  New,
+  /// Allocate heap memory, with object description's constant pool index opr.
+  NewO(u64),
+  /// Allocate array with size s0, and object description's constant pool index opr.
+  NewA(u64),
   /// Delete the allocated heap memory s0.
   Del,
   /// Branch to pc + opr if s0 is not zero.
