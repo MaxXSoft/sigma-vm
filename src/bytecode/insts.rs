@@ -137,8 +137,10 @@ def_opc_inst! {
   LdDO(i64),
   /// Load variable opr, and push the result to stack.
   LdV(u64),
-  /// Load the address of the constant opr.
+  /// Load the constant opr by its kind.
   LdC(u64),
+  /// Load the address of the constant opr.
+  LaC(u64),
   /// Store 8-bit value s0 to address s1.
   StB,
   /// Store 16-bit value s0 to address s1.
