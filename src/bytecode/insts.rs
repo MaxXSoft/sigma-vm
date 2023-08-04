@@ -161,9 +161,9 @@ def_opc_inst! {
   StA(u64),
   /// Allocate heap memory with size s0.
   New,
-  /// Allocate heap memory, with object description's constant pool index opr.
+  /// Allocate heap memory, with object metadata's constant pool index opr.
   NewO(u64),
-  /// Allocate array with size s0, and object description's constant pool index opr.
+  /// Allocate array with size s0, and object metadata's constant pool index opr.
   NewA(u64),
   /// Delete the allocated heap memory s0.
   Del,
