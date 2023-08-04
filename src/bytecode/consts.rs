@@ -4,23 +4,32 @@
 ///
 /// Starts with an integer that represents the length of bytes,
 /// and then a byte array contains UTF-8 encoded string.
-pub struct Str {
+pub struct Str<Bytes: Array<u8>> {
   len: u64,
-  bytes: [u8],
+  bytes: Bytes,
 }
 
 /// Object metadata.
 ///
 /// With object size and managed pointer information.
-pub struct Object {
+pub struct Object<Offsets: Array<u64>> {
   size: u64,
-  managed_ptr: ManagedPtr,
+  managed_ptr: ManagedPtr<Offsets>,
 }
 
 /// Managed pointer information.
 ///
 /// A list of offsets in 64-bit double words of managed pointers in the object.
-pub struct ManagedPtr {
+pub struct ManagedPtr<Offsets: Array<u64>> {
   len: u64,
-  offsets: [u64],
+  offsets: Offsets,
+}
+
+/// Marker trait for arrays (`[T; N]` and `[T]`).
+pub trait Array<T>: array::Array<T> {}
+
+mod array {
+  pub trait Array<T> {}
+  impl<T, const N: usize> Array<T> for [T; N] {}
+  impl<T> Array<T> for [T] {}
 }
