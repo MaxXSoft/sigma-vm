@@ -25,6 +25,15 @@ pub struct ManagedPtr<Offsets: Array<u64>> {
   offsets: Offsets,
 }
 
+/// Raw data.
+///
+/// Starts with an integer that represents the data length,
+/// and then a byte array contains the data.
+pub struct Raw<Bytes: Array<u8>> {
+  len: u64,
+  bytes: Bytes,
+}
+
 /// Marker trait for arrays (`[T; N]` and `[T]`).
 pub trait Array<T>: array::Array<T> {}
 
