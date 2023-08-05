@@ -1,6 +1,6 @@
 //! Definitions about constant pool.
 
-use std::{mem, slice};
+use std::{mem, ptr, slice};
 
 /// Constant.
 #[derive(Debug)]
@@ -41,6 +41,21 @@ impl Const {
       U64 => u64,
       F32 => u32,
       F64 => u64,
+    }
+  }
+
+  /// Returns a reference of object metadata, or [`None`] if
+  /// the current constant is not an object metadata.
+  ///
+  /// # Safety
+  ///
+  /// The kind matches the data.
+  pub unsafe fn object(&self) -> Option<&Object<[u64]>> {
+    if self.kind == ConstKind::Object {
+      let len = *(self.data.as_ptr() as *const u64).offset(1) as usize;
+      Some(&*ptr::from_raw_parts(self.data.as_ptr() as *const _, len))
+    } else {
+      None
     }
   }
 }
@@ -87,7 +102,7 @@ impl_from!(u64, U64);
 impl_from!(f32, F32);
 impl_from!(f64, F64);
 impl_from!(Str<Bytes: Array<u8>>, Str);
-impl_from!(Object<Offsets: Array<u64>>, Obj);
+impl_from!(Object<Offsets: Array<u64>>, Object);
 impl_from!(Raw<Bytes: Array<u8>>, Raw);
 
 /// Helper macro for defining kind of constant.
@@ -143,7 +158,7 @@ const_kind! {
   /// String.
   Str,
   /// Object metadata.
-  Obj,
+  Object,
   /// Raw data.
   Raw,
 }
@@ -164,7 +179,7 @@ pub struct Str<Bytes: Array<u8>> {
 /// With object size and managed pointer information.
 #[repr(C)]
 #[derive(Debug)]
-pub struct Object<Offsets: Array<u64>> {
+pub struct Object<Offsets: ?Sized + Array<u64>> {
   size: u64,
   managed_ptr: ManagedPtr<Offsets>,
 }
@@ -174,7 +189,7 @@ pub struct Object<Offsets: Array<u64>> {
 /// A list of offsets in 64-bit double words of managed pointers in the object.
 #[repr(C)]
 #[derive(Debug)]
-pub struct ManagedPtr<Offsets: Array<u64>> {
+pub struct ManagedPtr<Offsets: ?Sized + Array<u64>> {
   len: u64,
   offsets: Offsets,
 }
@@ -192,6 +207,8 @@ pub struct Raw<Bytes: Array<u8>> {
 
 /// Marker trait for arrays (`[T; N]` and `[T]`).
 pub trait Array<T>: array::Array<T> {}
+impl<T, const N: usize> Array<T> for [T; N] {}
+impl<T> Array<T> for [T] {}
 
 mod array {
   pub trait Array<T> {}
