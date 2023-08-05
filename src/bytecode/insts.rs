@@ -50,7 +50,7 @@ macro_rules! def_opc_inst {
       }
 
       /// Returns the operand type of the current opcode.
-      pub fn opr_type(&self) -> Option<OperandType> {
+      pub fn operand_type(&self) -> Option<OperandType> {
         match self {
           $(Self::$opc => def_opc_inst!(@opr_type $opc $(($t))?),)+
         }

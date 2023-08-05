@@ -193,7 +193,7 @@ where
 
   fn read_inst(&mut self) -> Result<Inst> {
     let opcode = Opcode::from_byte(self.read_le()?).ok_or(Error::UnknownOpcode)?;
-    let opr = match opcode.opr_type() {
+    let opr = match opcode.operand_type() {
       Some(OperandType::Signed) => Some(Operand::Signed(self.read_leb128()?)),
       Some(OperandType::Unsigned) => Some(Operand::Unsigned(self.read_leb128()?)),
       None => None,
