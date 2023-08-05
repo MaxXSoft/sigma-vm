@@ -1,5 +1,5 @@
 use crate::bytecode::consts::{Const, ConstKind, Object, Raw, Str};
-use crate::bytecode::insts::Inst;
+use crate::bytecode::insts::{Inst, Opcode, Operand, OperandType};
 use crate::bytecode::MAGIC;
 use leb128::read::{signed, unsigned, Error as LebError};
 use std::alloc::{self, Layout, LayoutError};
@@ -22,6 +22,8 @@ pub enum Error {
   UnknownConstKind,
   /// Layout error.
   Layout(LayoutError),
+  /// Unknown opcode.
+  UnknownOpcode,
 }
 
 impl From<LebError> for Error {
@@ -96,7 +98,7 @@ where
 
   /// Reads constants.
   fn read_consts(&mut self) -> Result<()> {
-    let len = self.reader.read_leb128()?;
+    let len: u64 = self.reader.read_leb128()?;
     self.consts.clear();
     self.consts.reserve_exact(len as usize);
     for _ in 0..len {
@@ -107,7 +109,7 @@ where
 
   /// Reads instructions.
   fn read_insts(&mut self) -> Result<()> {
-    let len = self.reader.read_leb128()?;
+    let len: u64 = self.reader.read_leb128()?;
     self.insts.clear();
     self.insts.reserve_exact(len as usize);
     for _ in 0..len {
@@ -147,7 +149,9 @@ trait ReadData {
   fn fill(&mut self, buf: &mut [u8]) -> Result<()>;
 
   /// Reads an LEB128 integer.
-  fn read_leb128(&mut self) -> Result<u64>;
+  fn read_leb128<T>(&mut self) -> Result<T>
+  where
+    T: ReadLeb128;
 
   /// Reads a little endian integer.
   fn read_le<T>(&mut self) -> Result<T>
@@ -169,15 +173,18 @@ where
     self.read_exact(buf).map_err(Error::IO)
   }
 
-  fn read_leb128(&mut self) -> Result<u64> {
-    unsigned(self).map_err(Error::from)
+  fn read_leb128<T>(&mut self) -> Result<T>
+  where
+    T: ReadLeb128,
+  {
+    T::read(self)
   }
 
   fn read_le<T>(&mut self) -> Result<T>
   where
     T: ReadLe,
   {
-    ReadLe::read(self)
+    T::read(self)
   }
 
   fn read_const(&mut self) -> Result<Const> {
@@ -185,7 +192,38 @@ where
   }
 
   fn read_inst(&mut self) -> Result<Inst> {
-    todo!()
+    let opcode = Opcode::from_byte(self.read_le()?).ok_or(Error::UnknownOpcode)?;
+    let opr = match opcode.opr_type() {
+      Some(OperandType::Signed) => Some(Operand::Signed(self.read_leb128()?)),
+      Some(OperandType::Unsigned) => Some(Operand::Unsigned(self.read_leb128()?)),
+      None => None,
+    };
+    Ok(Inst::new(opcode, opr))
+  }
+}
+
+/// Helper trait for reading LEB128 integer.
+trait ReadLeb128: Sized {
+  fn read<R>(reader: &mut R) -> Result<Self>
+  where
+    R: Read;
+}
+
+impl ReadLeb128 for i64 {
+  fn read<R>(reader: &mut R) -> Result<Self>
+  where
+    R: Read,
+  {
+    signed(reader).map_err(Error::from)
+  }
+}
+
+impl ReadLeb128 for u64 {
+  fn read<R>(reader: &mut R) -> Result<Self>
+  where
+    R: Read,
+  {
+    unsigned(reader).map_err(Error::from)
   }
 }
 
