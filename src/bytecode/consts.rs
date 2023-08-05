@@ -27,6 +27,11 @@ impl Const {
     Self { kind, data }
   }
 
+  /// Returns the kind of the current constant.
+  pub fn kind(&self) -> ConstKind {
+    self.kind
+  }
+
   /// Sets the kind of the current constant.
   ///
   /// # Safety
@@ -37,21 +42,41 @@ impl Const {
   }
 
   /// Returns the address of the current constant.
-  pub fn addr(&self) -> u64 {
-    self.data.as_ptr() as u64
+  pub fn addr(&self) -> *const () {
+    self.data.as_ptr() as *const ()
   }
 
-  /// Returns the value of the current constant as an integer,
+  /// Returns the address of the current constant as [`u64`].
+  pub fn addr_u64(&self) -> u64 {
+    let addr = self.addr();
+    assert_eq!(mem::size_of_val(&addr), mem::size_of::<u64>());
+    addr as u64
+  }
+
+  /// Returns the value of the current constant,
   /// or [`None`] if value is unavailable.
   ///
   /// # Safety
   ///
   /// The kind must match the data.
-  pub unsafe fn value(&self) -> Option<u64> {
+  pub unsafe fn value<T>(&self) -> Option<T>
+  where
+    T: FromConst,
+  {
+    T::from(self)
+  }
+
+  /// Returns the value of the current constant as [`u64`],
+  /// or [`None`] if value is unavailable.
+  ///
+  /// # Safety
+  ///
+  /// The kind must match the data.
+  pub unsafe fn value_u64(&self) -> Option<u64> {
     macro_rules! value {
       ($($kind:ident => $ty:ty),* $(,)?) => {
         match self.kind {
-          $(ConstKind::$kind => Some(*(self.data.as_ptr() as *const $ty) as u64),)*
+          $(ConstKind::$kind => Some(*(self.addr() as *const $ty) as u64),)*
           _ => None,
         }
       };
@@ -88,8 +113,8 @@ impl Const {
   /// The kind must match the data.
   pub unsafe fn object(&self) -> Option<&Object<[u64]>> {
     if self.kind == ConstKind::Object {
-      let len = *(self.data.as_ptr() as *const u64).offset(1) as usize;
-      Some(&*ptr::from_raw_parts(self.data.as_ptr() as *const _, len))
+      let len = *(self.addr() as *const u64).offset(1) as usize;
+      Some(&*ptr::from_raw_parts(self.addr() as *const _, len))
     } else {
       None
     }
@@ -116,8 +141,8 @@ impl Const {
     T: ?Sized + Pointee<Metadata = usize>,
   {
     if self.kind == kind {
-      let len = *(self.data.as_ptr() as *const u64) as usize;
-      Some(&*ptr::from_raw_parts(self.data.as_ptr() as *const _, len))
+      let len = *(self.addr() as *const u64) as usize;
+      Some(&*ptr::from_raw_parts(self.addr() as *const _, len))
     } else {
       None
     }
@@ -168,6 +193,38 @@ impl_from!(f64, F64);
 impl_from!(Str<Bytes: Array<u8>>, Str);
 impl_from!(Object<Offsets: Array<u64>>, Object);
 impl_from!(Raw<Bytes: Array<u8>>, Raw);
+
+/// Trait for constructing values from constant.
+pub trait FromConst: Sized {
+  /// Constructs a value from the given constant.
+  ///
+  /// # Safety
+  ///
+  /// The kind of the constant must match the inner data.
+  unsafe fn from(_: &Const) -> Option<Self>;
+}
+
+/// Helper macro for implementing [`FromConst`] for the given type.
+macro_rules! impl_from_const {
+  ($ty:ty, $kind:ident) => {
+    impl FromConst for $ty {
+      unsafe fn from(c: &Const) -> Option<Self> {
+        (c.kind() == ConstKind::$kind).then(|| *(c.addr() as *const Self))
+      }
+    }
+  };
+}
+
+impl_from_const!(i8, I8);
+impl_from_const!(u8, U8);
+impl_from_const!(i16, I16);
+impl_from_const!(u16, U16);
+impl_from_const!(i32, I32);
+impl_from_const!(u32, U32);
+impl_from_const!(i64, I64);
+impl_from_const!(u64, U64);
+impl_from_const!(f32, F32);
+impl_from_const!(f64, F64);
 
 /// Helper macro for defining kind of constant.
 macro_rules! const_kind {
