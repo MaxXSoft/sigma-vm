@@ -10,6 +10,31 @@ pub struct Const {
 }
 
 impl Const {
+  /// Creates a new constant with the given data and the size of the data.
+  ///
+  /// # Safety
+  ///
+  /// The kind must match the data.
+  pub unsafe fn new<T>(kind: ConstKind, data: Box<T>, size: usize) -> Self
+  where
+    T: ?Sized,
+  {
+    let data = Box::from_raw(slice::from_raw_parts_mut(
+      Box::leak(data) as *mut _ as *mut u8,
+      size,
+    ));
+    Self { kind, data }
+  }
+
+  /// Sets the kind of the current constant.
+  ///
+  /// # Safety
+  ///
+  /// The kind must match the data.
+  pub unsafe fn set_kind(&mut self, kind: ConstKind) {
+    self.kind = kind;
+  }
+
   /// Returns the address of the current constant.
   pub fn addr(&self) -> u64 {
     self.data.as_ptr() as u64
@@ -20,7 +45,7 @@ impl Const {
   ///
   /// # Safety
   ///
-  /// The kind matches the data.
+  /// The kind must match the data.
   pub unsafe fn value(&self) -> Option<u64> {
     macro_rules! value {
       ($($kind:ident => $ty:ty),* $(,)?) => {
@@ -49,7 +74,7 @@ impl Const {
   ///
   /// # Safety
   ///
-  /// The kind matches the data.
+  /// The kind must match the data.
   pub unsafe fn object(&self) -> Option<&Object<[u64]>> {
     if self.kind == ConstKind::Object {
       let len = *(self.data.as_ptr() as *const u64).offset(1) as usize;
@@ -169,9 +194,9 @@ const_kind! {
 /// and then a byte array contains UTF-8 encoded string.
 #[repr(C)]
 #[derive(Debug)]
-pub struct Str<Bytes: Array<u8>> {
-  len: u64,
-  bytes: Bytes,
+pub struct Str<Bytes: ?Sized + Array<u8>> {
+  pub len: u64,
+  pub bytes: Bytes,
 }
 
 /// Object metadata.
@@ -180,8 +205,8 @@ pub struct Str<Bytes: Array<u8>> {
 #[repr(C)]
 #[derive(Debug)]
 pub struct Object<Offsets: ?Sized + Array<u64>> {
-  size: u64,
-  managed_ptr: ManagedPtr<Offsets>,
+  pub size: u64,
+  pub managed_ptr: ManagedPtr<Offsets>,
 }
 
 /// Managed pointer information.
@@ -190,8 +215,8 @@ pub struct Object<Offsets: ?Sized + Array<u64>> {
 #[repr(C)]
 #[derive(Debug)]
 pub struct ManagedPtr<Offsets: ?Sized + Array<u64>> {
-  len: u64,
-  offsets: Offsets,
+  pub len: u64,
+  pub offsets: Offsets,
 }
 
 /// Raw data.
@@ -200,9 +225,9 @@ pub struct ManagedPtr<Offsets: ?Sized + Array<u64>> {
 /// and then a byte array contains the data.
 #[repr(C)]
 #[derive(Debug)]
-pub struct Raw<Bytes: Array<u8>> {
-  len: u64,
-  bytes: Bytes,
+pub struct Raw<Bytes: ?Sized + Array<u8>> {
+  pub len: u64,
+  pub bytes: Bytes,
 }
 
 /// Marker trait for arrays (`[T; N]` and `[T]`).
