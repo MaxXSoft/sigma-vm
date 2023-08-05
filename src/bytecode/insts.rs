@@ -165,6 +165,8 @@ def_opc_inst! {
   LdDO(i64),
   /// Load variable opr, and push the result to stack.
   LdV(u64),
+  /// Load global variable opr, and push the result to stack.
+  LdG(u64),
   /// Load the constant opr by its kind.
   LdC(u64),
   /// Load the address of the constant opr.
@@ -187,6 +189,8 @@ def_opc_inst! {
   StDO(i64),
   /// Store value s0 to variable opr.
   StV(u64),
+  /// Store value s0 to global variable opr.
+  StG(u64),
   /// Store arguments s0, ..., s{opr}.
   StA(u64),
   /// Allocate heap memory with size s0.
