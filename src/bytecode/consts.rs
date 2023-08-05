@@ -1,6 +1,7 @@
 //! Definitions about constant pool.
 
-use std::{mem, ptr, slice};
+use std::ptr::{self, Pointee};
+use std::{mem, slice};
 
 /// Constant.
 #[derive(Debug)]
@@ -69,6 +70,16 @@ impl Const {
     }
   }
 
+  /// Returns a reference of string constant, or [`None`] if
+  /// the current constant is not a string constant.
+  ///
+  /// # Safety
+  ///
+  /// The kind must match the data.
+  pub unsafe fn str(&self) -> Option<&Str<[u8]>> {
+    self.bytes(ConstKind::Str)
+  }
+
   /// Returns a reference of object metadata, or [`None`] if
   /// the current constant is not an object metadata.
   ///
@@ -78,6 +89,34 @@ impl Const {
   pub unsafe fn object(&self) -> Option<&Object<[u64]>> {
     if self.kind == ConstKind::Object {
       let len = *(self.data.as_ptr() as *const u64).offset(1) as usize;
+      Some(&*ptr::from_raw_parts(self.data.as_ptr() as *const _, len))
+    } else {
+      None
+    }
+  }
+
+  /// Returns a reference of raw data, or [`None`] if
+  /// the current constant is not a raw data.
+  ///
+  /// # Safety
+  ///
+  /// The kind must match the data.
+  pub unsafe fn raw(&self) -> Option<&Raw<[u8]>> {
+    self.bytes(ConstKind::Raw)
+  }
+
+  /// Returns a reference of byte sequence (string constant or raw data),
+  /// or [`None`] if the current constant is not a byte sequence.
+  ///
+  /// # Safety
+  ///
+  /// The kind must match the data.
+  unsafe fn bytes<T>(&self, kind: ConstKind) -> Option<&T>
+  where
+    T: ?Sized + Pointee<Metadata = usize>,
+  {
+    if self.kind == kind {
+      let len = *(self.data.as_ptr() as *const u64) as usize;
       Some(&*ptr::from_raw_parts(self.data.as_ptr() as *const _, len))
     } else {
       None
