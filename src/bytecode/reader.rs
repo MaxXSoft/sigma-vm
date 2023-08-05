@@ -87,7 +87,7 @@ where
 
   /// Checks the magic number.
   fn check_magic(&mut self) -> Result<()> {
-    let mut magic = [0; 4];
+    let mut magic = [0; MAGIC.len()];
     self.reader.fill(&mut magic)?;
     if magic == MAGIC {
       Ok(())
