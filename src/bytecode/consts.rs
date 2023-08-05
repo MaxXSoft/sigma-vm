@@ -90,10 +90,36 @@ impl_from!(Str<Bytes: Array<u8>>, Str);
 impl_from!(Object<Offsets: Array<u64>>, Obj);
 impl_from!(Raw<Bytes: Array<u8>>, Raw);
 
-/// Kind of constant.
-#[repr(u8)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ConstKind {
+/// Helper macro for defining kind of constant.
+macro_rules! const_kind {
+  ($($(#[$a:meta])* $kind:ident),+ $(,)?) => {
+    /// Kind of constant.
+    #[repr(u8)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum ConstKind {
+      $($(#[$a])* $kind),+
+    }
+
+    impl ConstKind {
+      /// Creates a new [`ConstKind`] from the given byte.
+      pub fn from_byte(b: u8) -> Option<Self> {
+        let mut k = 0;
+        const_kind!(@arm b, k $(,$kind)+)
+      }
+    }
+  };
+  (@arm $b:ident, $k:ident, $kind:ident $(,$kinds:ident)+) => {{
+    if $b == $k { return Some(Self::$kind) }
+    $k += 1;
+    const_kind!(@arm $b, $k $(,$kinds)+)
+  }};
+  (@arm $b:ident, $k:ident, $kind:ident) => {{
+    if $b == $k { return Some(Self::$kind) }
+    None
+  }};
+}
+
+const_kind! {
   /// Signed 8-bit integer.
   I8,
   /// Unsigned 8-bit integer.
