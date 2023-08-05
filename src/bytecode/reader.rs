@@ -338,13 +338,9 @@ impl_read_const!(f64);
 /// # Safety
 ///
 /// The created data must be set a valid value first.
-unsafe fn alloc_uninit<T>(
-  size: usize,
-  align: usize,
-  metadata: <T as Pointee>::Metadata,
-) -> Result<Box<T>>
+unsafe fn alloc_uninit<T, M>(size: usize, align: usize, metadata: M) -> Result<Box<T>>
 where
-  T: ?Sized,
+  T: ?Sized + Pointee<Metadata = M>,
 {
   let layout = Layout::from_size_align(size, align).map_err(Error::Layout)?;
   let ptr = alloc::alloc(layout);
