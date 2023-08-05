@@ -1,3 +1,5 @@
+#![feature(ptr_metadata)]
+
 mod bytecode;
 
 fn main() {
