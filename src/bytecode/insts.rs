@@ -81,6 +81,14 @@ macro_rules! def_opc_inst {
           $(def_opc_inst!(@inst_pat $opc $(($t))?) => Opcode::$opc,)+
         }
       }
+
+      /// Returns the corresponding [`Operand`] of the current instruction,
+      /// or [`None`] if the current instruction has no operand.
+      pub fn operand(&self) -> Option<Operand> {
+        match self {
+          $(def_opc_inst!(@inst_pat_opr $opc $(($t))?, opr) => def_opc_inst!(@operand $($t,)? opr),)+
+        }
+      }
     }
   };
   (@from_byte $b:ident, $o:ident, $opc:ident $(,$opcs:ident)+) => {{
@@ -100,6 +108,11 @@ macro_rules! def_opc_inst {
   (@new_inst $opr:ident $opc:ident (u64)) => { Self::$opc($opr.unwrap().unwrap_unsigned()) };
   (@inst_pat $opc:ident) => { Self::$opc };
   (@inst_pat $opc:ident ($t:tt)) => { Self::$opc(..) };
+  (@inst_pat_opr $opc:ident, $opr:ident) => { Self::$opc };
+  (@inst_pat_opr $opc:ident ($ty:ty), $opr:ident) => { Self::$opc($opr) };
+  (@operand $opr:ident) => { None };
+  (@operand i64, $opr:ident) => { Some(Operand::Signed(*$opr)) };
+  (@operand u64, $opr:ident) => { Some(Operand::Unsigned(*$opr)) };
 }
 
 def_opc_inst! {
