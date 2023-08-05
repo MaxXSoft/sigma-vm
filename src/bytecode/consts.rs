@@ -152,6 +152,7 @@ const_kind! {
 ///
 /// Starts with an integer that represents the length of bytes,
 /// and then a byte array contains UTF-8 encoded string.
+#[repr(C)]
 #[derive(Debug)]
 pub struct Str<Bytes: Array<u8>> {
   len: u64,
@@ -161,6 +162,7 @@ pub struct Str<Bytes: Array<u8>> {
 /// Object metadata.
 ///
 /// With object size and managed pointer information.
+#[repr(C)]
 #[derive(Debug)]
 pub struct Object<Offsets: Array<u64>> {
   size: u64,
@@ -170,6 +172,7 @@ pub struct Object<Offsets: Array<u64>> {
 /// Managed pointer information.
 ///
 /// A list of offsets in 64-bit double words of managed pointers in the object.
+#[repr(C)]
 #[derive(Debug)]
 pub struct ManagedPtr<Offsets: Array<u64>> {
   len: u64,
@@ -180,6 +183,7 @@ pub struct ManagedPtr<Offsets: Array<u64>> {
 ///
 /// Starts with an integer that represents the data length,
 /// and then a byte array contains the data.
+#[repr(C)]
 #[derive(Debug)]
 pub struct Raw<Bytes: Array<u8>> {
   len: u64,
