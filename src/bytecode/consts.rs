@@ -113,7 +113,7 @@ impl Const {
   /// The kind must match the data.
   pub unsafe fn object(&self) -> Option<&Object<[u64]>> {
     if self.kind == ConstKind::Object {
-      let len = *(self.addr() as *const u64).offset(1) as usize;
+      let len = *(self.addr() as *const u64).offset(2) as usize;
       Some(&*ptr::from_raw_parts(self.addr() as *const _, len))
     } else {
       None
@@ -297,11 +297,12 @@ pub struct Str<Bytes: ?Sized + Array<u8>> {
 
 /// Object metadata.
 ///
-/// With object size and managed pointer information.
+/// With object size, align and managed pointer information.
 #[repr(C)]
 #[derive(Debug)]
 pub struct Object<Offsets: ?Sized + Array<u64>> {
   pub size: u64,
+  pub align: u64,
   pub managed_ptr: ManagedPtr<Offsets>,
 }
 
