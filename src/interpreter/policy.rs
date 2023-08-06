@@ -49,8 +49,9 @@ pub trait Policy {
   /// Creates a new heap.
   fn new_heap(&self) -> Self::Heap;
 
-  /// Checks whether the given pointer is valid, returns an error if necessary.
-  fn check_ptr(heap: &Self::Heap, p: u64) -> Result<(), Self::Error>;
+  /// Checks whether the given memory access is valid,
+  /// returns an error if necessary.
+  fn check_access(heap: &Self::Heap, p: u64, len: usize) -> Result<(), Self::Error>;
 
   /// Creates a new garbage collector.
   fn new_gc(&self) -> Self::GarbageCollector;
@@ -141,8 +142,12 @@ where
     H::new()
   }
 
-  fn check_ptr(heap: &Self::Heap, p: u64) -> Result<(), Self::Error> {
-    todo!()
+  fn check_access(heap: &Self::Heap, p: u64, len: usize) -> Result<(), Self::Error> {
+    if heap.is_valid(p, len) {
+      Ok(())
+    } else {
+      Err(StrictError::OutOfBounds)
+    }
   }
 
   fn new_gc(&self) -> Self::GarbageCollector {
@@ -166,6 +171,8 @@ pub enum StrictError {
   TypeMismatch,
   /// Divisor is zero.
   ZeroDivision,
+  /// Memory access out of bounds.
+  OutOfBounds,
 }
 
 /// No check policy.
@@ -238,7 +245,7 @@ where
     H::new()
   }
 
-  fn check_ptr(_: &Self::Heap, _: u64) -> Result<(), Self::Error> {
+  fn check_access(_: &Self::Heap, _: u64, _: usize) -> Result<(), Self::Error> {
     Ok(())
   }
 
