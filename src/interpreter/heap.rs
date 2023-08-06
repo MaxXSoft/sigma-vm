@@ -38,19 +38,12 @@ pub trait Heap {
 /// Object metadata for heap memory.
 #[derive(Debug)]
 pub struct Obj {
-  kind: ObjKind,
-  addr: ObjAddr,
-}
-
-impl Obj {
-  /// Creates a new object metadata.
-  pub fn new(kind: ObjKind, addr: ObjAddr) -> Self {
-    Self { kind, addr }
-  }
+  pub kind: ObjKind,
+  pub addr: ObjAddr,
 }
 
 /// Kind of object.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum ObjKind {
   /// Just an object.
   Obj,
@@ -61,7 +54,7 @@ pub enum ObjKind {
 }
 
 /// Address of object metadata.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum ObjAddr {
   /// Object metadata is on the heap.
   ///
