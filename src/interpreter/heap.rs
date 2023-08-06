@@ -30,6 +30,47 @@ pub trait Heap {
   /// Returns a reference to the heap object metadata of the given pointer, or
   /// [`None`] if the corresponding heap memory is not allocated for an object.
   fn obj(&self, ptr: u64) -> Option<&Obj>;
+
+  /// Returns a vector of pointers of all allocated memory.
+  fn ptrs(&self) -> Vec<u64>;
+}
+
+/// Object metadata for heap memory.
+#[derive(Debug)]
+pub struct Obj {
+  kind: ObjKind,
+  addr: ObjAddr,
+}
+
+impl Obj {
+  /// Creates a new object metadata.
+  pub fn new(kind: ObjKind, addr: ObjAddr) -> Self {
+    Self { kind, addr }
+  }
+}
+
+/// Kind of object.
+#[derive(Debug)]
+pub enum ObjKind {
+  /// Just an object.
+  Obj,
+  /// An array of objects.
+  ///
+  /// With the length of the array.
+  Array(usize),
+}
+
+/// Address of object metadata.
+#[derive(Debug)]
+pub enum ObjAddr {
+  /// Object metadata is on the heap.
+  ///
+  /// With a heap memory pointer.
+  Heap(u64),
+  /// Object metadata is in the constant pool.
+  ///
+  /// With a constant pool index.
+  Const(usize),
 }
 
 /// Managed heap with memory out of bounds checking.
@@ -90,6 +131,10 @@ impl Heap for System {
   fn obj(&self, ptr: u64) -> Option<&Obj> {
     self.mems.get(&ptr).and_then(|m| m.obj.as_ref())
   }
+
+  fn ptrs(&self) -> Vec<u64> {
+    self.mems.keys().copied().collect()
+  }
 }
 
 /// Allocated system heap memory.
@@ -112,44 +157,6 @@ impl Mem {
     let data = Box::from_raw(slice::from_raw_parts_mut(ptr, layout.size()));
     Self { data, obj }
   }
-}
-
-/// Object metadata for heap memory.
-#[derive(Debug)]
-pub struct Obj {
-  kind: ObjKind,
-  addr: ObjAddr,
-}
-
-impl Obj {
-  /// Creates a new object metadata.
-  pub fn new(kind: ObjKind, addr: ObjAddr) -> Self {
-    Self { kind, addr }
-  }
-}
-
-/// Kind of object.
-#[derive(Debug)]
-pub enum ObjKind {
-  /// Just an object.
-  Obj,
-  /// An array of objects.
-  ///
-  /// With the length of the array.
-  Array(usize),
-}
-
-/// Address of object metadata.
-#[derive(Debug)]
-pub enum ObjAddr {
-  /// Object metadata is on the heap.
-  ///
-  /// With a heap memory pointer.
-  Heap(u64),
-  /// Object metadata is in the constant pool.
-  ///
-  /// With a constant pool index.
-  Const(usize),
 }
 
 /// Heap with memory out of bounds checking.
@@ -230,6 +237,10 @@ where
 
   fn obj(&self, ptr: u64) -> Option<&Obj> {
     self.heap.obj(ptr)
+  }
+
+  fn ptrs(&self) -> Vec<u64> {
+    self.heap.ptrs()
   }
 }
 
