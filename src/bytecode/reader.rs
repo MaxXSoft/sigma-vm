@@ -378,11 +378,16 @@ impl ReadConst for Object<[u64]> {
     R: Read,
   {
     let size = reader.read_leb128()?;
+    let align = reader.read_leb128()?;
     let len = reader.read_leb128()?;
     let size_size = mem::size_of_val(&size);
-    let total_size = size_size + mem::size_of_val(&len) + len as usize * mem::size_of::<u64>();
+    let total_size = size_size
+      + mem::size_of_val(&align)
+      + mem::size_of_val(&len)
+      + len as usize * mem::size_of::<u64>();
     let mut data: Box<Self> = unsafe { alloc_uninit(total_size, size_size, len as usize)? };
     data.size = size;
+    data.align = align;
     data.managed_ptr.len = len;
     for i in 0..len as usize {
       data.managed_ptr.offsets[i] = reader.read_leb128()?;
