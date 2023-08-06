@@ -1,3 +1,7 @@
+use crate::interpreter::gc::GarbageCollector;
+use crate::interpreter::heap::Heap;
+use std::marker::PhantomData;
+
 /// Execution policy of the VM (interpreter).
 pub trait Policy {
   /// Type of all local/global values.
@@ -7,10 +11,10 @@ pub trait Policy {
   type Error;
 
   /// Type of managed heap.
-  type Heap;
+  type Heap: Heap;
 
   /// Type of garbage collector.
-  type GarbageCollector;
+  type GarbageCollector: GarbageCollector;
 
   /// Creates an integer value.
   fn int_val(i: u64) -> Self::Value;
