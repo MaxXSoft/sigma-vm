@@ -138,7 +138,7 @@ where
   }
 
   fn new_heap(&self) -> Self::Heap {
-    todo!()
+    H::new()
   }
 
   fn check_ptr(heap: &Self::Heap, p: u64) -> Result<(), Self::Error> {
@@ -146,7 +146,7 @@ where
   }
 
   fn new_gc(&self) -> Self::GarbageCollector {
-    todo!()
+    GC::new(self.gc_threshold)
   }
 }
 
@@ -235,7 +235,7 @@ where
   }
 
   fn new_heap(&self) -> Self::Heap {
-    todo!()
+    H::new()
   }
 
   fn check_ptr(_: &Self::Heap, _: u64) -> Result<(), Self::Error> {
@@ -243,7 +243,7 @@ where
   }
 
   fn new_gc(&self) -> Self::GarbageCollector {
-    todo!()
+    GC::new(self.gc_threshold)
   }
 }
 
