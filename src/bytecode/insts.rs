@@ -193,7 +193,7 @@ def_opc_inst! {
   StG(u64),
   /// Store arguments s0, ..., s{opr}.
   StA(u64),
-  /// Allocate heap memory with size s0.
+  /// Allocate heap memory with size s1 and align s0.
   New,
   /// Allocate heap memory, with object metadata's address s0.
   NewO,
