@@ -1,6 +1,7 @@
 /// Managed heap interface.
 pub trait Heap {
-  //
+  /// Creates a new heap.
+  fn new() -> Self;
 }
 
 /// Managed heap with memory out of bounds checking.
@@ -15,15 +16,10 @@ pub struct System {
   mems: Vec<Mem>,
 }
 
-impl System {
-  /// Creates a new heap.
-  pub fn new() -> Self {
+impl Heap for System {
+  fn new() -> Self {
     Self::default()
   }
-}
-
-impl Heap for System {
-  // TODO
 }
 
 /// Allocated system heap memory.
@@ -47,7 +43,9 @@ impl<H> Heap for Checked<H>
 where
   H: Heap,
 {
-  // TODO
+  fn new() -> Self {
+    Self { heap: H::new() }
+  }
 }
 
 impl<H> CheckedHeap for Checked<H>
