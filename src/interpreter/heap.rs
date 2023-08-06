@@ -1,11 +1,16 @@
-/// Managed heap.
+/// Managed heap interface.
+pub trait Heap {
+  //
+}
+
+/// Heap that do not check for memory out of bounds.
 #[derive(Default)]
-pub struct Heap {
+pub struct UncheckedHeap {
   size: usize,
   mems: Vec<Mem>,
 }
 
-impl Heap {
+impl UncheckedHeap {
   /// Creates a new heap.
   pub fn new() -> Self {
     Self::default()
