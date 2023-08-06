@@ -1,5 +1,5 @@
 use crate::interpreter::gc::GarbageCollector;
-use crate::interpreter::heap::Heap;
+use crate::interpreter::heap::{CheckedHeap, Heap};
 use std::marker::PhantomData;
 
 /// Execution policy of the VM (interpreter).
@@ -54,4 +54,220 @@ pub trait Policy {
 
   /// Creates a new garbage collector.
   fn new_gc(&self) -> Self::GarbageCollector;
+}
+
+/// Strict policy.
+///
+/// Checks type of values, division, and memory out of bounds.
+pub struct Strict<H, GC> {
+  gc_threshold: usize,
+  phantom: PhantomData<(H, GC)>,
+}
+
+impl<H, GC> Strict<H, GC> {
+  /// Creates a new strict policy.
+  pub fn new(gc_threshold: usize) -> Self {
+    Self {
+      gc_threshold,
+      phantom: PhantomData,
+    }
+  }
+}
+
+impl<H, GC> Policy for Strict<H, GC>
+where
+  H: CheckedHeap,
+  GC: GarbageCollector,
+{
+  type Value = StrictValue;
+  type Error = StrictError;
+  type Heap = H;
+  type GarbageCollector = GC;
+
+  fn int_val(i: u64) -> Self::Value {
+    StrictValue::Int(i)
+  }
+
+  fn f32_val(f: f32) -> Self::Value {
+    StrictValue::Float(f)
+  }
+
+  fn f64_val(f: f64) -> Self::Value {
+    StrictValue::Double(f)
+  }
+
+  fn ptr_val(p: u64) -> Self::Value {
+    StrictValue::Ptr(p)
+  }
+
+  fn get_int(v: &Self::Value) -> Result<u64, Self::Error> {
+    match v {
+      StrictValue::Int(i) => Ok(*i),
+      StrictValue::Ptr(p) => Ok(*p),
+      _ => Err(StrictError::TypeMismatch),
+    }
+  }
+
+  fn get_f32(v: &Self::Value) -> Result<f32, Self::Error> {
+    match v {
+      StrictValue::Float(f) => Ok(*f),
+      _ => Err(StrictError::TypeMismatch),
+    }
+  }
+
+  fn get_f64(v: &Self::Value) -> Result<f64, Self::Error> {
+    match v {
+      StrictValue::Double(f) => Ok(*f),
+      _ => Err(StrictError::TypeMismatch),
+    }
+  }
+
+  fn get_ptr(v: &Self::Value) -> Option<u64> {
+    match v {
+      StrictValue::Ptr(p) => Some(*p),
+      _ => None,
+    }
+  }
+
+  fn check_div(divisor: u64) -> Result<(), Self::Error> {
+    if divisor == 0 {
+      Err(StrictError::ZeroDivision)
+    } else {
+      Ok(())
+    }
+  }
+
+  fn new_heap(&self) -> Self::Heap {
+    todo!()
+  }
+
+  fn check_ptr(heap: &Self::Heap, p: u64) -> Result<(), Self::Error> {
+    todo!()
+  }
+
+  fn new_gc(&self) -> Self::GarbageCollector {
+    todo!()
+  }
+}
+
+/// Value of [`Strict`] policy.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum StrictValue {
+  Int(u64),
+  Ptr(u64),
+  Float(f32),
+  Double(f64),
+}
+
+/// Error for [`Strict`] policy.
+#[derive(Debug)]
+pub enum StrictError {
+  /// Type mismatch.
+  TypeMismatch,
+  /// Divisor is zero.
+  ZeroDivision,
+}
+
+/// No check policy.
+///
+/// Does not check type of values, division and memory out of bounds.
+pub struct NoCheck<H, GC> {
+  gc_threshold: usize,
+  phantom: PhantomData<(H, GC)>,
+}
+
+impl<H, GC> NoCheck<H, GC> {
+  /// Creates a new no check policy.
+  pub fn new(gc_threshold: usize) -> Self {
+    Self {
+      gc_threshold,
+      phantom: PhantomData,
+    }
+  }
+}
+
+impl<H, GC> Policy for NoCheck<H, GC>
+where
+  H: Heap,
+  GC: GarbageCollector,
+{
+  type Value = NoCheckValue;
+  type Error = ();
+  type Heap = H;
+  type GarbageCollector = GC;
+
+  fn int_val(i: u64) -> Self::Value {
+    NoCheckValue::new(i)
+  }
+
+  fn f32_val(f: f32) -> Self::Value {
+    let value = unsafe { *(&f as *const _ as *const u32) } as u64;
+    NoCheckValue::new(value)
+  }
+
+  fn f64_val(f: f64) -> Self::Value {
+    let value = unsafe { *(&f as *const _ as *const u64) };
+    NoCheckValue::new(value)
+  }
+
+  fn ptr_val(p: u64) -> Self::Value {
+    NoCheckValue::new_ptr(p)
+  }
+
+  fn get_int(v: &Self::Value) -> Result<u64, Self::Error> {
+    Ok(v.value)
+  }
+
+  fn get_f32(v: &Self::Value) -> Result<f32, Self::Error> {
+    Ok(unsafe { *(&v.value as *const _ as *const f32) })
+  }
+
+  fn get_f64(v: &Self::Value) -> Result<f64, Self::Error> {
+    Ok(unsafe { *(&v.value as *const _ as *const f64) })
+  }
+
+  fn get_ptr(v: &Self::Value) -> Option<u64> {
+    v.is_ptr.then_some(v.value)
+  }
+
+  fn check_div(_: u64) -> Result<(), Self::Error> {
+    Ok(())
+  }
+
+  fn new_heap(&self) -> Self::Heap {
+    todo!()
+  }
+
+  fn check_ptr(_: &Self::Heap, _: u64) -> Result<(), Self::Error> {
+    Ok(())
+  }
+
+  fn new_gc(&self) -> Self::GarbageCollector {
+    todo!()
+  }
+}
+
+/// Value of [`NoCheck`] policy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NoCheckValue {
+  is_ptr: bool,
+  value: u64,
+}
+
+impl NoCheckValue {
+  /// Creates a new normal value.
+  fn new(value: u64) -> Self {
+    Self {
+      is_ptr: false,
+      value,
+    }
+  }
+
+  /// Creates a new pointer.
+  fn new_ptr(value: u64) -> Self {
+    Self {
+      is_ptr: true,
+      value,
+    }
+  }
 }
