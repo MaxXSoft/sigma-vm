@@ -259,8 +259,12 @@ def_opc_inst! {
   Mul,
   /// Division.
   Div,
+  /// Division (unsigned).
+  DivU,
   /// Modulo.
   Mod,
+  /// Modulo (unsigned).
+  ModU,
   /// Test less than (float).
   LtF,
   /// Test less than or equal (float).
