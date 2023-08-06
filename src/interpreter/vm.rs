@@ -2,6 +2,7 @@ use crate::bytecode::consts::Const;
 use crate::bytecode::insts::Inst;
 use crate::bytecode::reader::Reader;
 use crate::interpreter::policy::Policy;
+use std::slice::Iter;
 
 /// Virtual machine for running bytecode.
 pub struct VM<P: Policy> {
@@ -42,7 +43,8 @@ impl<P: Policy> VM<P> {
 }
 
 /// Variable storage.
-struct Vars<V> {
+#[derive(Debug)]
+pub struct Vars<V> {
   vars: Vec<V>,
 }
 
@@ -50,5 +52,19 @@ impl<V> Vars<V> {
   /// Creates a new variable storage.
   fn new() -> Self {
     Self { vars: vec![] }
+  }
+
+  /// Returns an iterator of all variables.
+  pub fn iter<'a>(&'a self) -> Iter<'a, V> {
+    self.vars.iter()
+  }
+}
+
+impl<'a, V> IntoIterator for &'a Vars<V> {
+  type Item = &'a V;
+  type IntoIter = Iter<'a, V>;
+
+  fn into_iter(self) -> Self::IntoIter {
+    self.iter()
   }
 }
