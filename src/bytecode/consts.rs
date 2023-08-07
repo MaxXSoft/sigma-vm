@@ -1,6 +1,8 @@
 //! Definitions about constant pool.
 
+use crate::interpreter::heap::Heap;
 use crate::utils::alloc_uninit;
+use std::alloc::Layout;
 use std::ptr::{self, Pointee};
 use std::{mem, slice};
 
@@ -148,6 +150,31 @@ impl Const {
       None
     }
   }
+
+  /// Converts the current constant into a [`HeapConst`].
+  pub fn into_heap_const<H>(self, heap: &mut H) -> HeapConst
+  where
+    H: Heap,
+  {
+    let size = self.data.len();
+    let ptr = heap.alloc(Layout::from_size_align(size, self.kind.align()).unwrap());
+    unsafe { ptr::copy_nonoverlapping(self.data.as_ptr(), heap.addr_mut(ptr) as *mut u8, size) };
+    HeapConst {
+      kind: self.kind,
+      ptr,
+    }
+  }
+}
+
+/// Constant that allocated on VM managed heap.
+///
+/// # Notes
+///
+/// Allocated heap memory is not freed when dropping [`HeapConst`],
+/// so it's necessary to handle this manually.
+pub struct HeapConst {
+  kind: ConstKind,
+  ptr: u64,
 }
 
 /// Helper macro for implementing [`From<T>`] for [`Const`].
@@ -279,6 +306,27 @@ const_kind! {
   Object,
   /// Raw data.
   Raw,
+}
+
+impl ConstKind {
+  /// Returns the alignment of the current kind.
+  pub fn align(&self) -> usize {
+    match self {
+      Self::I8 => mem::align_of::<i8>(),
+      Self::U8 => mem::align_of::<u8>(),
+      Self::I16 => mem::align_of::<i16>(),
+      Self::U16 => mem::align_of::<u16>(),
+      Self::I32 => mem::align_of::<i32>(),
+      Self::U32 => mem::align_of::<u32>(),
+      Self::I64 => mem::align_of::<i64>(),
+      Self::U64 => mem::align_of::<u64>(),
+      Self::F32 => mem::align_of::<f32>(),
+      Self::F64 => mem::align_of::<f64>(),
+      Self::Str => mem::align_of::<Str<[u8; 0]>>(),
+      Self::Object => mem::align_of::<Object<[u64; 0]>>(),
+      Self::Raw => mem::align_of::<Raw<[u8; 0]>>(),
+    }
+  }
 }
 
 /// String constant.
