@@ -1,8 +1,9 @@
-use crate::bytecode::consts::Const;
-use crate::interpreter::heap::{Heap, Obj, ObjAddr, ObjKind};
+use crate::bytecode::consts::{Const, Object};
+use crate::interpreter::heap::{Heap, ObjAddr, ObjKind};
 use crate::interpreter::policy::Policy;
 use crate::interpreter::vm::Vars;
 use std::collections::HashSet;
+use std::{mem, ptr};
 
 /// Garbage collector interface.
 pub trait GarbageCollector {
@@ -44,24 +45,6 @@ impl<'gc, P: 'gc + Policy> PotentialRoots<'gc, P> {
   }
 }
 
-// /// Returns an iterator of all pointers in the given object.
-// pub fn ptrs<P>(
-//   heap: &P::Heap,
-//   consts: &[Const],
-//   addr: *const (),
-//   obj: &Obj,
-// ) -> Result<impl Iterator<Item = u64>, P::Error>
-// where
-//   P: Policy,
-// {
-//   // get object metadata
-//   let object = match obj.addr {
-//     ObjAddr::Heap(ptr) => todo!(),
-//     ObjAddr::Const(index) => unsafe { P::object(consts, index) }?,
-//   };
-//   todo!()
-// }
-
 /// Garbage collector that does nothing.
 pub struct Nothing;
 
@@ -86,6 +69,51 @@ impl GarbageCollector for Nothing {
 /// Mark-sweep garbage collector.
 pub struct MarkSweep {
   threshold: usize,
+}
+
+impl MarkSweep {
+  /// Returns a reference of object metadata by the given [`ObjAddr`].
+  fn object<'a, P>(
+    heap: &P::Heap,
+    consts: &'a [Const],
+    addr: ObjAddr,
+  ) -> Result<&'a Object<[u64]>, P::Error>
+  where
+    P: Policy,
+  {
+    match addr {
+      ObjAddr::Heap(ptr) => {
+        // read object metadata's length from heap
+        let addr = heap.addr(ptr) as *const u64;
+        let field_size = mem::size_of::<u64>();
+        P::check_access(heap, ptr, field_size * 3)?;
+        let len = unsafe { *addr.offset(2) };
+        // create object reference
+        P::check_access(heap, ptr + field_size as u64 * 3, field_size * len as usize)?;
+        Ok(unsafe { &*ptr::from_raw_parts(addr as *const (), len as usize) })
+      }
+      ObjAddr::Const(index) => unsafe { P::object(consts, index) },
+    }
+  }
+
+  /// Pushes object pointer to the worklist by the given object metadata.
+  fn extend_workist<P>(
+    worklist: &mut Vec<u64>,
+    object: &Object<[u64]>,
+    heap: &P::Heap,
+    ptr: u64,
+  ) -> Result<(), P::Error>
+  where
+    P: Policy,
+  {
+    for o in &object.managed_ptr.offsets {
+      let ptr_size = mem::size_of::<u64>() as u64;
+      let ptr = ptr + o * ptr_size;
+      P::check_access(heap, ptr, ptr_size as usize)?;
+      worklist.push(unsafe { *(heap.addr(ptr) as *const u64) });
+    }
+    Ok(())
+  }
 }
 
 impl GarbageCollector for MarkSweep {
@@ -114,7 +142,23 @@ impl GarbageCollector for MarkSweep {
       }
       // get object metadata
       if let Some(obj) = heap.obj(ptr) {
-        todo!()
+        let object: &Object<[u64]> = Self::object::<P>(heap, consts, obj.addr)?;
+        // handle by kind
+        match obj.kind {
+          ObjKind::Obj => Self::extend_workist::<P>(&mut worklist, object, heap, ptr)?,
+          ObjKind::Array(len) => {
+            // calculate step
+            assert!(object.align.is_power_of_two(), "invalid alignment");
+            let step = match object.size & (object.align - 1) {
+              0 => object.size,
+              r => object.size + object.align - r,
+            };
+            // visit all objects
+            for i in 0..len as u64 {
+              Self::extend_workist::<P>(&mut worklist, object, heap, ptr + i * step)?;
+            }
+          }
+        };
       }
     }
     // deallocate unreachable pointers
