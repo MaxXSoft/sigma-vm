@@ -1,13 +1,13 @@
 use crate::bytecode::consts::{Const, ConstKind, Object, Raw, Str};
 use crate::bytecode::insts::{Inst, Opcode, Operand, OperandType};
 use crate::bytecode::MAGIC;
+use crate::utils::alloc_uninit;
 use leb128::read::{signed, unsigned, Error as LebError};
-use std::alloc::{self, Layout, LayoutError};
+use std::alloc::LayoutError;
 use std::fs::File;
 use std::io::{stdin, Error as IoError, Read, Result as IoResult, Stdin};
 use std::mem;
 use std::path::Path;
-use std::ptr::{self, Pointee};
 
 /// Error that can occur when reading bytecode files.
 #[derive(Debug)]
@@ -333,26 +333,6 @@ impl_read_const!(u64);
 impl_read_const!(f32);
 impl_read_const!(f64);
 
-/// Creates an uninitialized `T` on heap, applies the given metadata.
-///
-/// # Safety
-///
-/// The created data must be set a valid value first.
-unsafe fn alloc_uninit<T, M>(size: usize, align: usize, metadata: M) -> Result<Box<T>>
-where
-  T: ?Sized + Pointee<Metadata = M>,
-{
-  let layout = Layout::from_size_align(size, align).map_err(Error::Layout)?;
-  let ptr = alloc::alloc(layout);
-  if ptr.is_null() {
-    alloc::handle_alloc_error(layout);
-  }
-  Ok(Box::from_raw(ptr::from_raw_parts_mut(
-    ptr as *mut _,
-    metadata,
-  )))
-}
-
 impl ReadConst for Str<[u8]> {
   type Const = Const;
 
@@ -363,7 +343,8 @@ impl ReadConst for Str<[u8]> {
     let len = reader.read_leb128()?;
     let len_size = mem::size_of_val(&len);
     let size = len_size + len as usize;
-    let mut data: Box<Self> = unsafe { alloc_uninit(size, len_size, len as usize)? };
+    let mut data: Box<Self> =
+      unsafe { alloc_uninit(size, len_size, len as usize) }.map_err(Error::Layout)?;
     data.len = len;
     reader.fill(&mut data.bytes)?;
     Ok(unsafe { Const::new(ConstKind::Str, data, size) })
@@ -385,7 +366,8 @@ impl ReadConst for Object<[u64]> {
       + mem::size_of_val(&align)
       + mem::size_of_val(&len)
       + len as usize * mem::size_of::<u64>();
-    let mut data: Box<Self> = unsafe { alloc_uninit(total_size, size_size, len as usize)? };
+    let mut data: Box<Self> =
+      unsafe { alloc_uninit(total_size, size_size, len as usize) }.map_err(Error::Layout)?;
     data.size = size;
     data.align = align;
     data.managed_ptr.len = len;
