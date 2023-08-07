@@ -1,5 +1,6 @@
 //! Definitions about constant pool.
 
+use crate::utils::alloc_uninit;
 use std::ptr::{self, Pointee};
 use std::{mem, slice};
 
@@ -157,24 +158,20 @@ macro_rules! impl_from {
       $g: $b,
     {
       fn from(value: $ty<$g>) -> Self {
-        Self {
-          kind: ConstKind::$kind,
-          data: Box::from(unsafe {
-            slice::from_raw_parts(&value as *const _ as *const u8, mem::size_of_val(&value))
-          }),
-        }
+        let size = mem::size_of_val(&value);
+        let mut data = unsafe { alloc_uninit(size, mem::align_of_val(&value), ()) }.unwrap();
+        *data = value;
+        unsafe { Self::new(ConstKind::$kind, data, size) }
       }
     }
   };
   ($ty:ty, $kind:ident) => {
     impl From<$ty> for Const {
       fn from(value: $ty) -> Self {
-        Self {
-          kind: ConstKind::$kind,
-          data: Box::from(unsafe {
-            slice::from_raw_parts(&value as *const _ as *const u8, mem::size_of_val(&value))
-          }),
-        }
+        let size = mem::size_of_val(&value);
+        let mut data = unsafe { alloc_uninit(size, mem::align_of_val(&value), ()) }.unwrap();
+        *data = value;
+        unsafe { Self::new(ConstKind::$kind, data, size) }
       }
     }
   };
