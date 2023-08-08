@@ -1,5 +1,5 @@
-use crate::bytecode::consts::{Const, Object};
-use crate::interpreter::heap::{Heap, ObjAddr, ObjKind};
+use crate::bytecode::consts::{HeapConst, Object};
+use crate::interpreter::heap::{Heap, ObjKind};
 use crate::interpreter::policy::Policy;
 use crate::interpreter::vm::Vars;
 use std::collections::HashSet;
@@ -18,6 +18,7 @@ pub trait GarbageCollector {
 
 /// Potential GC roots.
 pub struct PotentialRoots<'gc, P: Policy> {
+  pub consts: &'gc [HeapConst],
   pub values: &'gc [P::Value],
   pub locals: &'gc [Vars<P::Value>],
   pub globals: &'gc Vars<P::Value>,
@@ -27,9 +28,10 @@ impl<'gc, P: 'gc + Policy> PotentialRoots<'gc, P> {
   /// Returns an iterator of all GC roots (pointers).
   pub fn roots(&self) -> impl 'gc + Iterator<Item = u64> {
     self
-      .values
+      .consts
       .iter()
-      .filter_map(P::get_ptr)
+      .map(|c| c.ptr())
+      .chain(self.values.iter().filter_map(P::get_ptr))
       .chain(
         self
           .locals
