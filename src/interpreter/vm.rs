@@ -1,4 +1,4 @@
-use crate::bytecode::consts::Const;
+use crate::bytecode::consts::{Const, HeapConst};
 use crate::bytecode::insts::Inst;
 use crate::bytecode::reader::Reader;
 use crate::interpreter::policy::Policy;
@@ -7,7 +7,7 @@ use std::slice::Iter;
 /// Virtual machine for running bytecode.
 pub struct VM<P: Policy> {
   policy: P,
-  consts: Box<[Const]>,
+  consts: Box<[HeapConst]>,
   insts: Box<[Inst]>,
   pc: u64,
   value_stack: Vec<P::Value>,
@@ -20,7 +20,12 @@ pub struct VM<P: Policy> {
 impl<P: Policy> VM<P> {
   /// Creates a new virtual machine from the given constants and instructions.
   pub fn new(policy: P, consts: Box<[Const]>, insts: Box<[Inst]>) -> Self {
-    let heap = policy.new_heap();
+    let mut heap = policy.new_heap();
+    let consts = consts
+      .into_vec()
+      .into_iter()
+      .map(|c| c.into_heap_const(&mut heap))
+      .collect();
     let gc = policy.new_gc();
     Self {
       policy,
