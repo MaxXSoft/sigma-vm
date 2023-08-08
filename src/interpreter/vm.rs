@@ -1,6 +1,7 @@
 use crate::bytecode::consts::{Const, HeapConst};
 use crate::bytecode::insts::Inst;
 use crate::bytecode::reader::Reader;
+use crate::interpreter::heap::Heap;
 use crate::interpreter::policy::Policy;
 use std::iter::Flatten;
 use std::mem;
@@ -95,6 +96,78 @@ where
         self.push(s0);
         InstAction::NextPC
       }
+      Inst::LdB => {
+        let ptr = self.pop_ptr()?;
+        self.load::<i8>(ptr)?
+      }
+      Inst::LdBU => {
+        let ptr = self.pop_ptr()?;
+        self.load::<u8>(ptr)?
+      }
+      Inst::LdH => {
+        let ptr = self.pop_ptr()?;
+        self.load::<i16>(ptr)?
+      }
+      Inst::LdHU => {
+        let ptr = self.pop_ptr()?;
+        self.load::<u16>(ptr)?
+      }
+      Inst::LdW => {
+        let ptr = self.pop_ptr()?;
+        self.load::<i32>(ptr)?
+      }
+      Inst::LdWU => {
+        let ptr = self.pop_ptr()?;
+        self.load::<u32>(ptr)?
+      }
+      Inst::LdD => {
+        let ptr = self.pop_ptr()?;
+        self.load::<u64>(ptr)?
+      }
+      Inst::LdP => {
+        let ptr = self.pop_ptr()?;
+        self.load_ptr(ptr)?
+      }
+      Inst::LdBO(opr) => {
+        let offset = opr * mem::size_of::<i8>() as i64;
+        let ptr = (self.pop_ptr()? as i64 + offset) as u64;
+        self.load::<i8>(ptr)?
+      }
+      Inst::LdBUO(opr) => {
+        let offset = opr * mem::size_of::<u8>() as i64;
+        let ptr = (self.pop_ptr()? as i64 + offset) as u64;
+        self.load::<u8>(ptr)?
+      }
+      Inst::LdHO(opr) => {
+        let offset = opr * mem::size_of::<i16>() as i64;
+        let ptr = (self.pop_ptr()? as i64 + offset) as u64;
+        self.load::<i16>(ptr)?
+      }
+      Inst::LdHUO(opr) => {
+        let offset = opr * mem::size_of::<u16>() as i64;
+        let ptr = (self.pop_ptr()? as i64 + offset) as u64;
+        self.load::<u16>(ptr)?
+      }
+      Inst::LdWO(opr) => {
+        let offset = opr * mem::size_of::<i32>() as i64;
+        let ptr = (self.pop_ptr()? as i64 + offset) as u64;
+        self.load::<i32>(ptr)?
+      }
+      Inst::LdWUO(opr) => {
+        let offset = opr * mem::size_of::<u32>() as i64;
+        let ptr = (self.pop_ptr()? as i64 + offset) as u64;
+        self.load::<u32>(ptr)?
+      }
+      Inst::LdDO(opr) => {
+        let offset = opr * mem::size_of::<u64>() as i64;
+        let ptr = (self.pop_ptr()? as i64 + offset) as u64;
+        self.load::<u64>(ptr)?
+      }
+      Inst::LdPO(opr) => {
+        let offset = opr * mem::size_of::<u64>() as i64;
+        let ptr = (self.pop_ptr()? as i64 + offset) as u64;
+        self.load_ptr(ptr)?
+      }
       _ => todo!(),
     })
   }
@@ -129,9 +202,9 @@ where
     P::unwrap_val(self.value_stack.pop())
   }
 
-  /// Pops an integer from the value stack.
-  fn pop_int(&mut self) -> Result<u64, P::Error> {
-    self.pop().and_then(|v| P::get_int(&v))
+  /// Pops an integer/pointer from the value stack.
+  fn pop_int_ptr(&mut self) -> Result<u64, P::Error> {
+    self.pop().and_then(|v| P::get_int_ptr(&v))
   }
 
   /// Pops a 32-bit floating point from the value stack.
@@ -142,6 +215,11 @@ where
   /// Pops a 64-bit floating point from the value stack.
   fn pop_f64(&mut self) -> Result<f64, P::Error> {
     self.pop().and_then(|v| P::get_f64(&v))
+  }
+
+  /// Pops a pointer from the value stack.
+  fn pop_ptr(&mut self) -> Result<u64, P::Error> {
+    self.pop().and_then(|v| P::get_ptr(&v))
   }
 
   /// Peeks the value at the given index in the value stack.
@@ -162,6 +240,23 @@ where
   /// Peeks the last mutable value in the value stack.
   fn peek_s0_mut(&mut self) -> Result<&mut P::Value, P::Error> {
     P::unwrap_val(self.value_stack.last_mut())
+  }
+
+  /// Loads the given pointer as type `T`.
+  fn load<T>(&mut self, ptr: u64) -> Result<InstAction, P::Error>
+  where
+    T: Copy + IntoU64,
+  {
+    P::check_access(&self.heap, ptr, mem::size_of::<T>())?;
+    self.push_int(unsafe { *(self.heap.addr(ptr) as *const T) }.into_u64());
+    Ok(InstAction::NextPC)
+  }
+
+  /// Loads the given pointer as a pointer.
+  fn load_ptr(&mut self, ptr: u64) -> Result<InstAction, P::Error> {
+    P::check_access(&self.heap, ptr, mem::size_of::<u64>())?;
+    self.push_ptr(unsafe { *(self.heap.addr(ptr) as *const u64) });
+    Ok(InstAction::NextPC)
   }
 }
 
