@@ -1,6 +1,6 @@
 use crate::bytecode::consts::{Const, ConstKind, Object, Raw, Str};
 use crate::bytecode::insts::{Inst, Operand};
-use crate::bytecode::MAGIC;
+use crate::bytecode::{MAGIC, VERSION};
 use leb128::write::{signed, unsigned};
 use std::fs::File;
 use std::io::{stderr, stdout, Result, Stderr, Stdout, Write};
@@ -31,6 +31,7 @@ where
   /// Writes the bytecode to file.
   pub fn write(&mut self) -> Result<()> {
     self.write_magic()?;
+    self.write_version()?;
     self.write_consts()?;
     self.write_insts()
   }
@@ -38,6 +39,14 @@ where
   /// Writes the magic number.
   fn write_magic(&mut self) -> Result<()> {
     self.writer.write_all(&MAGIC)
+  }
+
+  /// Writes the version.
+  fn write_version(&mut self) -> Result<()> {
+    for val in VERSION {
+      unsigned(&mut self.writer, val)?;
+    }
+    Ok(())
   }
 
   /// Writes constants.
