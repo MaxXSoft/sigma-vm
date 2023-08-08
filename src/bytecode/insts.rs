@@ -196,7 +196,7 @@ def_opc_inst! {
   StV(u64),
   /// Store value s0 to global variable opr.
   StG(u64),
-  /// Store arguments s0, ..., s{opr}.
+  /// Store arguments s0, ..., s{opr} as var{opr}, ..., var0.
   StA(u64),
   /// Allocate heap memory with size s1 and align s0.
   New,
