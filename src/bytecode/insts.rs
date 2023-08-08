@@ -317,4 +317,8 @@ def_opc_inst! {
   D2I,
   /// Double to float.
   D2F,
+  /// Transmutes (reinterprets) integer to float.
+  ITF,
+  /// Transmutes (reinterprets) integer to double.
+  ITD,
 }
