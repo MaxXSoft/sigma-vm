@@ -43,6 +43,9 @@ pub trait Policy {
   /// Extracts a pointer value from the given value.
   fn get_ptr(v: &Self::Value) -> Result<u64, Self::Error>;
 
+  /// Extracts a 64-bit untyped value from the given value.
+  fn get_any(v: &Self::Value) -> u64;
+
   /// Returns the pointer value if the given value is a pointer,
   /// otherwise [`None`].
   fn ptr_or_none(v: &Self::Value) -> Option<u64>;
@@ -157,6 +160,15 @@ where
     match v {
       StrictValue::Ptr(p) => Ok(*p),
       _ => Err(StrictError::TypeMismatch),
+    }
+  }
+
+  fn get_any(v: &Self::Value) -> u64 {
+    match v {
+      StrictValue::Int(i) => *i,
+      StrictValue::Ptr(p) => *p,
+      StrictValue::Float(f) => unsafe { *(f as *const _ as *const u32) as u64 },
+      StrictValue::Double(d) => unsafe { *(d as *const _ as *const u64) },
     }
   }
 
@@ -286,6 +298,10 @@ where
     Strict::<H, GC>::get_ptr(v).map_err(StrictAlignError::Strict)
   }
 
+  fn get_any(v: &Self::Value) -> u64 {
+    Strict::<H, GC>::get_any(v)
+  }
+
   fn ptr_or_none(v: &Self::Value) -> Option<u64> {
     Strict::<H, GC>::ptr_or_none(v)
   }
@@ -392,6 +408,10 @@ where
 
   fn get_ptr(v: &Self::Value) -> Result<u64, Self::Error> {
     Ok(v.value)
+  }
+
+  fn get_any(v: &Self::Value) -> u64 {
+    v.value
   }
 
   fn ptr_or_none(v: &Self::Value) -> Option<u64> {
