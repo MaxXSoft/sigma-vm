@@ -24,3 +24,15 @@ where
     metadata,
   )))
 }
+
+/// Converts a string to [`u64`] at compile-time.
+pub const fn str_to_u64(s: &str) -> u64 {
+  let mut bytes = s.as_bytes();
+  let mut result = 0;
+  while let [byte, rest @ ..] = bytes {
+    assert!(b'0' <= *byte && *byte <= b'9', "invalid digit");
+    result = result * 10 + (*byte - b'0') as u64;
+    bytes = rest;
+  }
+  result
+}
