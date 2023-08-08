@@ -1,4 +1,4 @@
-use crate::bytecode::consts::{Const, HeapConst, Object};
+use crate::bytecode::consts::{Const, HeapConst};
 use crate::bytecode::insts::Inst;
 use crate::bytecode::reader::Reader;
 use crate::interpreter::heap::{Heap, Obj, ObjKind};
@@ -287,6 +287,28 @@ where
         self.heap.dealloc(ptr);
         InstAction::NextPC
       }
+      Inst::Bnz(opr) => {
+        if self.pop_any()? != 0 {
+          InstAction::SetPC((self.pc as i64 + opr) as u64)
+        } else {
+          InstAction::NextPC
+        }
+      }
+      Inst::Jmp(opr) => InstAction::SetPC((self.pc as i64 + opr) as u64),
+      Inst::Call(opr) => {
+        self.var_stack.push(Vars::new());
+        self.ra_stack.push(self.pc + 1);
+        InstAction::SetPC((self.pc as i64 + opr) as u64)
+      }
+      Inst::Ret => {
+        self.var_stack.pop();
+        match self.ra_stack.pop() {
+          Some(pc) => InstAction::SetPC(pc),
+          None => InstAction::Stop,
+        }
+      }
+      Inst::Sys(opr) => unimplemented!("system call"),
+      Inst::Break => unimplemented!("breakpoint"),
       _ => todo!(),
     })
   }
@@ -339,6 +361,11 @@ where
   /// Pops a pointer from the value stack.
   fn pop_ptr(&mut self) -> Result<u64, P::Error> {
     self.pop().and_then(|v| P::get_ptr(&v))
+  }
+
+  /// Pops a untyped value from the value stack.
+  fn pop_any(&mut self) -> Result<u64, P::Error> {
+    self.pop().map(|v| P::get_any(&v))
   }
 
   /// Peeks the value at the given index in the value stack.
