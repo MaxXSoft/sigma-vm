@@ -1,6 +1,7 @@
 use crate::bytecode::consts::{Const, HeapConst};
 use crate::bytecode::insts::Inst;
 use crate::bytecode::reader::Reader;
+use crate::interpreter::gc::{GarbageCollector, PotentialRoots};
 use crate::interpreter::heap::{Heap, Obj, ObjKind};
 use crate::interpreter::policy::Policy;
 use std::iter::Flatten;
@@ -309,6 +310,7 @@ where
       Inst::New => {
         let align = self.pop_int_ptr()?;
         let size = self.pop_int_ptr()?;
+        self.collect()?;
         let ptr = self.heap.alloc(P::layout(size as usize, align as usize)?);
         self.push_ptr(ptr);
         InstAction::NextPC
@@ -557,6 +559,19 @@ where
     Ok(InstAction::NextPC)
   }
 
+  /// Runs garbage collector.
+  fn collect(&mut self) -> Result<(), P::Error> {
+    self.gc.collect::<P>(
+      &mut self.heap,
+      PotentialRoots {
+        consts: &self.consts,
+        values: &self.value_stack,
+        vars: &self.var_stack,
+      },
+    )?;
+    self.policy.check_gc_success(&self.heap)
+  }
+
   /// Allocates heap memory for the given object metadata pointer.
   fn new_object(&mut self, obj_ptr: u64) -> Result<InstAction, P::Error> {
     let object = P::object(&self.heap, obj_ptr)?;
@@ -583,6 +598,7 @@ where
     obj_ptr: u64,
   ) -> Result<InstAction, P::Error> {
     let layout = P::layout(size as usize, align as usize)?;
+    self.collect()?;
     let ptr = self.heap.alloc_obj(layout, Obj { kind, ptr: obj_ptr });
     self.push_ptr(ptr);
     Ok(InstAction::NextPC)
