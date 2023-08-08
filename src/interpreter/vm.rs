@@ -69,6 +69,61 @@ where
   ///
   /// Returns `false` if the instruction requires to stop execution.
   fn run_inst(&mut self, inst: Inst) -> Result<InstAction, P::Error> {
+    /// Helper macro for manipulating stack.
+    macro_rules! stack {
+      (pop($v:ident: u64)) => {
+        let $v = self.pop_int_ptr()?;
+      };
+      (pop($v:ident: _)) => {
+        let $v = self.pop_any()?;
+      };
+      (push($v:expr, u64)) => {
+        self.push_int($v);
+      };
+      (pop($v:ident: f32)) => {
+        let $v = self.pop_f32()?;
+      };
+      (push($v:expr, f32)) => {
+        self.push_f32($v);
+      };
+      (pop($v:ident: f64)) => {
+        let $v = self.pop_f64()?;
+      };
+      (push($v:expr, f64)) => {
+        self.push_f64($v);
+      };
+    }
+
+    /// Helper macro for unary operations.
+    macro_rules! unary {
+      ($s0:ident: $ty:tt, $result:expr) => {{
+        stack!(pop($s0: $ty));
+        stack!(push($result, $ty));
+        InstAction::NextPC
+      }};
+      ($s0:ident: $ty:tt, $ty2:tt: $result:expr) => {{
+        stack!(pop($s0: $ty));
+        stack!(push($result, $ty2));
+        InstAction::NextPC
+      }};
+    }
+
+    /// Helper macro for binary operations.
+    macro_rules! binary {
+      (($lhs:ident, $rhs:ident): $ty:tt, $result:expr) => {{
+        stack!(pop($rhs: $ty));
+        stack!(pop($lhs: $ty));
+        stack!(push($result, $ty));
+        InstAction::NextPC
+      }};
+      (($lhs:ident, $rhs:ident): $ty:tt, $ty2:tt: $result:expr) => {{
+        stack!(pop($rhs: $ty));
+        stack!(pop($lhs: $ty));
+        stack!(push($result, $ty2));
+        InstAction::NextPC
+      }};
+    }
+
     Ok(match inst {
       Inst::Nop => InstAction::NextPC,
       Inst::PushI(opr) => {
@@ -309,7 +364,97 @@ where
       }
       Inst::Sys(opr) => unimplemented!("system call"),
       Inst::Break => unimplemented!("breakpoint"),
-      _ => todo!(),
+      Inst::Not => unary!(s0: u64, !s0),
+      Inst::LNot => unary!(s0: u64, (s0 == 0) as u64),
+      Inst::And => binary!((lhs, rhs): u64, lhs & rhs),
+      Inst::Or => binary!((lhs, rhs): u64, lhs | rhs),
+      Inst::Xor => binary!((lhs, rhs): u64, lhs ^ rhs),
+      Inst::Shl => binary!((lhs, rhs): u64, lhs << rhs),
+      Inst::Shr => binary!((lhs, rhs): u64, lhs >> rhs),
+      Inst::Sar => binary!((lhs, rhs): u64, (lhs as i64 >> rhs) as u64),
+      Inst::Sext(opr) => {
+        unary!(s0: u64, if opr <= 64 {
+          let s = 64 - opr;
+          ((s0 as i64) << s >> s) as u64
+        } else {
+          s0
+        })
+      }
+      Inst::Zext(opr) => unary!(s0: u64, if opr <= 64 { s0 & !((1 << opr) - 1) } else { s0 }),
+      Inst::Eq => binary!((lhs, rhs): _, u64: (lhs == rhs) as u64),
+      Inst::Ne => binary!((lhs, rhs): _, u64: (lhs != rhs) as u64),
+      Inst::Lt => binary!((lhs, rhs): u64, (lhs < rhs) as u64),
+      Inst::Le => binary!((lhs, rhs): u64, (lhs <= rhs) as u64),
+      Inst::Gt => binary!((lhs, rhs): u64, (lhs > rhs) as u64),
+      Inst::Ge => binary!((lhs, rhs): u64, (lhs >= rhs) as u64),
+      Inst::Neg => unary!(s0: u64, !s0 + 1),
+      Inst::Add => {
+        let rhs = self.pop()?;
+        let lhs = self.pop()?;
+        let sum = P::get_int_ptr(&lhs)?.wrapping_add(P::get_int_ptr(&rhs)?);
+        if P::ptr_or_none(&lhs).is_some() ^ P::ptr_or_none(&rhs).is_some() {
+          self.push_ptr(sum);
+        } else {
+          self.push_int(sum);
+        }
+        InstAction::NextPC
+      }
+      Inst::Sub => {
+        let rhs = self.pop()?;
+        let lhs = self.pop()?;
+        let sub = P::get_int_ptr(&lhs)?.wrapping_sub(P::get_int_ptr(&rhs)?);
+        if P::ptr_or_none(&lhs).is_some() {
+          self.push_ptr(sub);
+        } else {
+          self.push_int(sub);
+        }
+        InstAction::NextPC
+      }
+      Inst::Mul => binary!((lhs, rhs): u64, lhs.wrapping_mul(rhs)),
+      Inst::Div => binary!((lhs, rhs): u64, {
+        P::check_div(rhs)?;
+        (lhs as i64).wrapping_div(rhs as i64) as u64
+      }),
+      Inst::DivU => binary!((lhs, rhs): u64, {
+        P::check_div(rhs)?;
+        lhs / rhs
+      }),
+      Inst::Mod => binary!((lhs, rhs): u64, {
+        P::check_div(rhs)?;
+        (lhs as i64).wrapping_rem(rhs as i64) as u64
+      }),
+      Inst::ModU => binary!((lhs, rhs): u64, {
+        P::check_div(rhs)?;
+        lhs % rhs
+      }),
+      Inst::LtF => binary!((lhs, rhs): f32, u64: (lhs < rhs) as u64),
+      Inst::LeF => binary!((lhs, rhs): f32, u64: (lhs <= rhs) as u64),
+      Inst::GtF => binary!((lhs, rhs): f32, u64: (lhs > rhs) as u64),
+      Inst::GeF => binary!((lhs, rhs): f32, u64: (lhs >= rhs) as u64),
+      Inst::NegF => unary!(s0: f32, -s0),
+      Inst::AddF => binary!((lhs, rhs): f32, lhs + rhs),
+      Inst::SubF => binary!((lhs, rhs): f32, lhs - rhs),
+      Inst::MulF => binary!((lhs, rhs): f32, lhs * rhs),
+      Inst::DivF => binary!((lhs, rhs): f32, lhs / rhs),
+      Inst::ModF => binary!((lhs, rhs): f32, lhs % rhs),
+      Inst::LtD => binary!((lhs, rhs): f64, u64: (lhs < rhs) as u64),
+      Inst::LeD => binary!((lhs, rhs): f64, u64: (lhs <= rhs) as u64),
+      Inst::GtD => binary!((lhs, rhs): f64, u64: (lhs > rhs) as u64),
+      Inst::GeD => binary!((lhs, rhs): f64, u64: (lhs >= rhs) as u64),
+      Inst::NegD => unary!(s0: f64, -s0),
+      Inst::AddD => binary!((lhs, rhs): f64, lhs + rhs),
+      Inst::SubD => binary!((lhs, rhs): f64, lhs - rhs),
+      Inst::MulD => binary!((lhs, rhs): f64, lhs * rhs),
+      Inst::DivD => binary!((lhs, rhs): f64, lhs / rhs),
+      Inst::ModD => binary!((lhs, rhs): f64, lhs % rhs),
+      Inst::I2F => unary!(s0: u64, f32: s0 as f32),
+      Inst::I2D => unary!(s0: u64, f64: s0 as f64),
+      Inst::F2I => unary!(s0: f32, u64: s0 as u64),
+      Inst::F2D => unary!(s0: f32, f64: s0 as f64),
+      Inst::D2I => unary!(s0: f64, u64: s0 as u64),
+      Inst::D2F => unary!(s0: f64, f32: s0 as f32),
+      Inst::ITF => unary!(s0: u64, f32: unsafe { *(&s0 as *const _ as *const f32) }),
+      Inst::ITD => unary!(s0: u64, f64: unsafe { *(&s0 as *const _ as *const f64) }),
     })
   }
 
