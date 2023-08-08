@@ -32,7 +32,7 @@ pub trait Policy {
   /// Extracts an integer value from the given value.
   ///
   /// Pointer values will be treat as integers.
-  fn get_int(v: &Self::Value) -> Result<u64, Self::Error>;
+  fn get_int_ptr(v: &Self::Value) -> Result<u64, Self::Error>;
 
   /// Extracts a 32-bit floating point value from the given value.
   fn get_f32(v: &Self::Value) -> Result<f32, Self::Error>;
@@ -40,9 +40,12 @@ pub trait Policy {
   /// Extracts a 64-bit floating point value from the given value.
   fn get_f64(v: &Self::Value) -> Result<f64, Self::Error>;
 
+  /// Extracts a pointer value from the given value.
+  fn get_ptr(v: &Self::Value) -> Result<u64, Self::Error>;
+
   /// Returns the pointer value if the given value is a pointer,
   /// otherwise [`None`].
-  fn get_ptr(v: &Self::Value) -> Option<u64>;
+  fn ptr_or_none(v: &Self::Value) -> Option<u64>;
 
   /// Unwraps an [`Option<Value>`], returns an error if necessary.
   fn unwrap_val<V>(v: Option<V>) -> Result<V, Self::Error>;
@@ -128,7 +131,7 @@ where
     StrictValue::Ptr(p)
   }
 
-  fn get_int(v: &Self::Value) -> Result<u64, Self::Error> {
+  fn get_int_ptr(v: &Self::Value) -> Result<u64, Self::Error> {
     match v {
       StrictValue::Int(i) => Ok(*i),
       StrictValue::Ptr(p) => Ok(*p),
@@ -150,7 +153,14 @@ where
     }
   }
 
-  fn get_ptr(v: &Self::Value) -> Option<u64> {
+  fn get_ptr(v: &Self::Value) -> Result<u64, Self::Error> {
+    match v {
+      StrictValue::Ptr(p) => Ok(*p),
+      _ => Err(StrictError::TypeMismatch),
+    }
+  }
+
+  fn ptr_or_none(v: &Self::Value) -> Option<u64> {
     match v {
       StrictValue::Ptr(p) => Some(*p),
       _ => None,
@@ -260,8 +270,8 @@ where
     Strict::<H, GC>::ptr_val(p)
   }
 
-  fn get_int(v: &Self::Value) -> Result<u64, Self::Error> {
-    Strict::<H, GC>::get_int(v).map_err(StrictAlignError::Strict)
+  fn get_int_ptr(v: &Self::Value) -> Result<u64, Self::Error> {
+    Strict::<H, GC>::get_int_ptr(v).map_err(StrictAlignError::Strict)
   }
 
   fn get_f32(v: &Self::Value) -> Result<f32, Self::Error> {
@@ -272,8 +282,12 @@ where
     Strict::<H, GC>::get_f64(v).map_err(StrictAlignError::Strict)
   }
 
-  fn get_ptr(v: &Self::Value) -> Option<u64> {
-    Strict::<H, GC>::get_ptr(v)
+  fn get_ptr(v: &Self::Value) -> Result<u64, Self::Error> {
+    Strict::<H, GC>::get_ptr(v).map_err(StrictAlignError::Strict)
+  }
+
+  fn ptr_or_none(v: &Self::Value) -> Option<u64> {
+    Strict::<H, GC>::ptr_or_none(v)
   }
 
   fn unwrap_val<V>(v: Option<V>) -> Result<V, Self::Error> {
@@ -364,7 +378,7 @@ where
     NoCheckValue::new_ptr(p)
   }
 
-  fn get_int(v: &Self::Value) -> Result<u64, Self::Error> {
+  fn get_int_ptr(v: &Self::Value) -> Result<u64, Self::Error> {
     Ok(v.value)
   }
 
@@ -376,7 +390,11 @@ where
     Ok(unsafe { *(&v.value as *const _ as *const f64) })
   }
 
-  fn get_ptr(v: &Self::Value) -> Option<u64> {
+  fn get_ptr(v: &Self::Value) -> Result<u64, Self::Error> {
+    Ok(v.value)
+  }
+
+  fn ptr_or_none(v: &Self::Value) -> Option<u64> {
     v.is_ptr.then_some(v.value)
   }
 
