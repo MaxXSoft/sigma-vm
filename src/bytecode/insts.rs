@@ -140,8 +140,10 @@ def_opc_inst! {
   LdW,
   /// Load address s0, and push the unsigned 32-bit result to stack.
   LdWU,
-  /// Load address s0, and push the signed 64-bit result to stack.
+  /// Load address s0, and push the 64-bit result to stack.
   LdD,
+  /// Load address s0, and push the pointer result to stack.
+  LdP,
   /// Load address s0 with offset opr,
   /// and push the signed 8-bit result to stack.
   LdBO(i64),
@@ -161,8 +163,11 @@ def_opc_inst! {
   /// and push the unsigned 32-bit result to stack.
   LdWUO(i64),
   /// Load address s0 with offset opr,
-  /// and push the signed 64-bit result to stack.
+  /// and push the 64-bit result to stack.
   LdDO(i64),
+  /// Load address s0 with offset opr,
+  /// and push the pointer result to stack.
+  LdPO(i64),
   /// Load variable opr, and push the result to stack.
   LdV(u64),
   /// Load global variable opr, and push the result to stack.
