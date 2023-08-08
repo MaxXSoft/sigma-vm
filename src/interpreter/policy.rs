@@ -1,6 +1,7 @@
 use crate::bytecode::consts::{ConstKind, HeapConst, Object};
 use crate::interpreter::gc::GarbageCollector;
 use crate::interpreter::heap::{CheckedHeap, Heap};
+use std::alloc::Layout;
 use std::marker::PhantomData;
 use std::{mem, ptr};
 
@@ -94,6 +95,9 @@ pub trait Policy {
     Self::check_access(heap, ptr + field_size as u64 * 3, field_size * len as usize)?;
     Ok(unsafe { &*ptr::from_raw_parts(addr as *const (), len as usize) })
   }
+
+  /// Returns a layout for allocation by the given size and align.
+  fn layout(size: usize, align: usize) -> Result<Layout, Self::Error>;
 
   /// Creates a new garbage collector.
   fn new_gc(&self) -> Self::GarbageCollector;
@@ -216,6 +220,10 @@ where
     }
   }
 
+  fn layout(size: usize, align: usize) -> Result<Layout, Self::Error> {
+    Layout::from_size_align(size, align).map_err(|_| StrictError::InvalidLayout)
+  }
+
   fn new_gc(&self) -> Self::GarbageCollector {
     GC::new(self.gc_threshold)
   }
@@ -251,6 +259,8 @@ pub enum StrictError {
   OutOfBounds,
   /// Out of heap memory.
   OutOfHeap,
+  /// Invalid allocation layout.
+  InvalidLayout,
 }
 
 /// Strict policy with alignment checking.
@@ -338,6 +348,10 @@ where
     } else {
       Ok(())
     }
+  }
+
+  fn layout(size: usize, align: usize) -> Result<Layout, Self::Error> {
+    Strict::<H, GC>::layout(size, align).map_err(StrictAlignError::Strict)
   }
 
   fn new_gc(&self) -> Self::GarbageCollector {
@@ -449,6 +463,10 @@ where
 
   fn check_access(_: &Self::Heap, _: u64, _: usize) -> Result<(), Self::Error> {
     Ok(())
+  }
+
+  fn layout(size: usize, align: usize) -> Result<Layout, Self::Error> {
+    Ok(unsafe { Layout::from_size_align_unchecked(size, align) })
   }
 
   fn new_gc(&self) -> Self::GarbageCollector {
