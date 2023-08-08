@@ -3,7 +3,7 @@ use crate::interpreter::heap::{Heap, ObjKind};
 use crate::interpreter::policy::Policy;
 use crate::interpreter::vm::Vars;
 use std::collections::HashSet;
-use std::{mem, ptr};
+use std::mem;
 
 /// Garbage collector interface.
 pub trait GarbageCollector {
@@ -62,21 +62,6 @@ pub struct MarkSweep {
 }
 
 impl MarkSweep {
-  /// Returns a reference of object metadata by the given [`ObjAddr`].
-  fn object<'a, P>(heap: &P::Heap, ptr: u64) -> Result<&'a Object<[u64]>, P::Error>
-  where
-    P: Policy,
-  {
-    // read object metadata's length from heap
-    let addr = heap.addr(ptr) as *const u64;
-    let field_size = mem::size_of::<u64>();
-    P::check_access(heap, ptr, field_size * 3)?;
-    let len = unsafe { *addr.offset(2) };
-    // create object reference
-    P::check_access(heap, ptr + field_size as u64 * 3, field_size * len as usize)?;
-    Ok(unsafe { &*ptr::from_raw_parts(addr as *const (), len as usize) })
-  }
-
   /// Pushes object pointer to the worklist by the given object metadata.
   fn extend_workist<P>(
     worklist: &mut Vec<u64>,
@@ -118,7 +103,7 @@ impl GarbageCollector for MarkSweep {
       }
       // get object metadata
       if let Some(obj) = heap.obj(ptr) {
-        let object: &Object<[u64]> = Self::object::<P>(heap, obj.ptr)?;
+        let object: &Object<[u64]> = P::object(heap, obj.ptr)?;
         // mark object metadata
         worklist.push(obj.ptr);
         // handle by kind

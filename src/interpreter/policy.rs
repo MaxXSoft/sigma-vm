@@ -1,7 +1,8 @@
-use crate::bytecode::consts::{ConstKind, HeapConst};
+use crate::bytecode::consts::{ConstKind, HeapConst, Object};
 use crate::interpreter::gc::GarbageCollector;
 use crate::interpreter::heap::{CheckedHeap, Heap};
 use std::marker::PhantomData;
+use std::{mem, ptr};
 
 /// Execution policy of the VM (interpreter).
 pub trait Policy {
@@ -80,6 +81,18 @@ pub trait Policy {
       ConstKind::F64 => Self::f64_val(unsafe { *(addr as *const f64) }),
       _ => Self::ptr_val(c.ptr()),
     }
+  }
+
+  /// Returns a reference of object metadata by the given pointer.
+  fn object(heap: &Self::Heap, ptr: u64) -> Result<&Object<[u64]>, Self::Error> {
+    // read object metadata's length from heap
+    let addr = heap.addr(ptr) as *const u64;
+    let field_size = mem::size_of::<u64>();
+    Self::check_access(heap, ptr, field_size * 3)?;
+    let len = unsafe { *addr.offset(2) };
+    // create object reference
+    Self::check_access(heap, ptr + field_size as u64 * 3, field_size * len as usize)?;
+    Ok(unsafe { &*ptr::from_raw_parts(addr as *const (), len as usize) })
   }
 
   /// Creates a new garbage collector.
@@ -351,6 +364,10 @@ pub enum StrictAlignError {
 /// No check policy.
 ///
 /// Does not check type of values, division and memory out of bounds.
+///
+/// # Notes
+///
+/// This policy can lead to a variety of undefined behaviours.
 pub struct NoCheck<H, GC> {
   gc_threshold: usize,
   phantom: PhantomData<(H, GC)>,
