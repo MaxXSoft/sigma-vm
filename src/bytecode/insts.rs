@@ -204,9 +204,9 @@ def_opc_inst! {
   NewO,
   /// Allocate heap memory, with object metadata's constant pool index opr.
   NewOC(u64),
-  /// Allocate array with size s0, and object metadata's address s1.
+  /// Allocate array with length s0, and object metadata's address s1.
   NewA,
-  /// Allocate array with size s0, and object metadata's constant pool index opr.
+  /// Allocate array with length s0, and object metadata's constant pool index opr.
   NewAC(u64),
   /// Delete the allocated heap memory s0.
   Del,
