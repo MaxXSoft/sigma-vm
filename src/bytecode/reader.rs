@@ -1,6 +1,6 @@
 use crate::bytecode::consts::{Const, ConstKind, Object, Raw, Str};
 use crate::bytecode::insts::{Inst, Opcode, Operand, OperandType};
-use crate::bytecode::MAGIC;
+use crate::bytecode::{MAGIC, VERSION};
 use crate::utils::alloc_uninit;
 use leb128::read::{signed, unsigned, Error as LebError};
 use std::alloc::LayoutError;
@@ -16,6 +16,8 @@ pub enum Error {
   IO(IoError),
   /// Invalid magic number.
   InvalidMagic,
+  /// Incompatible version.
+  IncompatibleVersion,
   /// Integer overflow.
   Overflow,
   /// Unknown constant kind.
@@ -81,6 +83,7 @@ where
   /// Reads the bytecode from file.
   pub fn read(&mut self) -> Result<()> {
     self.check_magic()?;
+    self.check_version()?;
     self.read_consts()?;
     self.read_insts()
   }
@@ -93,6 +96,20 @@ where
       Ok(())
     } else {
       Err(Error::InvalidMagic)
+    }
+  }
+
+  /// Checks the version number.
+  fn check_version(&mut self) -> Result<()> {
+    let version: [u64; 3] = [
+      self.reader.read_leb128()?,
+      self.reader.read_leb128()?,
+      self.reader.read_leb128()?,
+    ];
+    if version[0] != VERSION[0] || (version[0] == 0 && version[1..] != VERSION[1..]) {
+      Err(Error::IncompatibleVersion)
+    } else {
+      Ok(())
     }
   }
 
