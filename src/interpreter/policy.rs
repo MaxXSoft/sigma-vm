@@ -52,6 +52,10 @@ pub trait Policy {
   /// otherwise [`None`].
   fn ptr_or_none(v: &Self::Value) -> Option<u64>;
 
+  /// Returns an object metadata pointer from the given heap constant,
+  /// returns an error if necessary.
+  fn obj_ptr_from_const(c: &HeapConst) -> Result<u64, Self::Error>;
+
   /// Unwraps an [`Option<Value>`], returns an error if necessary.
   fn unwrap_val<V>(v: Option<V>) -> Result<V, Self::Error>;
 
@@ -196,6 +200,14 @@ where
     }
   }
 
+  fn obj_ptr_from_const(c: &HeapConst) -> Result<u64, Self::Error> {
+    if c.kind() == ConstKind::Object {
+      Ok(c.ptr())
+    } else {
+      Err(StrictError::InvalidObject)
+    }
+  }
+
   fn unwrap_val<V>(v: Option<V>) -> Result<V, Self::Error> {
     v.ok_or(StrictError::ExpectedValue)
   }
@@ -259,6 +271,8 @@ pub enum StrictError {
   OutOfBounds,
   /// Out of heap memory.
   OutOfHeap,
+  /// Invalid object metadata.
+  InvalidObject,
   /// Invalid allocation layout.
   InvalidLayout,
 }
@@ -327,6 +341,10 @@ where
 
   fn ptr_or_none(v: &Self::Value) -> Option<u64> {
     Strict::<H, GC>::ptr_or_none(v)
+  }
+
+  fn obj_ptr_from_const(c: &HeapConst) -> Result<u64, Self::Error> {
+    Strict::<H, GC>::obj_ptr_from_const(c).map_err(StrictAlignError::Strict)
   }
 
   fn unwrap_val<V>(v: Option<V>) -> Result<V, Self::Error> {
@@ -447,6 +465,10 @@ where
 
   fn ptr_or_none(v: &Self::Value) -> Option<u64> {
     v.is_ptr.then_some(v.value)
+  }
+
+  fn obj_ptr_from_const(c: &HeapConst) -> Result<u64, Self::Error> {
+    Ok(c.ptr())
   }
 
   fn unwrap_val<V>(v: Option<V>) -> Result<V, Self::Error> {
