@@ -110,13 +110,8 @@ impl GarbageCollector for MarkSweep {
         match obj.kind {
           ObjKind::Obj => Self::extend_workist::<P>(&mut worklist, object, heap, ptr)?,
           ObjKind::Array(len) => {
-            // calculate step
-            assert!(object.align.is_power_of_two(), "invalid alignment");
-            let step = match object.size & (object.align - 1) {
-              0 => object.size,
-              r => object.size + object.align - r,
-            };
             // visit all objects
+            let step = object.aligned_size();
             for i in 0..len as u64 {
               Self::extend_workist::<P>(&mut worklist, object, heap, ptr + i * step)?;
             }
