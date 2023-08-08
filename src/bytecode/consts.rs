@@ -328,6 +328,17 @@ pub struct Object<Offsets: ?Sized + Array<u64>> {
   pub managed_ptr: ManagedPtr<Offsets>,
 }
 
+impl<Offsets: ?Sized + Array<u64>> Object<Offsets> {
+  /// Returns aligned size.
+  pub fn aligned_size(&self) -> u64 {
+    assert!(self.align.is_power_of_two(), "invalid alignment");
+    let len = self.size;
+    let align = self.align;
+    let len_rounded_up = len.wrapping_add(align).wrapping_sub(1) & !align.wrapping_sub(1);
+    len + len_rounded_up.wrapping_sub(len)
+  }
+}
+
 /// Managed pointer information.
 ///
 /// A list of offsets in 64-bit double words of managed pointers in the object.
