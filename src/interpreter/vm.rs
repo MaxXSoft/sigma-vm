@@ -313,7 +313,7 @@ where
       Inst::StA(opr) => {
         for index in (0..=opr as usize).rev() {
           let v = self.pop()?;
-          self.var_stack.last_mut().unwrap().set_or_create(index, v);
+          P::unwrap_val(self.var_stack.last_mut())?.set_or_create(index, v);
         }
         InstAction::NextPC
       }
@@ -648,8 +648,8 @@ impl<V> Vars<V> {
   /// Sets the variable at the given index to the given value.
   /// Creates a new variable with the value if no such variable.
   pub fn set_or_create(&mut self, index: usize, v: V) {
-    if let Some(var) = self.get_mut(index) {
-      *var = v;
+    if let Some(var) = self.vars.get_mut(index) {
+      *var = Some(v);
     } else {
       self.vars.resize_with(index + 1, || None);
       self.vars[index] = Some(v);
