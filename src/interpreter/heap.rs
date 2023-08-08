@@ -148,6 +148,9 @@ pub struct Checked<H> {
 impl<H> Checked<H> {
   /// Adds a new range from the given address and size.
   fn add_range(&mut self, addr: *const (), size: usize) {
+    if size == 0 {
+      return;
+    }
     let l = addr as usize;
     let r = l + size - 1;
     if let Some((_, rr)) = self.ranges.range_mut(..=l).next_back() {
@@ -189,6 +192,9 @@ where
     let l = self.addr(ptr) as usize;
     let prev_size = self.size();
     self.heap.dealloc(ptr);
+    if prev_size == self.size() {
+      return;
+    }
     let r = l + prev_size - self.size() - 1;
     // update the target range
     let (&ll, rr) = self.ranges.range_mut(..=l).next_back().unwrap();
@@ -229,10 +235,14 @@ where
   H: Heap,
 {
   fn is_valid(&self, ptr: u64, len: usize) -> bool {
-    let l = self.heap.addr(ptr) as usize;
-    match self.ranges.range(..=l).next_back() {
-      Some((_, rr)) => l + len - 1 <= *rr,
-      _ => false,
+    if len == 0 {
+      false
+    } else {
+      let l = self.heap.addr(ptr) as usize;
+      match self.ranges.range(..=l).next_back() {
+        Some((_, rr)) => l + len - 1 <= *rr,
+        _ => false,
+      }
     }
   }
 }
