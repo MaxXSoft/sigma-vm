@@ -44,6 +44,10 @@ pub trait Policy {
   /// otherwise [`None`].
   fn get_ptr(v: &Self::Value) -> Option<u64>;
 
+  /// Unwraps an [`Option<Self::Value>`],
+  /// returns an error if necessary.
+  fn unwrap_val(v: Option<Self::Value>) -> Result<Self::Value, Self::Error>;
+
   /// Checks the given integer divisor, returns an error if necessary.
   fn check_div(divisor: u64) -> Result<(), Self::Error>;
 
@@ -154,6 +158,10 @@ where
     }
   }
 
+  fn unwrap_val(v: Option<Self::Value>) -> Result<Self::Value, Self::Error> {
+    v.ok_or(StrictError::ExpectedValue)
+  }
+
   fn check_div(divisor: u64) -> Result<(), Self::Error> {
     if divisor == 0 {
       Err(StrictError::ZeroDivision)
@@ -201,6 +209,8 @@ pub enum StrictValue {
 pub enum StrictError {
   /// Type mismatch.
   TypeMismatch,
+  /// Expected a value.
+  ExpectedValue,
   /// Divisor is zero.
   ZeroDivision,
   /// Memory access out of bounds.
@@ -265,6 +275,10 @@ where
 
   fn get_ptr(v: &Self::Value) -> Option<u64> {
     Strict::<H, GC>::get_ptr(v)
+  }
+
+  fn unwrap_val(v: Option<Self::Value>) -> Result<Self::Value, Self::Error> {
+    Strict::<H, GC>::unwrap_val(v).map_err(StrictAlignError::Strict)
   }
 
   fn check_div(divisor: u64) -> Result<(), Self::Error> {
@@ -365,6 +379,10 @@ where
 
   fn get_ptr(v: &Self::Value) -> Option<u64> {
     v.is_ptr.then_some(v.value)
+  }
+
+  fn unwrap_val(v: Option<Self::Value>) -> Result<Self::Value, Self::Error> {
+    Ok(v.unwrap())
   }
 
   fn check_div(_: u64) -> Result<(), Self::Error> {
