@@ -75,6 +75,10 @@ pub trait Policy {
 
   /// Creates a new garbage collector.
   fn new_gc(&self) -> Self::GarbageCollector;
+
+  /// Checks if the GC succeeded in reducing the heap size,
+  /// returns an error if necessary.
+  fn check_gc_success(&self, heap: &Self::Heap) -> Result<(), Self::Error>;
 }
 
 /// Strict policy.
@@ -173,6 +177,14 @@ where
   fn new_gc(&self) -> Self::GarbageCollector {
     GC::new(self.gc_threshold)
   }
+
+  fn check_gc_success(&self, heap: &Self::Heap) -> Result<(), Self::Error> {
+    if heap.size() > self.gc_threshold {
+      Err(StrictError::OutOfHeap)
+    } else {
+      Ok(())
+    }
+  }
 }
 
 /// Value of [`Strict`] policy.
@@ -193,6 +205,8 @@ pub enum StrictError {
   ZeroDivision,
   /// Memory access out of bounds.
   OutOfBounds,
+  /// Out of heap memory.
+  OutOfHeap,
 }
 
 /// Strict policy with alignment checking.
@@ -272,6 +286,13 @@ where
 
   fn new_gc(&self) -> Self::GarbageCollector {
     self.strict.new_gc()
+  }
+
+  fn check_gc_success(&self, heap: &Self::Heap) -> Result<(), Self::Error> {
+    self
+      .strict
+      .check_gc_success(heap)
+      .map_err(StrictAlignError::Strict)
   }
 }
 
@@ -360,6 +381,19 @@ where
 
   fn new_gc(&self) -> Self::GarbageCollector {
     GC::new(self.gc_threshold)
+  }
+
+  /// Checks if the GC succeeded in reducing the heap size.
+  ///
+  /// # Panics
+  ///
+  /// Panics if unsuccess.
+  fn check_gc_success(&self, heap: &Self::Heap) -> Result<(), Self::Error> {
+    if heap.size() > self.gc_threshold {
+      panic!("out of heap memory")
+    } else {
+      Ok(())
+    }
   }
 }
 
