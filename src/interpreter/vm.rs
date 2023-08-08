@@ -1,7 +1,7 @@
-use crate::bytecode::consts::{Const, HeapConst};
+use crate::bytecode::consts::{Const, HeapConst, Object};
 use crate::bytecode::insts::Inst;
 use crate::bytecode::reader::Reader;
-use crate::interpreter::heap::Heap;
+use crate::interpreter::heap::{Heap, Obj, ObjKind};
 use crate::interpreter::policy::Policy;
 use std::iter::Flatten;
 use std::mem;
@@ -255,6 +255,38 @@ where
         }
         InstAction::NextPC
       }
+      Inst::New => {
+        let align = self.pop_int_ptr()?;
+        let size = self.pop_int_ptr()?;
+        let ptr = self.heap.alloc(P::layout(size as usize, align as usize)?);
+        self.push_ptr(ptr);
+        InstAction::NextPC
+      }
+      Inst::NewO => {
+        let obj_ptr = self.pop_ptr()?;
+        self.new_object(obj_ptr)?
+      }
+      Inst::NewOC(opr) => {
+        let c = P::unwrap_val(self.consts.get(opr as usize))?;
+        let obj_ptr = P::obj_ptr_from_const(c)?;
+        self.new_object(obj_ptr)?
+      }
+      Inst::NewA => {
+        let len = self.pop_int_ptr()?;
+        let obj_ptr = self.pop_ptr()?;
+        self.new_array(obj_ptr, len)?
+      }
+      Inst::NewAC(opr) => {
+        let len = self.pop_int_ptr()?;
+        let c = P::unwrap_val(self.consts.get(opr as usize))?;
+        let obj_ptr = P::obj_ptr_from_const(c)?;
+        self.new_array(obj_ptr, len)?
+      }
+      Inst::Del => {
+        let ptr = self.pop_ptr()?;
+        self.heap.dealloc(ptr);
+        InstAction::NextPC
+      }
       _ => todo!(),
     })
   }
@@ -354,6 +386,37 @@ where
   {
     P::check_access(&self.heap, ptr, mem::size_of::<T>())?;
     unsafe { *(self.heap.addr_mut(ptr) as *mut T) = *(&P::get_any(&v) as *const _ as *const T) };
+    Ok(InstAction::NextPC)
+  }
+
+  /// Allocates heap memory for the given object metadata pointer.
+  fn new_object(&mut self, obj_ptr: u64) -> Result<InstAction, P::Error> {
+    let object = P::object(&self.heap, obj_ptr)?;
+    self.alloc_obj(object.size, object.align, ObjKind::Obj, obj_ptr)
+  }
+
+  /// Allocates array for the given object metadata pointer.
+  fn new_array(&mut self, obj_ptr: u64, len: u64) -> Result<InstAction, P::Error> {
+    let object = P::object(&self.heap, obj_ptr)?;
+    let size = if len != 0 {
+      object.aligned_size() * (len - 1) + object.size
+    } else {
+      0
+    };
+    self.alloc_obj(size, object.align, ObjKind::Array(len as usize), obj_ptr)
+  }
+
+  /// Allocates a new memory with object metadata.
+  fn alloc_obj(
+    &mut self,
+    size: u64,
+    align: u64,
+    kind: ObjKind,
+    obj_ptr: u64,
+  ) -> Result<InstAction, P::Error> {
+    let layout = P::layout(size as usize, align as usize)?;
+    let ptr = self.heap.alloc_obj(layout, Obj { kind, ptr: obj_ptr });
+    self.push_ptr(ptr);
     Ok(InstAction::NextPC)
   }
 }
