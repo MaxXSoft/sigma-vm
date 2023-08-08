@@ -222,12 +222,14 @@ where
         self.load_ptr(ptr)?
       }
       Inst::LdV(opr) => {
-        let var = P::unwrap_val(self.var_stack.last().unwrap().get(opr as usize))?;
+        let locals = P::unwrap_val(self.var_stack.last())?;
+        let var = P::unwrap_val(locals.get(opr as usize))?;
         self.push(var.clone());
         InstAction::NextPC
       }
       Inst::LdG(opr) => {
-        let var = P::unwrap_val(self.var_stack.first().unwrap().get(opr as usize))?;
+        let globals = P::unwrap_val(self.var_stack.first())?;
+        let var = P::unwrap_val(globals.get(opr as usize))?;
         self.push(var.clone());
         InstAction::NextPC
       }
@@ -287,20 +289,14 @@ where
       }
       Inst::StV(opr) => {
         let v = self.pop()?;
-        self
-          .var_stack
-          .last_mut()
-          .unwrap()
-          .set_or_create(opr as usize, v);
+        let locals = P::unwrap_val(self.var_stack.last_mut())?;
+        locals.set_or_create(opr as usize, v);
         InstAction::NextPC
       }
       Inst::StG(opr) => {
         let v = self.pop()?;
-        self
-          .var_stack
-          .first_mut()
-          .unwrap()
-          .set_or_create(opr as usize, v);
+        let globals = P::unwrap_val(self.var_stack.first_mut())?;
+        globals.set_or_create(opr as usize, v);
         InstAction::NextPC
       }
       Inst::StA(opr) => {
