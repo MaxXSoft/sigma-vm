@@ -31,14 +31,14 @@ impl<'gc, P: 'gc + Policy> PotentialRoots<'gc, P> {
       .consts
       .iter()
       .map(|c| c.ptr())
-      .chain(self.values.iter().filter_map(P::get_ptr))
+      .chain(self.values.iter().filter_map(P::ptr_or_none))
       .chain(
         self
           .locals
           .iter()
-          .flat_map(|vs| vs.iter().filter_map(P::get_ptr)),
+          .flat_map(|vs| vs.iter().filter_map(P::ptr_or_none)),
       )
-      .chain(self.globals.iter().filter_map(P::get_ptr))
+      .chain(self.globals.iter().filter_map(P::ptr_or_none))
   }
 }
 
