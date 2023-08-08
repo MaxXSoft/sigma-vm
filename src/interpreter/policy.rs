@@ -1,4 +1,3 @@
-use crate::bytecode::consts::{Const, Object};
 use crate::interpreter::gc::GarbageCollector;
 use crate::interpreter::heap::{CheckedHeap, Heap};
 use std::marker::PhantomData;
@@ -56,15 +55,6 @@ pub trait Policy {
 
   /// Creates a new garbage collector.
   fn new_gc(&self) -> Self::GarbageCollector;
-
-  /// Returns a reference of object metadata from the given constant pool
-  /// and index, returns an error if necessary.
-  ///
-  /// # Safety
-  ///
-  /// The kind of the constant must match its data.
-  unsafe fn object<'a>(consts: &'a [Const], index: usize)
-    -> Result<&'a Object<[u64]>, Self::Error>;
 }
 
 /// Strict policy.
@@ -163,16 +153,6 @@ where
   fn new_gc(&self) -> Self::GarbageCollector {
     GC::new(self.gc_threshold)
   }
-
-  unsafe fn object<'a>(
-    consts: &'a [Const],
-    index: usize,
-  ) -> Result<&'a Object<[u64]>, Self::Error> {
-    match consts.get(index) {
-      Some(c) => c.object().ok_or(StrictError::InvalidObject),
-      None => Err(StrictError::InvalidConst),
-    }
-  }
 }
 
 /// Value of [`Strict`] policy.
@@ -193,10 +173,6 @@ pub enum StrictError {
   ZeroDivision,
   /// Memory access out of bounds.
   OutOfBounds,
-  /// Invalid constant pool index.
-  InvalidConst,
-  /// Invalid object metadata.
-  InvalidObject,
 }
 
 /// No check policy.
@@ -275,13 +251,6 @@ where
 
   fn new_gc(&self) -> Self::GarbageCollector {
     GC::new(self.gc_threshold)
-  }
-
-  unsafe fn object<'a>(
-    consts: &'a [Const],
-    index: usize,
-  ) -> Result<&'a Object<[u64]>, Self::Error> {
-    Ok(consts[index].object().unwrap())
   }
 }
 
