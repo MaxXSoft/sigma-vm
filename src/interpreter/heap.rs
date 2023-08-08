@@ -36,10 +36,10 @@ pub trait Heap {
 }
 
 /// Object metadata for heap memory.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct Obj {
   pub kind: ObjKind,
-  pub addr: ObjAddr,
+  pub ptr: u64,
 }
 
 /// Kind of object.
@@ -51,19 +51,6 @@ pub enum ObjKind {
   ///
   /// With the length of the array.
   Array(usize),
-}
-
-/// Address of object metadata.
-#[derive(Debug, Clone, Copy)]
-pub enum ObjAddr {
-  /// Object metadata is on the heap.
-  ///
-  /// With a heap memory pointer.
-  Heap(u64),
-  /// Object metadata is in the constant pool.
-  ///
-  /// With a constant pool index.
-  Const(usize),
 }
 
 /// Managed heap with memory out of bounds checking.
