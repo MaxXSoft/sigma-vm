@@ -14,9 +14,8 @@ pub struct VM<P: Policy> {
   insts: Box<[Inst]>,
   pc: u64,
   value_stack: Vec<P::Value>,
-  local_stack: Vec<Vars<P::Value>>,
+  var_stack: Vec<Vars<P::Value>>,
   ra_stack: Vec<u64>,
-  globals: Vars<P::Value>,
   heap: P::Heap,
   gc: P::GarbageCollector,
 }
@@ -37,9 +36,8 @@ impl<P: Policy> VM<P> {
       insts,
       pc: 0,
       value_stack: vec![],
-      local_stack: vec![],
+      var_stack: vec![Vars::new()],
       ra_stack: vec![],
-      globals: Vars::new(),
       heap,
       gc,
     }
@@ -168,6 +166,95 @@ where
         let ptr = (self.pop_ptr()? as i64 + offset) as u64;
         self.load_ptr(ptr)?
       }
+      Inst::LdV(opr) => {
+        let var = P::unwrap_val(self.var_stack.last().unwrap().get(opr as usize))?;
+        self.push(var.clone());
+        InstAction::NextPC
+      }
+      Inst::LdG(opr) => {
+        let var = P::unwrap_val(self.var_stack.first().unwrap().get(opr as usize))?;
+        self.push(var.clone());
+        InstAction::NextPC
+      }
+      Inst::LdC(opr) => {
+        let c = P::unwrap_val(self.consts.get(opr as usize))?;
+        self.push(P::val_from_const(&self.heap, c));
+        InstAction::NextPC
+      }
+      Inst::LaC(opr) => {
+        let c = P::unwrap_val(self.consts.get(opr as usize))?;
+        self.push_ptr(c.ptr());
+        InstAction::NextPC
+      }
+      Inst::StB => {
+        let v = self.pop()?;
+        let ptr = self.pop_ptr()?;
+        self.store::<u8>(v, ptr)?
+      }
+      Inst::StH => {
+        let v = self.pop()?;
+        let ptr = self.pop_ptr()?;
+        self.store::<u16>(v, ptr)?
+      }
+      Inst::StW => {
+        let v = self.pop()?;
+        let ptr = self.pop_ptr()?;
+        self.store::<u32>(v, ptr)?
+      }
+      Inst::StD => {
+        let v = self.pop()?;
+        let ptr = self.pop_ptr()?;
+        self.store::<u64>(v, ptr)?
+      }
+      Inst::StBO(opr) => {
+        let v = self.pop()?;
+        let offset = opr * mem::size_of::<u8>() as i64;
+        let ptr = (self.pop_ptr()? as i64 + offset) as u64;
+        self.store::<u8>(v, ptr)?
+      }
+      Inst::StHO(opr) => {
+        let v = self.pop()?;
+        let offset = opr * mem::size_of::<u16>() as i64;
+        let ptr = (self.pop_ptr()? as i64 + offset) as u64;
+        self.store::<u16>(v, ptr)?
+      }
+      Inst::StWO(opr) => {
+        let v = self.pop()?;
+        let offset = opr * mem::size_of::<u32>() as i64;
+        let ptr = (self.pop_ptr()? as i64 + offset) as u64;
+        self.store::<u32>(v, ptr)?
+      }
+      Inst::StDO(opr) => {
+        let v = self.pop()?;
+        let offset = opr * mem::size_of::<u64>() as i64;
+        let ptr = (self.pop_ptr()? as i64 + offset) as u64;
+        self.store::<u64>(v, ptr)?
+      }
+      Inst::StV(opr) => {
+        let v = self.pop()?;
+        self
+          .var_stack
+          .last_mut()
+          .unwrap()
+          .set_or_create(opr as usize, v);
+        InstAction::NextPC
+      }
+      Inst::StG(opr) => {
+        let v = self.pop()?;
+        self
+          .var_stack
+          .first_mut()
+          .unwrap()
+          .set_or_create(opr as usize, v);
+        InstAction::NextPC
+      }
+      Inst::StA(opr) => {
+        for index in (0..=opr as usize).rev() {
+          let v = self.pop()?;
+          self.var_stack.last_mut().unwrap().set_or_create(index, v);
+        }
+        InstAction::NextPC
+      }
       _ => todo!(),
     })
   }
@@ -258,6 +345,17 @@ where
     self.push_ptr(unsafe { *(self.heap.addr(ptr) as *const u64) });
     Ok(InstAction::NextPC)
   }
+
+  /// Stores the given value (of type `T`) to the memory
+  /// pointed by the given pointer.
+  fn store<T>(&mut self, v: P::Value, ptr: u64) -> Result<InstAction, P::Error>
+  where
+    T: Copy,
+  {
+    P::check_access(&self.heap, ptr, mem::size_of::<T>())?;
+    unsafe { *(self.heap.addr_mut(ptr) as *mut T) = *(&P::get_any(&v) as *const _ as *const T) };
+    Ok(InstAction::NextPC)
+  }
 }
 
 /// Variable storage.
@@ -292,12 +390,12 @@ impl<V> Vars<V> {
 
   /// Sets the variable at the given index to the given value.
   /// Creates a new variable with the value if no such variable.
-  pub fn set_or_create(&mut self, index: usize, value: V) {
-    if let Some(v) = self.get_mut(index) {
-      *v = value;
+  pub fn set_or_create(&mut self, index: usize, v: V) {
+    if let Some(var) = self.get_mut(index) {
+      *var = v;
     } else {
       self.vars.resize_with(index + 1, || None);
-      self.vars[index] = Some(value);
+      self.vars[index] = Some(v);
     }
   }
 
