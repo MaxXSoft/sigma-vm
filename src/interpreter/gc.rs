@@ -11,12 +11,7 @@ pub trait GarbageCollector {
   fn new(threshold: usize) -> Self;
 
   /// Collects garbage on the given heap.
-  fn collect<P>(
-    &mut self,
-    heap: &mut P::Heap,
-    consts: &[Const],
-    proots: PotentialRoots<P>,
-  ) -> Result<(), P::Error>
+  fn collect<P>(&mut self, heap: &mut P::Heap, proots: PotentialRoots<P>) -> Result<(), P::Error>
   where
     P: Policy;
 }
@@ -53,12 +48,7 @@ impl GarbageCollector for Nothing {
     Self
   }
 
-  fn collect<P>(
-    &mut self,
-    _: &mut P::Heap,
-    _: &[Const],
-    _: PotentialRoots<P>,
-  ) -> Result<(), P::Error>
+  fn collect<P>(&mut self, _: &mut P::Heap, _: PotentialRoots<P>) -> Result<(), P::Error>
   where
     P: Policy,
   {
@@ -73,27 +63,18 @@ pub struct MarkSweep {
 
 impl MarkSweep {
   /// Returns a reference of object metadata by the given [`ObjAddr`].
-  fn object<'a, P>(
-    heap: &P::Heap,
-    consts: &'a [Const],
-    addr: ObjAddr,
-  ) -> Result<&'a Object<[u64]>, P::Error>
+  fn object<'a, P>(heap: &P::Heap, ptr: u64) -> Result<&'a Object<[u64]>, P::Error>
   where
     P: Policy,
   {
-    match addr {
-      ObjAddr::Heap(ptr) => {
-        // read object metadata's length from heap
-        let addr = heap.addr(ptr) as *const u64;
-        let field_size = mem::size_of::<u64>();
-        P::check_access(heap, ptr, field_size * 3)?;
-        let len = unsafe { *addr.offset(2) };
-        // create object reference
-        P::check_access(heap, ptr + field_size as u64 * 3, field_size * len as usize)?;
-        Ok(unsafe { &*ptr::from_raw_parts(addr as *const (), len as usize) })
-      }
-      ObjAddr::Const(index) => unsafe { P::object(consts, index) },
-    }
+    // read object metadata's length from heap
+    let addr = heap.addr(ptr) as *const u64;
+    let field_size = mem::size_of::<u64>();
+    P::check_access(heap, ptr, field_size * 3)?;
+    let len = unsafe { *addr.offset(2) };
+    // create object reference
+    P::check_access(heap, ptr + field_size as u64 * 3, field_size * len as usize)?;
+    Ok(unsafe { &*ptr::from_raw_parts(addr as *const (), len as usize) })
   }
 
   /// Pushes object pointer to the worklist by the given object metadata.
@@ -121,12 +102,7 @@ impl GarbageCollector for MarkSweep {
     Self { threshold }
   }
 
-  fn collect<P>(
-    &mut self,
-    heap: &mut P::Heap,
-    consts: &[Const],
-    proots: PotentialRoots<P>,
-  ) -> Result<(), P::Error>
+  fn collect<P>(&mut self, heap: &mut P::Heap, proots: PotentialRoots<P>) -> Result<(), P::Error>
   where
     P: Policy,
   {
@@ -142,7 +118,9 @@ impl GarbageCollector for MarkSweep {
       }
       // get object metadata
       if let Some(obj) = heap.obj(ptr) {
-        let object: &Object<[u64]> = Self::object::<P>(heap, consts, obj.addr)?;
+        let object: &Object<[u64]> = Self::object::<P>(heap, obj.ptr)?;
+        // mark object metadata
+        worklist.push(obj.ptr);
         // handle by kind
         match obj.kind {
           ObjKind::Obj => Self::extend_workist::<P>(&mut worklist, object, heap, ptr)?,
