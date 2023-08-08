@@ -49,13 +49,6 @@ impl Const {
     self.data.as_ptr() as *const ()
   }
 
-  /// Returns the address of the current constant as [`u64`].
-  pub fn addr_u64(&self) -> u64 {
-    let addr = self.addr();
-    assert_eq!(mem::size_of_val(&addr), mem::size_of::<u64>());
-    addr as u64
-  }
-
   /// Returns the value of the current constant,
   /// or [`None`] if value is unavailable.
   ///
@@ -67,35 +60,6 @@ impl Const {
     T: FromConst,
   {
     T::from(self)
-  }
-
-  /// Returns the value of the current constant as [`u64`],
-  /// or [`None`] if value is unavailable.
-  ///
-  /// # Safety
-  ///
-  /// The kind must match the data.
-  pub unsafe fn value_u64(&self) -> Option<u64> {
-    macro_rules! value {
-      ($($kind:ident => $ty:ty),* $(,)?) => {
-        match self.kind {
-          $(ConstKind::$kind => Some(*(self.addr() as *const $ty) as u64),)*
-          _ => None,
-        }
-      };
-    }
-    value! {
-      I8 => i8,
-      U8 => u8,
-      I16 => i16,
-      U16 => u16,
-      I32 => i32,
-      U32 => u32,
-      I64 => i64,
-      U64 => u64,
-      F32 => u32,
-      F64 => u64,
-    }
   }
 
   /// Returns a reference of string constant, or [`None`] if
