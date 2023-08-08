@@ -175,6 +175,95 @@ pub enum StrictError {
   OutOfBounds,
 }
 
+/// Strict policy with alignment checking.
+///
+/// Checks type of values, division, memory out of bounds and memory alignment.
+pub struct StrictAlign<H, GC> {
+  strict: Strict<H, GC>,
+}
+
+impl<H, GC> StrictAlign<H, GC> {
+  /// Creates a new strict alignment policy.
+  pub fn new(gc_threshold: usize) -> Self {
+    Self {
+      strict: Strict::new(gc_threshold),
+    }
+  }
+}
+
+impl<H, GC> Policy for StrictAlign<H, GC>
+where
+  H: CheckedHeap,
+  GC: GarbageCollector,
+{
+  type Value = StrictValue;
+  type Error = StrictAlignError;
+  type Heap = H;
+  type GarbageCollector = GC;
+
+  fn int_val(i: u64) -> Self::Value {
+    Strict::<H, GC>::int_val(i)
+  }
+
+  fn f32_val(f: f32) -> Self::Value {
+    Strict::<H, GC>::f32_val(f)
+  }
+
+  fn f64_val(f: f64) -> Self::Value {
+    Strict::<H, GC>::f64_val(f)
+  }
+
+  fn ptr_val(p: u64) -> Self::Value {
+    Strict::<H, GC>::ptr_val(p)
+  }
+
+  fn get_int(v: &Self::Value) -> Result<u64, Self::Error> {
+    Strict::<H, GC>::get_int(v).map_err(StrictAlignError::Strict)
+  }
+
+  fn get_f32(v: &Self::Value) -> Result<f32, Self::Error> {
+    Strict::<H, GC>::get_f32(v).map_err(StrictAlignError::Strict)
+  }
+
+  fn get_f64(v: &Self::Value) -> Result<f64, Self::Error> {
+    Strict::<H, GC>::get_f64(v).map_err(StrictAlignError::Strict)
+  }
+
+  fn get_ptr(v: &Self::Value) -> Option<u64> {
+    Strict::<H, GC>::get_ptr(v)
+  }
+
+  fn check_div(divisor: u64) -> Result<(), Self::Error> {
+    Strict::<H, GC>::check_div(divisor).map_err(StrictAlignError::Strict)
+  }
+
+  fn new_heap(&self) -> Self::Heap {
+    self.strict.new_heap()
+  }
+
+  fn check_access(heap: &Self::Heap, p: u64, len: usize) -> Result<(), Self::Error> {
+    Strict::<H, GC>::check_access(heap, p, len).map_err(StrictAlignError::Strict)?;
+    if !len.is_power_of_two() || (p & (len as u64 - 1)) != 0 {
+      Err(StrictAlignError::MisalignedAccess)
+    } else {
+      Ok(())
+    }
+  }
+
+  fn new_gc(&self) -> Self::GarbageCollector {
+    self.strict.new_gc()
+  }
+}
+
+/// Error for [`StrictAlign`] policy.
+#[derive(Debug)]
+pub enum StrictAlignError {
+  /// Error returned by [`Strict`] policy.
+  Strict(StrictError),
+  /// Memory access is not aligned.
+  MisalignedAccess,
+}
+
 /// No check policy.
 ///
 /// Does not check type of values, division and memory out of bounds.
