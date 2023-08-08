@@ -162,7 +162,6 @@ impl Const {
     HeapConst {
       kind: self.kind,
       ptr,
-      size,
     }
   }
 }
@@ -177,7 +176,6 @@ impl Const {
 pub struct HeapConst {
   kind: ConstKind,
   ptr: u64,
-  size: usize,
 }
 
 impl HeapConst {
@@ -189,26 +187,6 @@ impl HeapConst {
   /// Returns the heap pointer of the current constant.
   pub fn ptr(&self) -> u64 {
     self.ptr
-  }
-
-  /// Returns the size of the current constant.
-  pub fn size(&self) -> usize {
-    self.size
-  }
-
-  /// Converts the current heap constant into a [`Const`].
-  ///
-  /// The heap memory of the current constant will be deallocated.
-  pub fn into_const<H>(self, heap: &mut H) -> Const
-  where
-    H: Heap,
-  {
-    let addr = heap.addr(self.ptr);
-    let mut data: Box<[u8]> =
-      unsafe { alloc_uninit(self.size, self.kind.align(), self.size) }.unwrap();
-    unsafe { ptr::copy_nonoverlapping(addr as *const u8, data.as_mut_ptr(), self.size) };
-    heap.dealloc(self.ptr);
-    unsafe { Const::new(self.kind, data, self.size) }
   }
 }
 
