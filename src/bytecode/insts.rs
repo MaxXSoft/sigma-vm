@@ -239,9 +239,9 @@ def_opc_inst! {
   /// Arithmetic right shift.
   Sar,
   /// Sign extend the opr-bit integer s0.
-  Sext,
+  Sext(u64),
   /// Zero extend the opr-bit integer s0.
-  Zext,
+  Zext(u64),
   /// Test equal.
   Eq,
   /// Test not equal.
