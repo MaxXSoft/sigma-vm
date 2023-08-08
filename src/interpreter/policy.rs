@@ -1,3 +1,4 @@
+use crate::bytecode::consts::{ConstKind, HeapConst};
 use crate::interpreter::gc::GarbageCollector;
 use crate::interpreter::heap::{CheckedHeap, Heap};
 use std::marker::PhantomData;
@@ -52,6 +53,25 @@ pub trait Policy {
   /// Checks whether the given memory access is valid,
   /// returns an error if necessary.
   fn check_access(heap: &Self::Heap, p: u64, len: usize) -> Result<(), Self::Error>;
+
+  /// Creates a value from a heap constant.
+  fn val_from_const(heap: &Self::Heap, c: &HeapConst) -> Self::Value {
+    // do not check for constant's pointer since it's always valid
+    let addr = heap.addr(c.ptr());
+    match c.kind() {
+      ConstKind::I8 => Self::int_val(unsafe { *(addr as *const i8) } as u64),
+      ConstKind::U8 => Self::int_val(unsafe { *(addr as *const u8) } as u64),
+      ConstKind::I16 => Self::int_val(unsafe { *(addr as *const i16) } as u64),
+      ConstKind::U16 => Self::int_val(unsafe { *(addr as *const u16) } as u64),
+      ConstKind::I32 => Self::int_val(unsafe { *(addr as *const i32) } as u64),
+      ConstKind::U32 => Self::int_val(unsafe { *(addr as *const u32) } as u64),
+      ConstKind::I64 => Self::int_val(unsafe { *(addr as *const i64) } as u64),
+      ConstKind::U64 => Self::int_val(unsafe { *(addr as *const u64) }),
+      ConstKind::F32 => Self::f32_val(unsafe { *(addr as *const f32) }),
+      ConstKind::F64 => Self::f64_val(unsafe { *(addr as *const f64) }),
+      _ => Self::ptr_val(c.ptr()),
+    }
+  }
 
   /// Creates a new garbage collector.
   fn new_gc(&self) -> Self::GarbageCollector;
