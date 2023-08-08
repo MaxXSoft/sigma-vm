@@ -20,8 +20,7 @@ pub trait GarbageCollector {
 pub struct PotentialRoots<'gc, P: Policy> {
   pub consts: &'gc [HeapConst],
   pub values: &'gc [P::Value],
-  pub locals: &'gc [Vars<P::Value>],
-  pub globals: &'gc Vars<P::Value>,
+  pub vars: &'gc [Vars<P::Value>],
 }
 
 impl<'gc, P: 'gc + Policy> PotentialRoots<'gc, P> {
@@ -34,11 +33,10 @@ impl<'gc, P: 'gc + Policy> PotentialRoots<'gc, P> {
       .chain(self.values.iter().filter_map(P::ptr_or_none))
       .chain(
         self
-          .locals
+          .vars
           .iter()
           .flat_map(|vs| vs.iter().filter_map(P::ptr_or_none)),
       )
-      .chain(self.globals.iter().filter_map(P::ptr_or_none))
   }
 }
 
