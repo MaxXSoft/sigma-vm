@@ -49,12 +49,22 @@ impl<P: Policy> VM<P> {
     let (consts, insts) = reader.into_consts_insts();
     Self::new(policy, consts, insts)
   }
+
+  /// Returns a reference to the value stack.
+  pub fn value_stack(&self) -> &[P::Value] {
+    &self.value_stack
+  }
 }
 
 impl<P: Policy> VM<P>
 where
   P::Value: Clone,
 {
+  /// Adds the given values to the value stack.
+  pub fn add_values(&mut self, values: &[P::Value]) {
+    self.value_stack.extend(values.iter().cloned())
+  }
+
   /// Runs the virtual machine.
   pub fn run(&mut self) -> Result<(), P::Error> {
     loop {
