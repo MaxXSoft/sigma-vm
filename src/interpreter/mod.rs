@@ -5,7 +5,7 @@ pub mod vm;
 
 #[cfg(test)]
 mod test {
-  use crate::bytecode::consts::{Const, ConstKind, ManagedPtr, Object};
+  use crate::bytecode::consts::{Const, ManagedPtr, Object};
   use crate::bytecode::insts::Inst;
   use crate::interpreter::gc::MarkSweep;
   use crate::interpreter::heap::{Checked, System};
@@ -14,47 +14,85 @@ mod test {
 
   /// Helper macro for constructing constant pool.
   macro_rules! consts {
-    ($($t:tt),* $(,)?) => { vec![$(consts!(@const $t)),*].into_boxed_slice() };
-    (@const Object { size: $s:expr, align: $a:expr, offsets: [$($o:expr),* $(,)?] $(,)? }) => {
-      Const::from(Object::<[u64; consts!(@counter $($o),*)]> {
-        size: $s,
-        align: $a,
-        managed_ptr: ManagedPtr {
-          len: consts!(@counter $($o),*),
-          offsets: [$($o),*],
-        },
-      })
+    ($($e:expr),* $(,)?) => {
+      vec![$(consts!(@const $e)),*].into_boxed_slice()
     };
     (@const $e:expr) => { Const::from($e) };
-    (@counter $e:expr $(,$rest:expr)*) => {
-      1 + consts!(@counter $($rest),*)
-    };
-    (@counter) => {
-      0
-    };
   }
 
   /// Helper macro for constructing instruction list.
   macro_rules! insts {
-    ($($opc:ident $(($opr:expr))?),* $(,)?) => { vec![$(Inst::$opc $(($opr))?),*].into_boxed_slice() };
+    ($($opc:ident $(($opr:expr))?),* $(,)?) => {
+      vec![$(Inst::$opc $(($opr))?),*].into_boxed_slice()
+    };
   }
 
+  /// Helper macro for constructing values.
+  macro_rules! value {
+    (u64: $e:expr) => {
+      SAP::int_val($e)
+    };
+    (f32: $e:expr) => {
+      SAP::f32_val($e)
+    };
+    (f64: $e:expr) => {
+      SAP::f64_val($e)
+    };
+  }
+
+  /// Helper macro for extracting values.
+  macro_rules! result {
+    (u64: $e:expr) => {
+      SAP::get_int_ptr($e).unwrap()
+    };
+    (f32: $e:expr) => {
+      SAP::get_f32($e).unwrap()
+    };
+    (f64: $e:expr) => {
+      SAP::get_f64($e).unwrap()
+    };
+  }
+
+  /// Helper macro for running VM.
+  macro_rules! vm {
+    {
+      insts: [$($opc:ident $(($opr:expr))?),* $(,)?],
+      consts: [$($cs:tt)*],
+      args: [$($aty:tt: $ae:expr),* $(,)?],
+      results: ($($rs:tt),*) $(,)?
+    } => {{
+      let insts = insts![$($opc $(($opr))?),*];
+      let mut vm = VM::new(SAP::new(1024), consts![$($cs)*], insts);
+      vm.add_values(&[$(value!($aty: $ae)),*]);
+      vm.run().unwrap();
+      let values = vm.value_stack();
+      let mut i = 0;
+      #[allow(unused_assignments)]
+      ($(vm!(@result values, i, $rs)),*)
+    }};
+    (@result $values:ident, $i:ident, $ty:tt) => {{
+      let result = result!($ty: &$values[$i]);
+      $i += 1;
+      result
+    }};
+  }
+
+  /// Strict align policy, with checked system heap and mark-sweep GC.
   type SAP = StrictAlign<Checked<System>, MarkSweep>;
-
-  /// Creates a new VM with strict align policy and mark-sweep GC.
-  fn vm(consts: Box<[Const]>, insts: Box<[Inst]>) -> VM<SAP> {
-    VM::new(StrictAlign::new(1024), consts, insts)
-  }
 
   #[test]
   fn a_plus_b() {
     fn a_plus_b(a: u64, b: u64) -> u64 {
-      let mut vm = vm(consts![], insts![StA(1), LdV(0), LdV(1), Add, Ret]);
-      vm.add_values(&[SAP::int_val(a), SAP::int_val(b)]);
-      vm.run().unwrap();
-      SAP::get_int_ptr(vm.value_stack().last().unwrap()).unwrap()
+      vm! {
+        insts: [StA(1), LdV(0), LdV(1), Add, Ret],
+        consts: [],
+        args: [u64: a, u64: b],
+        results: (u64),
+      }
     }
 
     assert_eq!(a_plus_b(1, 2), 3);
+    assert_eq!(a_plus_b(0, 0), 0);
+    assert_eq!(a_plus_b(1, u64::MAX), 0);
   }
 }
