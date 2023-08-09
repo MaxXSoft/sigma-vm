@@ -17,13 +17,16 @@ pub trait GarbageCollector {
 }
 
 /// Potential GC roots.
-pub struct PotentialRoots<'gc, P: Policy> {
+pub struct PotentialRoots<'gc, P: ?Sized + Policy> {
   pub consts: &'gc [HeapConst],
   pub values: &'gc [P::Value],
   pub vars: &'gc [Vars<P::Value>],
 }
 
-impl<'gc, P: 'gc + Policy> PotentialRoots<'gc, P> {
+impl<'gc, P> PotentialRoots<'gc, P>
+where
+  P: 'gc + ?Sized + Policy,
+{
   /// Returns an iterator of all GC roots (pointers).
   pub fn roots(&self) -> impl 'gc + Iterator<Item = u64> {
     self
