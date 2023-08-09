@@ -473,7 +473,7 @@ where
   GC: GarbageCollector,
 {
   type Value = NoCheckValue;
-  type Error = ();
+  type Error = NoCheckError;
   type Heap = H;
   type GarbageCollector = GC;
 
@@ -593,5 +593,15 @@ impl NoCheckValue {
       is_ptr: true,
       value,
     }
+  }
+}
+
+/// Error for [`NoCheck`] policy.
+#[derive(Debug)]
+pub struct NoCheckError;
+
+impl fmt::Display for NoCheckError {
+  fn fmt(&self, _: &mut fmt::Formatter) -> fmt::Result {
+    unreachable!("`NoCheck` should not return an error")
   }
 }
