@@ -5,8 +5,8 @@ use crate::interpreter::gc::PotentialRoots;
 use crate::interpreter::heap::{Heap, Obj, ObjKind};
 use crate::interpreter::policy::Policy;
 use std::iter::Flatten;
-use std::mem;
 use std::slice::Iter;
+use std::{fmt, mem};
 
 /// Virtual machine for running bytecode.
 pub struct VM<P: Policy> {
@@ -58,6 +58,35 @@ impl<P: Policy> VM<P> {
   /// Adds the given value to the value stack.
   pub fn add_value(&mut self, value: P::Value) {
     self.value_stack.push(value)
+  }
+
+  /// Adds the given string to the value stack.
+  ///
+  /// This method will allocates a heap memory to store the given string,
+  /// and push its address to the value stack.
+  pub fn add_str(&mut self, s: &str)
+  where
+    P::Error: fmt::Debug,
+  {
+    // allocate heap memory
+    let bs = s.as_bytes();
+    let len = bs.len() as u64;
+    let align = mem::size_of_val(&len);
+    let layout = P::layout(align + len as usize, align).unwrap();
+    let ptr = self.heap.alloc(layout);
+    // write string data
+    let addr = self.heap.addr_mut(ptr);
+    // safety: `Str`'s memory layout is same as the following code's description
+    unsafe {
+      *(addr as *mut u64) = len;
+      std::ptr::copy_nonoverlapping(
+        bs.as_ptr(),
+        (addr as *mut u8).offset(align as isize),
+        bs.len(),
+      );
+    }
+    // push to stack
+    self.value_stack.push(P::ptr_val(ptr))
   }
 }
 
