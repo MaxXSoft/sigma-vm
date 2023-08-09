@@ -663,7 +663,7 @@ impl<V> Vars<V> {
   }
 
   /// Returns an iterator of all variables.
-  pub fn iter<'a>(&'a self) -> Flatten<Iter<'a, Option<V>>> {
+  pub fn iter(&self) -> Flatten<Iter<Option<V>>> {
     self.vars.iter().flatten()
   }
 }
