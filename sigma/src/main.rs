@@ -5,14 +5,14 @@ use sigma_vm::interpreter::heap::{Checked, Heap, System};
 use sigma_vm::interpreter::policy::{NoCheck, Policy, Strict, StrictAlign};
 use sigma_vm::interpreter::vm::VM;
 use std::str::FromStr;
-use std::{env, fmt, process};
+use std::{env, fmt, io, process};
 
 /// Sigma Virtual Machine.
 #[derive(Parser, Debug)]
 #[command(name = "sigma", version)]
 struct CommandLineArgs {
   /// Path to the bytecode file.
-  bytecode: String,
+  bytecode: Option<String>,
 
   /// Execution policy of the virtual machine.
   #[arg(value_enum, short, long, default_value_t = PolicyArg::StrictAlign)]
@@ -147,21 +147,34 @@ where
 {
   let gc_threshold = args.gc_threshold.into();
   match args.policy {
-    PolicyArg::Strict => run_bytecode(args, Strict::<Checked<H>, GC>::new(gc_threshold)),
-    PolicyArg::StrictAlign => run_bytecode(args, StrictAlign::<Checked<H>, GC>::new(gc_threshold)),
-    PolicyArg::NoCheck => run_bytecode(args, NoCheck::<H, GC>::new(gc_threshold)),
+    PolicyArg::Strict => select_reader(args, Strict::<Checked<H>, GC>::new(gc_threshold)),
+    PolicyArg::StrictAlign => select_reader(args, StrictAlign::<Checked<H>, GC>::new(gc_threshold)),
+    PolicyArg::NoCheck => select_reader(args, NoCheck::<H, GC>::new(gc_threshold)),
   }
 }
 
-/// Runs the bytecode from the given command line arguments and policy.
-fn run_bytecode<P, V, E>(args: &CommandLineArgs, policy: P)
+/// Select bytecode reader from the command line arguments.
+fn select_reader<P, V, E>(args: &CommandLineArgs, policy: P)
 where
   P: Policy<Value = V, Error = E>,
   V: Clone,
   E: fmt::Debug + fmt::Display,
 {
+  match &args.bytecode {
+    Some(path) => run_bytecode(policy, ok_or_exit(Reader::from_path(path), PROMPT_READER)),
+    None => run_bytecode(policy, Reader::from_stdin()),
+  }
+}
+
+/// Runs the bytecode from the given policy and reader.
+fn run_bytecode<P, V, E, R>(policy: P, mut reader: Reader<R>)
+where
+  P: Policy<Value = V, Error = E>,
+  V: Clone,
+  E: fmt::Debug + fmt::Display,
+  R: io::Read,
+{
   // read bytecode file
-  let mut reader = ok_or_exit(Reader::from_path(&args.bytecode), PROMPT_READER);
   ok_or_exit(reader.read(), PROMPT_READER);
   // create VM instance
   let mut vm = VM::from_reader(policy, reader);
