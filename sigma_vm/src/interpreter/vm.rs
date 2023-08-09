@@ -411,7 +411,7 @@ where
           None => InstAction::Stop,
         }
       }
-      Inst::Sys(opr) => unimplemented!("system call"),
+      Inst::Sys(_) => unimplemented!("system call"),
       Inst::Break => unimplemented!("breakpoint"),
       Inst::Not => unary!(s0: u64, !s0),
       Inst::LNot => unary!(s0: u64, (s0 == 0) as u64),
