@@ -54,6 +54,11 @@ impl<P: Policy> VM<P> {
   pub fn value_stack(&self) -> &[P::Value] {
     &self.value_stack
   }
+
+  /// Adds the given value to the value stack.
+  pub fn add_value(&mut self, value: P::Value) {
+    self.value_stack.push(value)
+  }
 }
 
 impl<P: Policy> VM<P>
