@@ -161,8 +161,8 @@ where
   E: fmt::Debug + fmt::Display,
 {
   // read bytecode file
-  let mut reader = ok_or_exit(Reader::from_path(&args.bytecode));
-  ok_or_exit(reader.read());
+  let mut reader = ok_or_exit(Reader::from_path(&args.bytecode), PROMPT_READER);
+  ok_or_exit(reader.read(), PROMPT_READER);
   // create VM instance
   let mut vm = VM::from_reader(policy, reader);
   // push arguments
@@ -170,7 +170,7 @@ where
     vm.add_str(&arg);
   }
   // run VM
-  ok_or_exit(vm.run());
+  ok_or_exit(vm.run(), PROMPT_VM);
   // return the top most integer value on the stack
   if let Some(v) = vm.value_stack().last() {
     if let Ok(v) = P::get_int_ptr(v) {
@@ -182,15 +182,18 @@ where
 }
 
 /// Returns the result, or print error message and exit on error.
-fn ok_or_exit<T, E>(result: Result<T, E>) -> T
+fn ok_or_exit<T, E>(result: Result<T, E>, prompt: &str) -> T
 where
   E: fmt::Display,
 {
   match result {
     Ok(v) => v,
     Err(e) => {
-      eprintln!("Sigma VM runtime error: {e}");
+      eprintln!("{prompt}: {e}");
       process::exit(-1);
     }
   }
 }
+
+const PROMPT_READER: &'static str = "Error reading bytecode";
+const PROMPT_VM: &'static str = "Sigma VM runtime error";
