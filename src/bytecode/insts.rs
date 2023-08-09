@@ -219,7 +219,7 @@ def_opc_inst! {
   /// Return from the current function.
   Ret,
   /// System call.
-  Sys(u64),
+  Sys(i64),
   /// Breakpoint.
   Break,
   /// Bitwise not.
