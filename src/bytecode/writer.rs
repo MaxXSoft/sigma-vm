@@ -22,6 +22,11 @@ impl<'w, W> Writer<'w, W> {
       insts,
     }
   }
+
+  /// Converts the current writer into the inner writer.
+  pub fn into_inner(self) -> W {
+    self.writer
+  }
 }
 
 impl<'w, W> Writer<'w, W>
