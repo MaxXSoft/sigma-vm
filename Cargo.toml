@@ -1,7 +1,4 @@
-[package]
-name = "sigma-vm"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-leb128 = "0.2.5"
+[workspace]
+members = [
+  "sigma-vm",
+]
