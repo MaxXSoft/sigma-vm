@@ -6,8 +6,8 @@ use leb128::read::{signed, unsigned, Error as LebError};
 use std::alloc::LayoutError;
 use std::fs::File;
 use std::io::{stdin, Error as IoError, Read, Result as IoResult, Stdin};
-use std::mem;
 use std::path::Path;
+use std::{fmt, mem};
 
 /// Error that can occur when reading bytecode files.
 #[derive(Debug)]
@@ -21,11 +21,11 @@ pub enum Error {
   /// Integer overflow.
   Overflow,
   /// Unknown constant kind.
-  UnknownConstKind,
+  UnknownConstKind(u8),
   /// Layout error.
   Layout(LayoutError),
   /// Unknown opcode.
-  UnknownOpcode,
+  UnknownOpcode(u8),
 }
 
 impl From<LebError> for Error {
@@ -33,6 +33,20 @@ impl From<LebError> for Error {
     match e {
       LebError::IoError(e) => Self::IO(e),
       LebError::Overflow => Self::Overflow,
+    }
+  }
+}
+
+impl fmt::Display for Error {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    match self {
+      Self::IO(io) => write!(f, "{io}"),
+      Self::InvalidMagic => write!(f, "invalid magic number"),
+      Self::IncompatibleVersion => write!(f, "incompatible version"),
+      Self::Overflow => write!(f, "integer overflow when reading bytecode"),
+      Self::UnknownConstKind(k) => write!(f, "unknown constant kind: {k}"),
+      Self::Layout(l) => write!(f, "{l}"),
+      Self::UnknownOpcode(o) => write!(f, "unknown opcode: {o}"),
     }
   }
 }
@@ -209,7 +223,8 @@ where
   }
 
   fn read_inst(&mut self) -> Result<Inst> {
-    let opcode = Opcode::from_byte(self.read_le()?).ok_or(Error::UnknownOpcode)?;
+    let opc = self.read_le()?;
+    let opcode = Opcode::from_byte(opc).ok_or(Error::UnknownOpcode(opc))?;
     let opr = match opcode.operand_type() {
       Some(OperandType::Signed) => Some(Operand::Signed(self.read_leb128()?)),
       Some(OperandType::Unsigned) => Some(Operand::Unsigned(self.read_leb128()?)),
@@ -319,7 +334,8 @@ impl ReadConst for ConstKind {
   where
     R: Read,
   {
-    Self::from_byte(reader.read_le()?).ok_or(Error::UnknownConstKind)
+    let kind = reader.read_le()?;
+    Self::from_byte(kind).ok_or(Error::UnknownConstKind(kind))
   }
 }
 
