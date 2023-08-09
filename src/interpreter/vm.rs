@@ -396,10 +396,14 @@ where
       Inst::Zext(opr) => unary!(s0: u64, if opr <= 64 { s0 & !((1 << opr) - 1) } else { s0 }),
       Inst::Eq => binary!((lhs, rhs): _, u64: (lhs == rhs) as u64),
       Inst::Ne => binary!((lhs, rhs): _, u64: (lhs != rhs) as u64),
-      Inst::Lt => binary!((lhs, rhs): u64, (lhs < rhs) as u64),
-      Inst::Le => binary!((lhs, rhs): u64, (lhs <= rhs) as u64),
-      Inst::Gt => binary!((lhs, rhs): u64, (lhs > rhs) as u64),
-      Inst::Ge => binary!((lhs, rhs): u64, (lhs >= rhs) as u64),
+      Inst::Lt => binary!((lhs, rhs): u64, ((lhs as i64) < rhs as i64) as u64),
+      Inst::Le => binary!((lhs, rhs): u64, (lhs as i64 <= rhs as i64) as u64),
+      Inst::Gt => binary!((lhs, rhs): u64, (lhs as i64 > rhs as i64) as u64),
+      Inst::Ge => binary!((lhs, rhs): u64, (lhs as i64 >= rhs as i64) as u64),
+      Inst::LtU => binary!((lhs, rhs): u64, (lhs < rhs) as u64),
+      Inst::LeU => binary!((lhs, rhs): u64, (lhs <= rhs) as u64),
+      Inst::GtU => binary!((lhs, rhs): u64, (lhs > rhs) as u64),
+      Inst::GeU => binary!((lhs, rhs): u64, (lhs >= rhs) as u64),
       Inst::Neg => unary!(s0: u64, !s0 + 1),
       Inst::Add => {
         let rhs = self.pop()?;
