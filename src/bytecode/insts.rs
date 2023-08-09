@@ -254,13 +254,13 @@ def_opc_inst! {
   Gt,
   /// Test greater than or equal.
   Ge,
-  /// Test less than.
+  /// Test less than (unsigned).
   LtU,
-  /// Test less than or equal.
+  /// Test less than or equal (unsigned).
   LeU,
-  /// Test greater than.
+  /// Test greater than (unsigned).
   GtU,
-  /// Test greater than or equal.
+  /// Test greater than or equal (unsigned).
   GeU,
   /// Negation.
   Neg,
