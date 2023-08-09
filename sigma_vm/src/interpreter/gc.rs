@@ -8,7 +8,7 @@ use std::mem;
 /// Garbage collector interface.
 pub trait GarbageCollector {
   /// Creates a new garbage collector.
-  fn new(threshold: usize) -> Self;
+  fn new() -> Self;
 
   /// Collects garbage on the given heap.
   fn collect<P>(&mut self, heap: &mut P::Heap, proots: PotentialRoots<P>) -> Result<(), P::Error>
@@ -44,7 +44,7 @@ impl<'gc, P: 'gc + Policy> PotentialRoots<'gc, P> {
 pub struct Nothing;
 
 impl GarbageCollector for Nothing {
-  fn new(_: usize) -> Self {
+  fn new() -> Self {
     Self
   }
 
@@ -57,9 +57,7 @@ impl GarbageCollector for Nothing {
 }
 
 /// Mark-sweep garbage collector.
-pub struct MarkSweep {
-  threshold: usize,
-}
+pub struct MarkSweep;
 
 impl MarkSweep {
   /// Pushes object pointer to the worklist by the given object metadata.
@@ -83,17 +81,14 @@ impl MarkSweep {
 }
 
 impl GarbageCollector for MarkSweep {
-  fn new(threshold: usize) -> Self {
-    Self { threshold }
+  fn new() -> Self {
+    Self
   }
 
   fn collect<P>(&mut self, heap: &mut P::Heap, proots: PotentialRoots<P>) -> Result<(), P::Error>
   where
     P: Policy,
   {
-    if heap.size() <= self.threshold {
-      return Ok(());
-    }
     // mark reachable pointers
     let mut reachable = HashSet::new();
     let mut worklist: Vec<_> = proots.roots().collect();
