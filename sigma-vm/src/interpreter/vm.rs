@@ -537,16 +537,6 @@ where
     self.pop().map(|v| P::get_any(&v))
   }
 
-  /// Peeks the value at the given index in the value stack.
-  fn peek(&self, index: usize) -> Result<&P::Value, P::Error> {
-    P::unwrap_val(self.value_stack.get(index))
-  }
-
-  /// Peeks the mutable value at the given index in the value stack.
-  fn peek_mut(&mut self, index: usize) -> Result<&mut P::Value, P::Error> {
-    P::unwrap_val(self.value_stack.get_mut(index))
-  }
-
   /// Peeks the last value in the value stack.
   fn peek_s0(&self) -> Result<&P::Value, P::Error> {
     P::unwrap_val(self.value_stack.last())
