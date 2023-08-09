@@ -3,7 +3,7 @@ use crate::interpreter::gc::{GarbageCollector, PotentialRoots};
 use crate::interpreter::heap::{CheckedHeap, Heap};
 use std::alloc::Layout;
 use std::marker::PhantomData;
-use std::{mem, ptr};
+use std::{fmt, mem, ptr};
 
 /// Execution policy of the VM (interpreter).
 pub trait Policy {
@@ -291,6 +291,20 @@ pub enum StrictError {
   InvalidLayout,
 }
 
+impl fmt::Display for StrictError {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    match self {
+      Self::TypeMismatch => write!(f, "value type mismatch"),
+      Self::ExpectedValue => write!(f, "expected a value, got nothing"),
+      Self::ZeroDivision => write!(f, "divisor is zero"),
+      Self::OutOfBounds => write!(f, "memory access out of bounds"),
+      Self::OutOfHeap => write!(f, "out of heap memory"),
+      Self::InvalidObject => write!(f, "invalid object metadata"),
+      Self::InvalidLayout => write!(f, "invalid allocation layout"),
+    }
+  }
+}
+
 /// Strict policy with alignment checking.
 ///
 /// Checks type of values, division, memory out of bounds and memory alignment.
@@ -420,6 +434,15 @@ pub enum StrictAlignError {
   Strict(StrictError),
   /// Memory access is not aligned.
   MisalignedAccess,
+}
+
+impl fmt::Display for StrictAlignError {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    match self {
+      Self::Strict(s) => write!(f, "{s}"),
+      Self::MisalignedAccess => write!(f, "memory access is not aligned"),
+    }
+  }
 }
 
 /// No check policy.
