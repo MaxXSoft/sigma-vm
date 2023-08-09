@@ -1,6 +1,11 @@
 use clap::{Parser, ValueEnum};
-use std::fmt;
+use sigma_vm::bytecode::reader::Reader;
+use sigma_vm::interpreter::gc::{GarbageCollector, MarkSweep, Nothing};
+use sigma_vm::interpreter::heap::{Checked, Heap, System};
+use sigma_vm::interpreter::policy::{NoCheck, Policy, Strict, StrictAlign};
+use sigma_vm::interpreter::vm::VM;
 use std::str::FromStr;
+use std::{env, fmt, process};
 
 /// Sigma Virtual Machine.
 #[derive(Parser, Debug)]
@@ -10,16 +15,16 @@ struct CommandLineArgs {
   bytecode: String,
 
   /// Execution policy of the virtual machine.
-  #[arg(value_enum, short, long, default_value_t = Policy::StrictAlign)]
-  policy: Policy,
+  #[arg(value_enum, short, long, default_value_t = PolicyArg::StrictAlign)]
+  policy: PolicyArg,
 
   /// Heap of the virtual machine.
-  #[arg(value_enum, short = 'H', long, default_value_t = Heap::System)]
-  heap: Heap,
+  #[arg(value_enum, short = 'H', long, default_value_t = HeapArg::System)]
+  heap: HeapArg,
 
   /// Garbage collector.
-  #[arg(value_enum, short, long, default_value_t = GarbageCollector::MarkSweep)]
-  gc: GarbageCollector,
+  #[arg(value_enum, short, long, default_value_t = GarbageCollectorArg::MarkSweep)]
+  gc: GarbageCollectorArg,
 
   /// Garbage collector threshold.
   #[arg(short = 't', long, default_value_t = Size::Megabytes(256))]
@@ -27,7 +32,7 @@ struct CommandLineArgs {
 }
 
 #[derive(ValueEnum, Clone, Copy, Debug)]
-enum Policy {
+enum PolicyArg {
   /// Checks type of values, division, and memory out of bounds.
   #[value(alias("s"))]
   Strict,
@@ -40,14 +45,14 @@ enum Policy {
 }
 
 #[derive(ValueEnum, Clone, Copy, Debug)]
-enum Heap {
+enum HeapArg {
   /// Heap that uses system's allocator to allocate memory.
   #[value(alias("s"))]
   System,
 }
 
 #[derive(ValueEnum, Clone, Copy, Debug)]
-enum GarbageCollector {
+enum GarbageCollectorArg {
   /// No garbage collector.
   #[value(alias("n"))]
   No,
@@ -113,5 +118,79 @@ impl fmt::Display for Size {
 
 fn main() {
   let args = CommandLineArgs::parse();
-  println!("{args:#?}");
+  select_heap(&args);
+}
+
+/// Selects heap from the command line arguments.
+fn select_heap(args: &CommandLineArgs) {
+  match args.heap {
+    HeapArg::System => select_gc::<System>(args),
+  }
+}
+
+/// Selects garbage collector from the command line arguments.
+fn select_gc<H>(args: &CommandLineArgs)
+where
+  H: Heap,
+{
+  match args.gc {
+    GarbageCollectorArg::No => select_policy::<H, Nothing>(args),
+    GarbageCollectorArg::MarkSweep => select_policy::<H, MarkSweep>(args),
+  }
+}
+
+/// Selects policy from the command line arguments.
+fn select_policy<H, GC>(args: &CommandLineArgs)
+where
+  H: Heap,
+  GC: GarbageCollector,
+{
+  let gc_threshold = args.gc_threshold.into();
+  match args.policy {
+    PolicyArg::Strict => run_bytecode(args, Strict::<Checked<H>, GC>::new(gc_threshold)),
+    PolicyArg::StrictAlign => run_bytecode(args, StrictAlign::<Checked<H>, GC>::new(gc_threshold)),
+    PolicyArg::NoCheck => run_bytecode(args, NoCheck::<H, GC>::new(gc_threshold)),
+  }
+}
+
+/// Runs the bytecode from the given command line arguments and policy.
+fn run_bytecode<P, V, E>(args: &CommandLineArgs, policy: P)
+where
+  P: Policy<Value = V, Error = E>,
+  V: Clone,
+  E: fmt::Debug + fmt::Display,
+{
+  // read bytecode file
+  let mut reader = ok_or_exit(Reader::from_path(&args.bytecode));
+  ok_or_exit(reader.read());
+  // create VM instance
+  let mut vm = VM::from_reader(policy, reader);
+  // push arguments
+  for arg in env::args() {
+    vm.add_str(&arg);
+  }
+  // run VM
+  ok_or_exit(vm.run());
+  // return the top most integer value on the stack
+  if let Some(v) = vm.value_stack().last() {
+    if let Ok(v) = P::get_int_ptr(v) {
+      process::exit(v as i32);
+    }
+  }
+  // no value to return, just return zero
+  process::exit(0);
+}
+
+/// Returns the result, or print error message and exit on error.
+fn ok_or_exit<T, E>(result: Result<T, E>) -> T
+where
+  E: fmt::Display,
+{
+  match result {
+    Ok(v) => v,
+    Err(e) => {
+      eprintln!("Sigma VM runtime error: {e}");
+      process::exit(-1);
+    }
+  }
 }
