@@ -1,5 +1,5 @@
 use crate::bytecode::consts::{ConstKind, HeapConst, Object};
-use crate::interpreter::gc::GarbageCollector;
+use crate::interpreter::gc::{GarbageCollector, PotentialRoots};
 use crate::interpreter::heap::{CheckedHeap, Heap};
 use std::alloc::Layout;
 use std::marker::PhantomData;
@@ -106,9 +106,16 @@ pub trait Policy {
   /// Creates a new garbage collector.
   fn new_gc(&self) -> Self::GarbageCollector;
 
-  /// Checks if the GC succeeded in reducing the heap size,
-  /// returns an error if necessary.
-  fn check_gc_success(&self, heap: &Self::Heap) -> Result<(), Self::Error>;
+  /// Runs the garbage collector if necessary, and checks if
+  /// the GC succeeded in reducing the heap size.
+  ///
+  /// Returns an error if necessary.
+  fn collect(
+    &self,
+    gc: &mut Self::GarbageCollector,
+    heap: &mut Self::Heap,
+    proots: PotentialRoots<Self>,
+  ) -> Result<(), Self::Error>;
 }
 
 /// Strict policy.
@@ -237,15 +244,22 @@ where
   }
 
   fn new_gc(&self) -> Self::GarbageCollector {
-    GC::new(self.gc_threshold)
+    GC::new()
   }
 
-  fn check_gc_success(&self, heap: &Self::Heap) -> Result<(), Self::Error> {
+  fn collect(
+    &self,
+    gc: &mut Self::GarbageCollector,
+    heap: &mut Self::Heap,
+    proots: PotentialRoots<Self>,
+  ) -> Result<(), Self::Error> {
     if heap.size() > self.gc_threshold {
-      Err(StrictError::OutOfHeap)
-    } else {
-      Ok(())
+      gc.collect(heap, proots)?;
+      if heap.size() > self.gc_threshold {
+        return Err(StrictError::OutOfHeap);
+      }
     }
+    Ok(())
   }
 }
 
@@ -381,10 +395,20 @@ where
     self.strict.new_gc()
   }
 
-  fn check_gc_success(&self, heap: &Self::Heap) -> Result<(), Self::Error> {
+  fn collect(
+    &self,
+    gc: &mut Self::GarbageCollector,
+    heap: &mut Self::Heap,
+    proots: PotentialRoots<Self>,
+  ) -> Result<(), Self::Error> {
+    let proots = PotentialRoots {
+      consts: proots.consts,
+      values: proots.values,
+      vars: proots.vars,
+    };
     self
       .strict
-      .check_gc_success(heap)
+      .collect(gc, heap, proots)
       .map_err(StrictAlignError::Strict)
   }
 }
@@ -497,20 +521,30 @@ where
   }
 
   fn new_gc(&self) -> Self::GarbageCollector {
-    GC::new(self.gc_threshold)
+    GC::new()
   }
 
-  /// Checks if the GC succeeded in reducing the heap size.
+  /// Runs the garbage collector if necessary, and checks if
+  /// the GC succeeded in reducing the heap size.
+  ///
+  /// Returns an error if necessary.
   ///
   /// # Panics
   ///
   /// Panics if unsuccess.
-  fn check_gc_success(&self, heap: &Self::Heap) -> Result<(), Self::Error> {
+  fn collect(
+    &self,
+    gc: &mut Self::GarbageCollector,
+    heap: &mut Self::Heap,
+    proots: PotentialRoots<Self>,
+  ) -> Result<(), Self::Error> {
     if heap.size() > self.gc_threshold {
-      panic!("out of heap memory")
-    } else {
-      Ok(())
+      gc.collect(heap, proots)?;
+      if heap.size() > self.gc_threshold {
+        panic!("out of heap memory");
+      }
     }
+    Ok(())
   }
 }
 
