@@ -79,11 +79,7 @@ impl<P: Policy> VM<P> {
     // safety: `Str`'s memory layout is same as the following code's description
     unsafe {
       *(addr as *mut u64) = len;
-      std::ptr::copy_nonoverlapping(
-        bs.as_ptr(),
-        (addr as *mut u8).offset(align as isize),
-        bs.len(),
-      );
+      std::ptr::copy_nonoverlapping(bs.as_ptr(), (addr as *mut u8).add(align), bs.len());
     }
     // push to stack
     self.value_stack.push(P::ptr_val(ptr))

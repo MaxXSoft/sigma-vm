@@ -30,26 +30,26 @@ mod test {
   /// Helper macro for constructing values.
   macro_rules! value {
     (u64: $e:expr) => {
-      SAP::int_val($e)
+      Sap::int_val($e)
     };
     (f32: $e:expr) => {
-      SAP::f32_val($e)
+      Sap::f32_val($e)
     };
     (f64: $e:expr) => {
-      SAP::f64_val($e)
+      Sap::f64_val($e)
     };
   }
 
   /// Helper macro for extracting values.
   macro_rules! result {
     (u64: $e:expr) => {
-      SAP::get_int_ptr($e).unwrap()
+      Sap::get_int_ptr($e).unwrap()
     };
     (f32: $e:expr) => {
-      SAP::get_f32($e).unwrap()
+      Sap::get_f32($e).unwrap()
     };
     (f64: $e:expr) => {
-      SAP::get_f64($e).unwrap()
+      Sap::get_f64($e).unwrap()
     };
   }
 
@@ -62,7 +62,7 @@ mod test {
       results: ($($rs:tt),*) $(,)?
     } => {{
       let insts = insts![$($opc $(($opr))?),*];
-      let mut vm = VM::new(SAP::new(1024), consts![$($cs)*], insts);
+      let mut vm = VM::new(Sap::new(1024), consts![$($cs)*], insts);
       vm.add_values(&[$(value!($aty: $ae)),*]);
       vm.run().unwrap();
       let values = vm.value_stack();
@@ -78,7 +78,7 @@ mod test {
   }
 
   /// Strict align policy, with checked system heap and mark-sweep GC.
-  type SAP = StrictAlign<Checked<System>, MarkSweep>;
+  type Sap = StrictAlign<Checked<System>, MarkSweep>;
 
   #[test]
   fn a_plus_b() {
@@ -226,7 +226,7 @@ mod test {
           LdV(0),
           StDO(2),
           Ret,
-        
+
         // append:
           StA(1),
           LdV(0),
@@ -236,7 +236,7 @@ mod test {
           LdV(0),
           StDO(0),
           Ret,
-        
+
         // sum:
           StA(0),
           PushU(0),

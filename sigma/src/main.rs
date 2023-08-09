@@ -91,13 +91,13 @@ impl FromStr for Size {
       None => &s,
     };
     let size: usize = digits.parse().unwrap();
-    if s.len() == digits.len() || s.ends_with("b") {
+    if s.len() == digits.len() || s.ends_with('b') {
       Ok(Self::Bytes(size))
-    } else if s.ends_with("k") || s.ends_with("kb") {
+    } else if s.ends_with('k') || s.ends_with("kb") {
       Ok(Self::Kilobytes(size))
-    } else if s.ends_with("m") || s.ends_with("mb") {
+    } else if s.ends_with('m') || s.ends_with("mb") {
       Ok(Self::Megabytes(size))
-    } else if s.ends_with("g") || s.ends_with("gb") {
+    } else if s.ends_with('g') || s.ends_with("gb") {
       Ok(Self::Gigabytes(size))
     } else {
       Err("size can only end with B/KB/MB/GB")
@@ -208,5 +208,6 @@ where
   }
 }
 
-const PROMPT_READER: &'static str = "Error reading bytecode";
-const PROMPT_VM: &'static str = "Sigma VM runtime error";
+// Prompts for printing error messages.
+const PROMPT_READER: &str = "Error reading bytecode";
+const PROMPT_VM: &str = "Sigma VM runtime error";
