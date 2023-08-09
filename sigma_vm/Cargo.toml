@@ -1,5 +1,5 @@
 [package]
-name = "sigma-vm"
+name = "sigma_vm"
 version = "0.0.1"
 edition = "2021"
 
