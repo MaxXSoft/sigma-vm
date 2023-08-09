@@ -210,6 +210,8 @@ def_opc_inst! {
   NewAC(u64),
   /// Delete the allocated heap memory s0.
   Del,
+  /// Branch to pc + opr if s0 is zero.
+  Bz(i64),
   /// Branch to pc + opr if s0 is not zero.
   Bnz(i64),
   /// Jump to pc + opr.

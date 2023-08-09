@@ -355,6 +355,13 @@ where
         self.heap.dealloc(ptr);
         InstAction::NextPC
       }
+      Inst::Bz(opr) => {
+        if self.pop_any()? == 0 {
+          InstAction::SetPC((self.pc as i64 + opr) as u64)
+        } else {
+          InstAction::NextPC
+        }
+      }
       Inst::Bnz(opr) => {
         if self.pop_any()? != 0 {
           InstAction::SetPC((self.pc as i64 + opr) as u64)
