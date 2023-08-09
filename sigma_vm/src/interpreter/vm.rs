@@ -1,7 +1,7 @@
 use crate::bytecode::consts::{Const, HeapConst};
 use crate::bytecode::insts::Inst;
 use crate::bytecode::reader::Reader;
-use crate::interpreter::gc::{GarbageCollector, PotentialRoots};
+use crate::interpreter::gc::PotentialRoots;
 use crate::interpreter::heap::{Heap, Obj, ObjKind};
 use crate::interpreter::policy::Policy;
 use std::iter::Flatten;
@@ -577,15 +577,15 @@ where
 
   /// Runs garbage collector.
   fn collect(&mut self) -> Result<(), P::Error> {
-    self.gc.collect::<P>(
+    self.policy.collect(
+      &mut self.gc,
       &mut self.heap,
       PotentialRoots {
         consts: &self.consts,
         values: &self.value_stack,
         vars: &self.var_stack,
       },
-    )?;
-    self.policy.check_gc_success(&self.heap)
+    )
   }
 
   /// Allocates heap memory for the given object metadata pointer.
