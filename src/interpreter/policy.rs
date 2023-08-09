@@ -359,8 +359,13 @@ where
     self.strict.new_heap()
   }
 
-  fn check_access(heap: &Self::Heap, p: u64, len: usize) -> Result<(), Self::Error> {
+  fn check_access(heap: &Self::Heap, p: u64, mut len: usize) -> Result<(), Self::Error> {
     Strict::<H, GC>::check_access(heap, p, len).map_err(StrictAlignError::Strict)?;
+    // since the bytecode only defines memory access operation up to 8 bytes
+    // we just check for alignment up to 8 bytes
+    if len > mem::size_of::<u64>() {
+      len = mem::size_of::<u64>();
+    }
     if !len.is_power_of_two() || (p & (len as u64 - 1)) != 0 {
       Err(StrictAlignError::MisalignedAccess)
     } else {
