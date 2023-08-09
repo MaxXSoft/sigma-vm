@@ -95,4 +95,52 @@ mod test {
     assert_eq!(a_plus_b(0, 0), 0);
     assert_eq!(a_plus_b(1, u64::MAX), 0);
   }
+
+  #[test]
+  fn fib_recursive() {
+    fn fib(n: u64) -> u64 {
+      vm! {
+        insts: [
+          StA(0),
+          Call(19), // main
+          Ret,
+        // fib:
+          StA(0),
+          LdV(0),
+          PushU(2),
+          GtU,
+          Bnz(3), // fib_else
+          PushU(1),
+          Ret,
+        // fib_else:
+          LdV(0),
+          PushU(1),
+          Sub,
+          Call(-10), // fib
+          LdV(0),
+          PushU(2),
+          Sub,
+          Call(-14), // fib
+          Add,
+          Ret,
+        // main:
+          LdG(0),
+          Call(-18), // fib
+          Ret,
+        ],
+        consts: [],
+        args: [u64: n],
+        results: (u64),
+      }
+    }
+
+    assert_eq!(fib(0), 1);
+    assert_eq!(fib(1), 1);
+    assert_eq!(fib(2), 1);
+    assert_eq!(fib(3), 2);
+    assert_eq!(fib(4), 3);
+    assert_eq!(fib(5), 5);
+    assert_eq!(fib(10), 55);
+    assert_eq!(fib(20), 6765);
+  }
 }
