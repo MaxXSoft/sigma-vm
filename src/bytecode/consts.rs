@@ -44,6 +44,11 @@ impl Const {
     self.kind = kind;
   }
 
+  /// Returns the data of the current constant.
+  pub fn data(&self) -> &[u8] {
+    &self.data
+  }
+
   /// Returns the address of the current constant.
   pub fn addr(&self) -> *const () {
     self.data.as_ptr() as *const ()
