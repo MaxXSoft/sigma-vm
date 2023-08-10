@@ -1,6 +1,8 @@
 use crate::bytecode::consts::{Const, ConstKind, Object, Raw, Str};
 use crate::bytecode::insts::{Inst, Opcode, Operand, OperandType};
+use crate::bytecode::module::Module;
 use crate::bytecode::{MAGIC, VERSION};
+use crate::interpreter::heap::Heap;
 use crate::utils::alloc_uninit;
 use leb128::read::{signed, unsigned, Error as LebError};
 use std::alloc::LayoutError;
@@ -87,6 +89,21 @@ impl<R> Reader<R> {
       self.consts.into_boxed_slice(),
       self.insts.into_boxed_slice(),
     )
+  }
+
+  /// Converts the reader into a module.
+  pub fn into_module<H>(self, heap: &mut H) -> Module
+  where
+    H: Heap,
+  {
+    Module {
+      consts: self
+        .consts
+        .into_iter()
+        .map(|c| c.into_heap_const(heap))
+        .collect(),
+      insts: self.insts.into_boxed_slice(),
+    }
   }
 }
 
