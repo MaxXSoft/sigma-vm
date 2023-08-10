@@ -14,6 +14,9 @@ pub trait GarbageCollector {
   fn collect<P>(&mut self, heap: &mut P::Heap, proots: PotentialRoots<P>) -> Result<(), P::Error>
   where
     P: Policy;
+
+  /// Resets the internal state.
+  fn reset(&mut self);
 }
 
 /// Potential GC roots.
@@ -57,6 +60,8 @@ impl GarbageCollector for Nothing {
   {
     Ok(())
   }
+
+  fn reset(&mut self) {}
 }
 
 /// Mark-sweep garbage collector.
@@ -125,4 +130,6 @@ impl GarbageCollector for MarkSweep {
     }
     Ok(())
   }
+
+  fn reset(&mut self) {}
 }
