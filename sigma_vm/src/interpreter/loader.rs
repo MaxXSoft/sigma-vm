@@ -1,7 +1,6 @@
 use crate::bytecode::module::Module;
 use crate::bytecode::reader::{Error as ReaderError, Reader};
 use crate::interpreter::heap::Heap;
-use crate::utils::impl_try_from_int;
 use std::collections::HashMap;
 use std::fmt;
 use std::io::Error as IoError;
@@ -50,14 +49,14 @@ impl Loader {
     // update resolved path, return if the module has already been loaded
     let id = self.resolved_paths.len() as u32;
     match self.resolved_paths.get(&final_path) {
-      Some(id) => return Ok(Source::new_file(*id)),
+      Some(id) => return Ok(Source::File(*id)),
       None => self.resolved_paths.insert(final_path.clone(), id),
     };
     // read bytecode from the path
     let mut reader = Reader::from_path(final_path).map_err(Error::IO)?;
     reader.read().map_err(Error::Reader)?;
     // add to loaded modules
-    let source = Source::new_file(id);
+    let source = Source::File(id);
     self.loaded_mods.insert(source, reader.into_module(heap));
     Ok(source)
   }
@@ -67,12 +66,26 @@ impl Loader {
   where
     H: Heap,
   {
-    let source = Source::new_memory(self.next_mem_id);
+    let source = Source::Memory(self.next_mem_id);
     self.next_mem_id += 1;
     // read bytecode from bytes
     let mut reader = Reader::from(bytes);
     reader.read().map_err(Error::Reader)?;
     // add to loaded modules
+    self.loaded_mods.insert(source, reader.into_module(heap));
+    Ok(source)
+  }
+
+  /// Loads a module from the standard input.
+  pub fn load_from_stdin<H>(&mut self, heap: &mut H) -> Result<Source, Error>
+  where
+    H: Heap,
+  {
+    // read bytecode from bytes
+    let mut reader = Reader::from_stdin();
+    reader.read().map_err(Error::Reader)?;
+    // add to loaded modules
+    let source = Source::Stdin;
     self.loaded_mods.insert(source, reader.into_module(heap));
     Ok(source)
   }
@@ -89,34 +102,20 @@ impl Loader {
 }
 
 /// Source identifier of the loaded module.
-#[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Source {
-  kind: SourceKind,
-  id: u32,
-}
-
-impl Source {
-  /// Creates a new file source.
-  fn new_file(id: u32) -> Self {
-    Self {
-      kind: SourceKind::File,
-      id,
-    }
-  }
-
-  /// Creates a new memory source.
-  fn new_memory(id: u32) -> Self {
-    Self {
-      kind: SourceKind::Memory,
-      id,
-    }
-  }
+pub enum Source {
+  File(u32),
+  Memory(u32),
+  Stdin,
 }
 
 impl From<Source> for u64 {
   fn from(source: Source) -> Self {
-    ((source.kind as u64) << 32) | source.id as u64
+    match source {
+      Source::File(id) => (0 << 32) | id as u64,
+      Source::Memory(id) => (1 << 32) | id as u64,
+      Source::Stdin => 2 << 32,
+    }
   }
 }
 
@@ -124,36 +123,13 @@ impl TryFrom<u64> for Source {
   type Error = ();
 
   fn try_from(value: u64) -> Result<Self, Self::Error> {
-    Ok(Self {
-      kind: ((value >> 32) as u32).try_into()?,
-      id: value as u32,
-    })
+    match value >> 32 {
+      0 => Ok(Self::File(value as u32)),
+      1 => Ok(Self::Memory(value as u32)),
+      2 if value as u32 == 0 => Ok(Self::Stdin),
+      _ => Err(()),
+    }
   }
-}
-
-/// Helper macro for defining kind of the module source.
-macro_rules! source_kind {
-  ($($(#[$a:meta])* $kind:ident),+ $(,)?) => {
-    /// Kind of the module source.
-    #[repr(u32)]
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-    pub enum SourceKind {
-      $($(#[$a])* $kind),+
-    }
-
-    impl_try_from_int! {
-      impl TryFrom<u32> for SourceKind {
-        $($kind),+
-      }
-    }
-  };
-}
-
-source_kind! {
-  /// Module is loaded from file.
-  File,
-  /// Module is loaded from memory.
-  Memory,
 }
 
 /// Error for the module loader.
