@@ -1,3 +1,5 @@
+use crate::utils::impl_try_from_int;
+
 /// Type of instruction operand.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OperandType {
@@ -43,17 +45,17 @@ macro_rules! def_opc_inst {
     }
 
     impl Opcode {
-      /// Creates a new [`Opcode`] from the given byte.
-      pub fn from_byte(b: u8) -> Option<Self> {
-        let mut o = 0;
-        def_opc_inst!(@from_byte b, o $(,$opc)+)
-      }
-
       /// Returns the operand type of the current opcode.
       pub fn operand_type(&self) -> Option<OperandType> {
         match self {
           $(Self::$opc => def_opc_inst!(@opr_type $opc $(($t))?),)+
         }
+      }
+    }
+
+    impl_try_from_int! {
+      impl TryFrom<u8> for Opcode {
+        $($opc),+
       }
     }
 
@@ -91,15 +93,6 @@ macro_rules! def_opc_inst {
       }
     }
   };
-  (@from_byte $b:ident, $o:ident, $opc:ident $(,$opcs:ident)+) => {{
-    if $b == $o { return Some(Self::$opc) }
-    $o += 1;
-    def_opc_inst!(@from_byte $b, $o $(,$opcs)+)
-  }};
-  (@from_byte $b:ident, $o:ident, $opc:ident) => {{
-    if $b == $o { return Some(Self::$opc) }
-    None
-  }};
   (@opr_type $opc:ident) => { None };
   (@opr_type $opc:ident (i64)) => { Some(OperandType::Signed) };
   (@opr_type $opc:ident (u64)) => { Some(OperandType::Unsigned) };
