@@ -64,3 +64,27 @@ pub const fn str_to_u64(s: &str) -> u64 {
   }
   result
 }
+
+/// Converts the given value into a 64-bit unsigned integer.
+pub trait IntoU64 {
+  fn into_u64(self) -> u64;
+}
+
+/// Helper macros for implementing [`IntoU64`] for the given type.
+macro_rules! impl_into_u64 {
+  ($ty:ty) => {
+    impl IntoU64 for $ty {
+      fn into_u64(self) -> u64 {
+        self as u64
+      }
+    }
+  };
+}
+
+impl_into_u64!(i8);
+impl_into_u64!(u8);
+impl_into_u64!(i16);
+impl_into_u64!(u16);
+impl_into_u64!(i32);
+impl_into_u64!(u32);
+impl_into_u64!(u64);
