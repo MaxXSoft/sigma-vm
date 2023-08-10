@@ -1,7 +1,7 @@
 //! Definitions about constant pool.
 
 use crate::interpreter::heap::Heap;
-use crate::utils::alloc_uninit;
+use crate::utils::{alloc_uninit, impl_try_from_int};
 use std::alloc::Layout;
 use std::ptr::{self, Pointee};
 use std::{mem, slice};
@@ -242,23 +242,12 @@ macro_rules! const_kind {
       $($(#[$a])* $kind),+
     }
 
-    impl ConstKind {
-      /// Creates a new [`ConstKind`] from the given byte.
-      pub fn from_byte(b: u8) -> Option<Self> {
-        let mut k = 0;
-        const_kind!(@arm b, k $(,$kind)+)
+    impl_try_from_int! {
+      impl TryFrom<u8> for ConstKind {
+        $($kind),+
       }
     }
   };
-  (@arm $b:ident, $k:ident, $kind:ident $(,$kinds:ident)+) => {{
-    if $b == $k { return Some(Self::$kind) }
-    $k += 1;
-    const_kind!(@arm $b, $k $(,$kinds)+)
-  }};
-  (@arm $b:ident, $k:ident, $kind:ident) => {{
-    if $b == $k { return Some(Self::$kind) }
-    None
-  }};
 }
 
 const_kind! {
