@@ -9,7 +9,7 @@ use std::{env, fmt, io, process};
 
 /// Sigma Virtual Machine.
 #[derive(Parser, Debug)]
-#[command(name = "sigma", version)]
+#[command(version, about)]
 struct CommandLineArgs {
   /// Path to the bytecode file.
   bytecode: Option<String>,
