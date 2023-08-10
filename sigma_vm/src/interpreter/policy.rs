@@ -447,7 +447,7 @@ impl fmt::Display for StrictAlignError {
 
 /// No check policy.
 ///
-/// Does not check type of values, division and memory out of bounds.
+/// Does not check anything.
 ///
 /// # Notes
 ///
@@ -549,8 +549,6 @@ where
 
   /// Runs the garbage collector if necessary, and checks if
   /// the GC succeeded in reducing the heap size.
-  ///
-  /// Returns an error if necessary.
   ///
   /// # Panics
   ///
