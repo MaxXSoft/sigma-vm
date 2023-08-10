@@ -1,3 +1,4 @@
+pub mod module;
 pub mod consts;
 pub mod insts;
 pub mod reader;
