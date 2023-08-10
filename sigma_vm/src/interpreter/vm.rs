@@ -95,6 +95,147 @@ impl<P: Policy> VM<P> {
     self.heap.reset();
     self.gc.reset();
   }
+
+  /// Pushes a value to the value stack.
+  fn push(&mut self, v: P::Value) {
+    self.value_stack.push(v)
+  }
+
+  /// Pushes an integer to the value stack.
+  fn push_int(&mut self, i: u64) {
+    self.push(P::int_val(i))
+  }
+
+  /// Pushes a 32-bit floating point to the value stack.
+  fn push_f32(&mut self, f: f32) {
+    self.push(P::f32_val(f))
+  }
+
+  /// Pushes a 64-bit floating point to the value stack.
+  fn push_f64(&mut self, f: f64) {
+    self.push(P::f64_val(f))
+  }
+
+  /// Pushes a pointer to the value stack.
+  fn push_ptr(&mut self, p: u64) {
+    self.push(P::ptr_val(p))
+  }
+
+  /// Pops a value from the value stack.
+  fn pop(&mut self) -> Result<P::Value, P::Error> {
+    P::unwrap_val(self.value_stack.pop())
+  }
+
+  /// Pops an integer/pointer from the value stack.
+  fn pop_int_ptr(&mut self) -> Result<u64, P::Error> {
+    self.pop().and_then(|v| P::get_int_ptr(&v))
+  }
+
+  /// Pops a 32-bit floating point from the value stack.
+  fn pop_f32(&mut self) -> Result<f32, P::Error> {
+    self.pop().and_then(|v| P::get_f32(&v))
+  }
+
+  /// Pops a 64-bit floating point from the value stack.
+  fn pop_f64(&mut self) -> Result<f64, P::Error> {
+    self.pop().and_then(|v| P::get_f64(&v))
+  }
+
+  /// Pops a pointer from the value stack.
+  fn pop_ptr(&mut self) -> Result<u64, P::Error> {
+    self.pop().and_then(|v| P::get_ptr(&v))
+  }
+
+  /// Pops a untyped value from the value stack.
+  fn pop_any(&mut self) -> Result<u64, P::Error> {
+    self.pop().map(|v| P::get_any(&v))
+  }
+
+  /// Peeks the last value in the value stack.
+  fn peek_s0(&self) -> Result<&P::Value, P::Error> {
+    P::unwrap_val(self.value_stack.last())
+  }
+
+  /// Peeks the last mutable value in the value stack.
+  fn peek_s0_mut(&mut self) -> Result<&mut P::Value, P::Error> {
+    P::unwrap_val(self.value_stack.last_mut())
+  }
+
+  /// Loads the given pointer as type `T`.
+  fn load<T>(&mut self, ptr: u64) -> Result<InstAction, P::Error>
+  where
+    T: Copy + IntoU64,
+  {
+    let len = mem::size_of::<T>();
+    P::check_access(&self.heap, ptr, len, len)?;
+    self.push_int(unsafe { *(self.heap.addr(ptr) as *const T) }.into_u64());
+    Ok(InstAction::NextPC)
+  }
+
+  /// Loads the given pointer as a pointer.
+  fn load_ptr(&mut self, ptr: u64) -> Result<InstAction, P::Error> {
+    let len = mem::size_of::<u64>();
+    P::check_access(&self.heap, ptr, len, len)?;
+    self.push_ptr(unsafe { *(self.heap.addr(ptr) as *const u64) });
+    Ok(InstAction::NextPC)
+  }
+
+  /// Stores the given value (of type `T`) to the memory
+  /// pointed by the given pointer.
+  fn store<T>(&mut self, v: P::Value, ptr: u64) -> Result<InstAction, P::Error>
+  where
+    T: Copy,
+  {
+    let len = mem::size_of::<T>();
+    P::check_access(&self.heap, ptr, len, len)?;
+    unsafe { *(self.heap.addr_mut(ptr) as *mut T) = *(&P::get_any(&v) as *const _ as *const T) };
+    Ok(InstAction::NextPC)
+  }
+
+  /// Runs garbage collector.
+  fn collect(&mut self) -> Result<(), P::Error> {
+    self.policy.collect(
+      &mut self.gc,
+      &mut self.heap,
+      PotentialRoots {
+        consts: &self.consts,
+        values: &self.value_stack,
+        vars: &self.var_stack,
+      },
+    )
+  }
+
+  /// Allocates heap memory for the given object metadata pointer.
+  fn new_object(&mut self, obj_ptr: u64) -> Result<InstAction, P::Error> {
+    let object = P::object(&self.heap, obj_ptr)?;
+    self.alloc_obj(object.size, object.align, ObjKind::Obj, obj_ptr)
+  }
+
+  /// Allocates array for the given object metadata pointer.
+  fn new_array(&mut self, obj_ptr: u64, len: u64) -> Result<InstAction, P::Error> {
+    let object = P::object(&self.heap, obj_ptr)?;
+    let size = if len != 0 {
+      object.aligned_size() * (len - 1) + object.size
+    } else {
+      0
+    };
+    self.alloc_obj(size, object.align, ObjKind::Array(len as usize), obj_ptr)
+  }
+
+  /// Allocates a new memory with object metadata.
+  fn alloc_obj(
+    &mut self,
+    size: u64,
+    align: u64,
+    kind: ObjKind,
+    obj_ptr: u64,
+  ) -> Result<InstAction, P::Error> {
+    let layout = P::layout(size as usize, align as usize)?;
+    self.collect()?;
+    let ptr = self.heap.alloc_obj(layout, Obj { kind, ptr: obj_ptr });
+    self.push_ptr(ptr);
+    Ok(InstAction::NextPC)
+  }
 }
 
 impl<P: Policy> VM<P>
@@ -516,147 +657,6 @@ where
       Inst::ITF => unary!(s0: u64, f32: unsafe { *(&s0 as *const _ as *const f32) }),
       Inst::ITD => unary!(s0: u64, f64: unsafe { *(&s0 as *const _ as *const f64) }),
     })
-  }
-
-  /// Pushes a value to the value stack.
-  fn push(&mut self, v: P::Value) {
-    self.value_stack.push(v)
-  }
-
-  /// Pushes an integer to the value stack.
-  fn push_int(&mut self, i: u64) {
-    self.push(P::int_val(i))
-  }
-
-  /// Pushes a 32-bit floating point to the value stack.
-  fn push_f32(&mut self, f: f32) {
-    self.push(P::f32_val(f))
-  }
-
-  /// Pushes a 64-bit floating point to the value stack.
-  fn push_f64(&mut self, f: f64) {
-    self.push(P::f64_val(f))
-  }
-
-  /// Pushes a pointer to the value stack.
-  fn push_ptr(&mut self, p: u64) {
-    self.push(P::ptr_val(p))
-  }
-
-  /// Pops a value from the value stack.
-  fn pop(&mut self) -> Result<P::Value, P::Error> {
-    P::unwrap_val(self.value_stack.pop())
-  }
-
-  /// Pops an integer/pointer from the value stack.
-  fn pop_int_ptr(&mut self) -> Result<u64, P::Error> {
-    self.pop().and_then(|v| P::get_int_ptr(&v))
-  }
-
-  /// Pops a 32-bit floating point from the value stack.
-  fn pop_f32(&mut self) -> Result<f32, P::Error> {
-    self.pop().and_then(|v| P::get_f32(&v))
-  }
-
-  /// Pops a 64-bit floating point from the value stack.
-  fn pop_f64(&mut self) -> Result<f64, P::Error> {
-    self.pop().and_then(|v| P::get_f64(&v))
-  }
-
-  /// Pops a pointer from the value stack.
-  fn pop_ptr(&mut self) -> Result<u64, P::Error> {
-    self.pop().and_then(|v| P::get_ptr(&v))
-  }
-
-  /// Pops a untyped value from the value stack.
-  fn pop_any(&mut self) -> Result<u64, P::Error> {
-    self.pop().map(|v| P::get_any(&v))
-  }
-
-  /// Peeks the last value in the value stack.
-  fn peek_s0(&self) -> Result<&P::Value, P::Error> {
-    P::unwrap_val(self.value_stack.last())
-  }
-
-  /// Peeks the last mutable value in the value stack.
-  fn peek_s0_mut(&mut self) -> Result<&mut P::Value, P::Error> {
-    P::unwrap_val(self.value_stack.last_mut())
-  }
-
-  /// Loads the given pointer as type `T`.
-  fn load<T>(&mut self, ptr: u64) -> Result<InstAction, P::Error>
-  where
-    T: Copy + IntoU64,
-  {
-    let len = mem::size_of::<T>();
-    P::check_access(&self.heap, ptr, len, len)?;
-    self.push_int(unsafe { *(self.heap.addr(ptr) as *const T) }.into_u64());
-    Ok(InstAction::NextPC)
-  }
-
-  /// Loads the given pointer as a pointer.
-  fn load_ptr(&mut self, ptr: u64) -> Result<InstAction, P::Error> {
-    let len = mem::size_of::<u64>();
-    P::check_access(&self.heap, ptr, len, len)?;
-    self.push_ptr(unsafe { *(self.heap.addr(ptr) as *const u64) });
-    Ok(InstAction::NextPC)
-  }
-
-  /// Stores the given value (of type `T`) to the memory
-  /// pointed by the given pointer.
-  fn store<T>(&mut self, v: P::Value, ptr: u64) -> Result<InstAction, P::Error>
-  where
-    T: Copy,
-  {
-    let len = mem::size_of::<T>();
-    P::check_access(&self.heap, ptr, len, len)?;
-    unsafe { *(self.heap.addr_mut(ptr) as *mut T) = *(&P::get_any(&v) as *const _ as *const T) };
-    Ok(InstAction::NextPC)
-  }
-
-  /// Runs garbage collector.
-  fn collect(&mut self) -> Result<(), P::Error> {
-    self.policy.collect(
-      &mut self.gc,
-      &mut self.heap,
-      PotentialRoots {
-        consts: &self.consts,
-        values: &self.value_stack,
-        vars: &self.var_stack,
-      },
-    )
-  }
-
-  /// Allocates heap memory for the given object metadata pointer.
-  fn new_object(&mut self, obj_ptr: u64) -> Result<InstAction, P::Error> {
-    let object = P::object(&self.heap, obj_ptr)?;
-    self.alloc_obj(object.size, object.align, ObjKind::Obj, obj_ptr)
-  }
-
-  /// Allocates array for the given object metadata pointer.
-  fn new_array(&mut self, obj_ptr: u64, len: u64) -> Result<InstAction, P::Error> {
-    let object = P::object(&self.heap, obj_ptr)?;
-    let size = if len != 0 {
-      object.aligned_size() * (len - 1) + object.size
-    } else {
-      0
-    };
-    self.alloc_obj(size, object.align, ObjKind::Array(len as usize), obj_ptr)
-  }
-
-  /// Allocates a new memory with object metadata.
-  fn alloc_obj(
-    &mut self,
-    size: u64,
-    align: u64,
-    kind: ObjKind,
-    obj_ptr: u64,
-  ) -> Result<InstAction, P::Error> {
-    let layout = P::layout(size as usize, align as usize)?;
-    self.collect()?;
-    let ptr = self.heap.alloc_obj(layout, Obj { kind, ptr: obj_ptr });
-    self.push_ptr(ptr);
-    Ok(InstAction::NextPC)
   }
 }
 
