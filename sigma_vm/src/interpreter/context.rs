@@ -35,6 +35,11 @@ impl<P: Policy> Context<P> {
     self.value_stack.push(value)
   }
 
+  /// Adds the given pointer to the value stack.
+  pub(super) fn add_ptr(&mut self, ptr: u64) {
+    self.value_stack.push(P::ptr_val(ptr))
+  }
+
   /// Resets the state of the current context.
   pub fn reset(&mut self) {
     self.pc = 0;
