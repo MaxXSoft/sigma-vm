@@ -67,7 +67,7 @@ pub trait Policy {
 
   /// Checks whether the given memory access is valid,
   /// returns an error if necessary.
-  fn check_access(heap: &Self::Heap, p: u64, len: usize) -> Result<(), Self::Error>;
+  fn check_access(heap: &Self::Heap, p: u64, len: usize, align: usize) -> Result<(), Self::Error>;
 
   /// Creates a value from a heap constant.
   fn val_from_const(heap: &Self::Heap, c: &HeapConst) -> Self::Value {
@@ -93,10 +93,15 @@ pub trait Policy {
     // read object metadata's length from heap
     let addr = heap.addr(ptr) as *const u64;
     let field_size = mem::size_of::<u64>();
-    Self::check_access(heap, ptr, field_size * 3)?;
+    Self::check_access(heap, ptr, field_size * 3, field_size)?;
     let len = unsafe { *addr.offset(2) };
     // create object reference
-    Self::check_access(heap, ptr + field_size as u64 * 3, field_size * len as usize)?;
+    Self::check_access(
+      heap,
+      ptr + field_size as u64 * 3,
+      field_size * len as usize,
+      field_size,
+    )?;
     Ok(unsafe { &*ptr::from_raw_parts(addr as *const (), len as usize) })
   }
 
@@ -231,7 +236,7 @@ where
     H::new()
   }
 
-  fn check_access(heap: &Self::Heap, p: u64, len: usize) -> Result<(), Self::Error> {
+  fn check_access(heap: &Self::Heap, p: u64, len: usize, _: usize) -> Result<(), Self::Error> {
     if heap.is_valid(p, len) {
       Ok(())
     } else {
@@ -387,14 +392,9 @@ where
     self.strict.new_heap()
   }
 
-  fn check_access(heap: &Self::Heap, p: u64, mut len: usize) -> Result<(), Self::Error> {
-    Strict::<H, GC>::check_access(heap, p, len).map_err(StrictAlignError::Strict)?;
-    // since the bytecode only defines memory access operation up to 8 bytes
-    // we just check for alignment up to 8 bytes
-    if len > mem::size_of::<u64>() {
-      len = mem::size_of::<u64>();
-    }
-    if !len.is_power_of_two() || (p & (len as u64 - 1)) != 0 {
+  fn check_access(heap: &Self::Heap, p: u64, len: usize, align: usize) -> Result<(), Self::Error> {
+    Strict::<H, GC>::check_access(heap, p, len, align).map_err(StrictAlignError::Strict)?;
+    if !align.is_power_of_two() || (p & (align as u64 - 1)) != 0 {
       Err(StrictAlignError::MisalignedAccess)
     } else {
       Ok(())
@@ -535,7 +535,7 @@ where
     H::new()
   }
 
-  fn check_access(_: &Self::Heap, _: u64, _: usize) -> Result<(), Self::Error> {
+  fn check_access(_: &Self::Heap, _: u64, _: usize, _: usize) -> Result<(), Self::Error> {
     Ok(())
   }
 
