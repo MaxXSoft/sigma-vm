@@ -92,6 +92,9 @@ impl Loader {
 
   /// Unloads a module by the given source.
   pub fn unload(&mut self, source: Source) -> Option<Module> {
+    if let Source::File(id) = source {
+      self.resolved_paths.retain(|_, v| *v != id);
+    }
     self.loaded_mods.remove(&source)
   }
 
