@@ -1,6 +1,34 @@
 use std::alloc::{self, Layout, LayoutError};
 use std::ptr::{self, Pointee};
 
+/// Implements [`TryFrom<integer>`] for the given enumerate.
+macro_rules! impl_try_from_int {
+  (impl TryFrom<$ty:ty> for $id:ident {
+    $($item:ident $(= $e:expr)?),* $(,)?
+  }) => {
+    impl std::convert::TryFrom<$ty> for $id {
+      type Error = ();
+
+      fn try_from(_i: $ty) -> std::result::Result<Self, Self::Error> {
+        use std::result::Result::*;
+        let mut _k = 0;
+        impl_try_from_int!(@item _i, _k $(,$item $(= $e)?)*)
+      }
+    }
+  };
+  (@item $i:ident, $k:ident,
+    $item:ident $(= $e:expr)?
+    $(,$items:ident $(= $es:expr)?)*
+  ) => {{
+    $($k = $e;)?
+    if $i == $k { return Ok(Self::$item) }
+    $k += 1;
+    impl_try_from_int!(@item $i, $k $(,$items $(= $es)?)*)
+  }};
+  (@item $i:ident, $k:ident) => {{ Err(()) }};
+}
+pub(crate) use impl_try_from_int;
+
 /// Creates an uninitialized `T` on heap, applies the given metadata.
 ///
 /// # Safety
