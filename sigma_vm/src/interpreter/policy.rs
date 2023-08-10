@@ -111,7 +111,10 @@ pub trait Policy {
   /// Creates a new garbage collector.
   fn new_gc(&self) -> Self::GarbageCollector;
 
-  /// Runs the garbage collector if necessary, and checks if
+  /// Checks if the heap is large enough and it should be collected now.
+  fn should_collect(&self, heap: &Self::Heap) -> bool;
+
+  /// Runs the garbage collector and checks if
   /// the GC succeeded in reducing the heap size.
   ///
   /// Returns an error if necessary.
@@ -252,19 +255,22 @@ where
     GC::new()
   }
 
+  fn should_collect(&self, heap: &Self::Heap) -> bool {
+    heap.size() > self.gc_threshold
+  }
+
   fn collect(
     &self,
     gc: &mut Self::GarbageCollector,
     heap: &mut Self::Heap,
     proots: PotentialRoots<Self>,
   ) -> Result<(), Self::Error> {
+    gc.collect(heap, proots)?;
     if heap.size() > self.gc_threshold {
-      gc.collect(heap, proots)?;
-      if heap.size() > self.gc_threshold {
-        return Err(StrictError::OutOfHeap);
-      }
+      Err(StrictError::OutOfHeap)
+    } else {
+      Ok(())
     }
-    Ok(())
   }
 }
 
@@ -409,6 +415,10 @@ where
     self.strict.new_gc()
   }
 
+  fn should_collect(&self, heap: &Self::Heap) -> bool {
+    self.strict.should_collect(heap)
+  }
+
   fn collect(
     &self,
     gc: &mut Self::GarbageCollector,
@@ -547,7 +557,11 @@ where
     GC::new()
   }
 
-  /// Runs the garbage collector if necessary, and checks if
+  fn should_collect(&self, heap: &Self::Heap) -> bool {
+    heap.size() > self.gc_threshold
+  }
+
+  /// Runs the garbage collector and checks if
   /// the GC succeeded in reducing the heap size.
   ///
   /// # Panics
@@ -559,11 +573,9 @@ where
     heap: &mut Self::Heap,
     proots: PotentialRoots<Self>,
   ) -> Result<(), Self::Error> {
+    gc.collect(heap, proots)?;
     if heap.size() > self.gc_threshold {
-      gc.collect(heap, proots)?;
-      if heap.size() > self.gc_threshold {
-        panic!("out of heap memory");
-      }
+      panic!("out of heap memory");
     }
     Ok(())
   }
