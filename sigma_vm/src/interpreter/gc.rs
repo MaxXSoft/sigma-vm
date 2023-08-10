@@ -76,7 +76,7 @@ impl MarkSweep {
     for o in &object.managed_ptr.offsets {
       let ptr_size = mem::size_of::<u64>() as u64;
       let ptr = ptr + o * ptr_size;
-      P::check_access(heap, ptr, ptr_size as usize)?;
+      P::check_access(heap, ptr, ptr_size as usize, ptr_size as usize)?;
       worklist.push(unsafe { *(heap.addr(ptr) as *const u64) });
     }
     Ok(())

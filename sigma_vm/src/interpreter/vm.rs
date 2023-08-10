@@ -577,14 +577,16 @@ where
   where
     T: Copy + IntoU64,
   {
-    P::check_access(&self.heap, ptr, mem::size_of::<T>())?;
+    let len = mem::size_of::<T>();
+    P::check_access(&self.heap, ptr, len, len)?;
     self.push_int(unsafe { *(self.heap.addr(ptr) as *const T) }.into_u64());
     Ok(InstAction::NextPC)
   }
 
   /// Loads the given pointer as a pointer.
   fn load_ptr(&mut self, ptr: u64) -> Result<InstAction, P::Error> {
-    P::check_access(&self.heap, ptr, mem::size_of::<u64>())?;
+    let len = mem::size_of::<u64>();
+    P::check_access(&self.heap, ptr, len, len)?;
     self.push_ptr(unsafe { *(self.heap.addr(ptr) as *const u64) });
     Ok(InstAction::NextPC)
   }
@@ -595,7 +597,8 @@ where
   where
     T: Copy,
   {
-    P::check_access(&self.heap, ptr, mem::size_of::<T>())?;
+    let len = mem::size_of::<T>();
+    P::check_access(&self.heap, ptr, len, len)?;
     unsafe { *(self.heap.addr_mut(ptr) as *mut T) = *(&P::get_any(&v) as *const _ as *const T) };
     Ok(InstAction::NextPC)
   }
