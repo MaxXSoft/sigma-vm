@@ -2,14 +2,14 @@ use crate::utils::impl_try_from_int;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-/// Bytecode loader for dynamically loading bytecode at runtime.
+/// Module loader for dynamically loading modules at runtime.
 pub struct Loader {
   search_paths: Vec<PathBuf>,
   resolved_paths: HashMap<PathBuf, u32>,
   loaded: HashMap<Source, ()>, // TODO
 }
 
-/// Source identifier of the loaded bytecode.
+/// Source identifier of the loaded module.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Source {
@@ -34,10 +34,10 @@ impl TryFrom<u64> for Source {
   }
 }
 
-/// Helper macro for defining kind of the bytecode source.
+/// Helper macro for defining kind of the module source.
 macro_rules! source_kind {
   ($($(#[$a:meta])* $kind:ident),+ $(,)?) => {
-    /// Kind of the bytecode source.
+    /// Kind of the module source.
     #[repr(u32)]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub enum SourceKind {
@@ -53,8 +53,8 @@ macro_rules! source_kind {
 }
 
 source_kind! {
-  /// Bytecode is loaded from file.
+  /// Module is loaded from file.
   File,
-  /// Bytecode is loaded from memory.
+  /// Module is loaded from memory.
   Memory,
 }
