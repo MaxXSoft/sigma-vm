@@ -114,8 +114,11 @@ impl Loader {
 /// Source identifier of the loaded module.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Source {
+  /// Module is loaded from file.
   File(u32),
+  /// Module is loaded from memory.
   Memory(u32),
+  /// Module is loaded from standard input.
   Stdin,
 }
 
