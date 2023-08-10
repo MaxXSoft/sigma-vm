@@ -224,7 +224,7 @@ where
 
   fn read_inst(&mut self) -> Result<Inst> {
     let opc = self.read_le()?;
-    let opcode = Opcode::from_byte(opc).ok_or(Error::UnknownOpcode(opc))?;
+    let opcode = Opcode::try_from(opc).map_err(|_| Error::UnknownOpcode(opc))?;
     let opr = match opcode.operand_type() {
       Some(OperandType::Signed) => Some(Operand::Signed(self.read_leb128()?)),
       Some(OperandType::Unsigned) => Some(Operand::Unsigned(self.read_leb128()?)),
@@ -335,7 +335,7 @@ impl ReadConst for ConstKind {
     R: Read,
   {
     let kind = reader.read_le()?;
-    Self::from_byte(kind).ok_or(Error::UnknownConstKind(kind))
+    Self::try_from(kind).map_err(|_| Error::UnknownConstKind(kind))
   }
 }
 
