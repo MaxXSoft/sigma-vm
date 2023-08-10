@@ -33,6 +33,9 @@ pub trait Heap {
 
   /// Returns a vector of pointers of all allocated memory.
   fn ptrs(&self) -> Vec<u64>;
+
+  /// Resets the internal state.
+  fn reset(&mut self);
 }
 
 /// Object metadata for heap memory.
@@ -114,6 +117,11 @@ impl Heap for System {
 
   fn ptrs(&self) -> Vec<u64> {
     self.mems.keys().copied().collect()
+  }
+
+  fn reset(&mut self) {
+    self.mems.clear();
+    self.size = 0;
   }
 }
 
@@ -227,6 +235,11 @@ where
 
   fn ptrs(&self) -> Vec<u64> {
     self.heap.ptrs()
+  }
+
+  fn reset(&mut self) {
+    self.heap.reset();
+    self.ranges.clear();
   }
 }
 
