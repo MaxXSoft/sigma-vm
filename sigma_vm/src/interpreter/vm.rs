@@ -162,34 +162,34 @@ impl<P: Policy> VM<P> {
   }
 
   /// Loads the given pointer as type `T`.
-  fn load<T>(&mut self, ptr: u64) -> Result<InstAction, P::Error>
+  fn load<T>(&mut self, ptr: u64) -> Result<ControlFlow, P::Error>
   where
     T: Copy + IntoU64,
   {
     let len = mem::size_of::<T>();
     P::check_access(&self.heap, ptr, len, len)?;
     self.push_int(unsafe { *(self.heap.addr(ptr) as *const T) }.into_u64());
-    Ok(InstAction::NextPC)
+    Ok(ControlFlow::NextPC)
   }
 
   /// Loads the given pointer as a pointer.
-  fn load_ptr(&mut self, ptr: u64) -> Result<InstAction, P::Error> {
+  fn load_ptr(&mut self, ptr: u64) -> Result<ControlFlow, P::Error> {
     let len = mem::size_of::<u64>();
     P::check_access(&self.heap, ptr, len, len)?;
     self.push_ptr(unsafe { *(self.heap.addr(ptr) as *const u64) });
-    Ok(InstAction::NextPC)
+    Ok(ControlFlow::NextPC)
   }
 
   /// Stores the given value (of type `T`) to the memory
   /// pointed by the given pointer.
-  fn store<T>(&mut self, v: P::Value, ptr: u64) -> Result<InstAction, P::Error>
+  fn store<T>(&mut self, v: P::Value, ptr: u64) -> Result<ControlFlow, P::Error>
   where
     T: Copy,
   {
     let len = mem::size_of::<T>();
     P::check_access(&self.heap, ptr, len, len)?;
     unsafe { *(self.heap.addr_mut(ptr) as *mut T) = *(&P::get_any(&v) as *const _ as *const T) };
-    Ok(InstAction::NextPC)
+    Ok(ControlFlow::NextPC)
   }
 
   /// Runs garbage collector.
@@ -206,13 +206,13 @@ impl<P: Policy> VM<P> {
   }
 
   /// Allocates heap memory for the given object metadata pointer.
-  fn new_object(&mut self, obj_ptr: u64) -> Result<InstAction, P::Error> {
+  fn new_object(&mut self, obj_ptr: u64) -> Result<ControlFlow, P::Error> {
     let object = P::object(&self.heap, obj_ptr)?;
     self.alloc_obj(object.size, object.align, ObjKind::Obj, obj_ptr)
   }
 
   /// Allocates array for the given object metadata pointer.
-  fn new_array(&mut self, obj_ptr: u64, len: u64) -> Result<InstAction, P::Error> {
+  fn new_array(&mut self, obj_ptr: u64, len: u64) -> Result<ControlFlow, P::Error> {
     let object = P::object(&self.heap, obj_ptr)?;
     let size = if len != 0 {
       object.aligned_size() * (len - 1) + object.size
@@ -229,12 +229,12 @@ impl<P: Policy> VM<P> {
     align: u64,
     kind: ObjKind,
     obj_ptr: u64,
-  ) -> Result<InstAction, P::Error> {
+  ) -> Result<ControlFlow, P::Error> {
     let layout = P::layout(size as usize, align as usize)?;
     self.collect()?;
     let ptr = self.heap.alloc_obj(layout, Obj { kind, ptr: obj_ptr });
     self.push_ptr(ptr);
-    Ok(InstAction::NextPC)
+    Ok(ControlFlow::NextPC)
   }
 }
 
@@ -251,9 +251,9 @@ where
   pub fn run(&mut self) -> Result<(), P::Error> {
     loop {
       match self.run_inst(self.insts[self.pc as usize])? {
-        InstAction::NextPC => self.pc += 1,
-        InstAction::SetPC(pc) => self.pc = pc,
-        InstAction::Stop => return Ok(()),
+        ControlFlow::NextPC => self.pc += 1,
+        ControlFlow::SetPC(pc) => self.pc = pc,
+        ControlFlow::Stop => return Ok(()),
       }
     }
   }
@@ -261,7 +261,7 @@ where
   /// Runs the current instruction.
   ///
   /// Returns `false` if the instruction requires to stop execution.
-  fn run_inst(&mut self, inst: Inst) -> Result<InstAction, P::Error> {
+  fn run_inst(&mut self, inst: Inst) -> Result<ControlFlow, P::Error> {
     /// Helper macro for manipulating stack.
     macro_rules! stack {
       (pop($v:ident: u64)) => {
@@ -292,12 +292,12 @@ where
       ($s0:ident: $ty:tt, $result:expr) => {{
         stack!(pop($s0: $ty));
         stack!(push($result, $ty));
-        InstAction::NextPC
+        ControlFlow::NextPC
       }};
       ($s0:ident: $ty:tt, $ty2:tt: $result:expr) => {{
         stack!(pop($s0: $ty));
         stack!(push($result, $ty2));
-        InstAction::NextPC
+        ControlFlow::NextPC
       }};
     }
 
@@ -307,40 +307,40 @@ where
         stack!(pop($rhs: $ty));
         stack!(pop($lhs: $ty));
         stack!(push($result, $ty));
-        InstAction::NextPC
+        ControlFlow::NextPC
       }};
       (($lhs:ident, $rhs:ident): $ty:tt, $ty2:tt: $result:expr) => {{
         stack!(pop($rhs: $ty));
         stack!(pop($lhs: $ty));
         stack!(push($result, $ty2));
-        InstAction::NextPC
+        ControlFlow::NextPC
       }};
     }
 
     Ok(match inst {
-      Inst::Nop => InstAction::NextPC,
+      Inst::Nop => ControlFlow::NextPC,
       Inst::PushI(opr) => {
         self.push_int(opr as u64);
-        InstAction::NextPC
+        ControlFlow::NextPC
       }
       Inst::PushU(opr) => {
         self.push_int(opr);
-        InstAction::NextPC
+        ControlFlow::NextPC
       }
       Inst::Pop => {
         self.pop()?;
-        InstAction::NextPC
+        ControlFlow::NextPC
       }
       Inst::Dup => {
         self.push(self.peek_s0()?.clone());
-        InstAction::NextPC
+        ControlFlow::NextPC
       }
       Inst::Swap => {
         let mut s0 = self.pop()?;
         let s1 = self.peek_s0_mut()?;
         mem::swap(&mut s0, s1);
         self.push(s0);
-        InstAction::NextPC
+        ControlFlow::NextPC
       }
       Inst::LdB => {
         let ptr = self.pop_ptr()?;
@@ -418,23 +418,23 @@ where
         let locals = P::unwrap_val(self.var_stack.last())?;
         let var = P::unwrap_val(locals.get(opr as usize))?;
         self.push(var.clone());
-        InstAction::NextPC
+        ControlFlow::NextPC
       }
       Inst::LdG(opr) => {
         let globals = P::unwrap_val(self.var_stack.first())?;
         let var = P::unwrap_val(globals.get(opr as usize))?;
         self.push(var.clone());
-        InstAction::NextPC
+        ControlFlow::NextPC
       }
       Inst::LdC(opr) => {
         let c = P::unwrap_val(self.consts.get(opr as usize))?;
         self.push(P::val_from_const(&self.heap, c));
-        InstAction::NextPC
+        ControlFlow::NextPC
       }
       Inst::LaC(opr) => {
         let c = P::unwrap_val(self.consts.get(opr as usize))?;
         self.push_ptr(c.ptr());
-        InstAction::NextPC
+        ControlFlow::NextPC
       }
       Inst::StB => {
         let v = self.pop()?;
@@ -484,20 +484,20 @@ where
         let v = self.pop()?;
         let locals = P::unwrap_val(self.var_stack.last_mut())?;
         locals.set_or_create(opr as usize, v);
-        InstAction::NextPC
+        ControlFlow::NextPC
       }
       Inst::StG(opr) => {
         let v = self.pop()?;
         let globals = P::unwrap_val(self.var_stack.first_mut())?;
         globals.set_or_create(opr as usize, v);
-        InstAction::NextPC
+        ControlFlow::NextPC
       }
       Inst::StA(opr) => {
         for index in (0..=opr as usize).rev() {
           let v = self.pop()?;
           P::unwrap_val(self.var_stack.last_mut())?.set_or_create(index, v);
         }
-        InstAction::NextPC
+        ControlFlow::NextPC
       }
       Inst::New => {
         let align = self.pop_int_ptr()?;
@@ -505,7 +505,7 @@ where
         self.collect()?;
         let ptr = self.heap.alloc(P::layout(size as usize, align as usize)?);
         self.push_ptr(ptr);
-        InstAction::NextPC
+        ControlFlow::NextPC
       }
       Inst::NewO => {
         let obj_ptr = self.pop_ptr()?;
@@ -530,33 +530,33 @@ where
       Inst::Del => {
         let ptr = self.pop_ptr()?;
         self.heap.dealloc(ptr);
-        InstAction::NextPC
+        ControlFlow::NextPC
       }
       Inst::Bz(opr) => {
         if self.pop_any()? == 0 {
-          InstAction::SetPC((self.pc as i64 + opr) as u64)
+          ControlFlow::SetPC((self.pc as i64 + opr) as u64)
         } else {
-          InstAction::NextPC
+          ControlFlow::NextPC
         }
       }
       Inst::Bnz(opr) => {
         if self.pop_any()? != 0 {
-          InstAction::SetPC((self.pc as i64 + opr) as u64)
+          ControlFlow::SetPC((self.pc as i64 + opr) as u64)
         } else {
-          InstAction::NextPC
+          ControlFlow::NextPC
         }
       }
-      Inst::Jmp(opr) => InstAction::SetPC((self.pc as i64 + opr) as u64),
+      Inst::Jmp(opr) => ControlFlow::SetPC((self.pc as i64 + opr) as u64),
       Inst::Call(opr) => {
         self.var_stack.push(Vars::new());
         self.ra_stack.push(self.pc + 1);
-        InstAction::SetPC((self.pc as i64 + opr) as u64)
+        ControlFlow::SetPC((self.pc as i64 + opr) as u64)
       }
       Inst::Ret => {
         self.var_stack.pop();
         match self.ra_stack.pop() {
-          Some(pc) => InstAction::SetPC(pc),
-          None => InstAction::Stop,
+          Some(pc) => ControlFlow::SetPC(pc),
+          None => ControlFlow::Stop,
         }
       }
       Inst::Sys(_) => unimplemented!("system call"),
@@ -598,7 +598,7 @@ where
         } else {
           self.push_int(sum);
         }
-        InstAction::NextPC
+        ControlFlow::NextPC
       }
       Inst::Sub => {
         let rhs = self.pop()?;
@@ -609,7 +609,7 @@ where
         } else {
           self.push_int(sub);
         }
-        InstAction::NextPC
+        ControlFlow::NextPC
       }
       Inst::Mul => binary!((lhs, rhs): u64, lhs.wrapping_mul(rhs)),
       Inst::Div => binary!((lhs, rhs): u64, {
@@ -716,8 +716,8 @@ impl<'a, V> IntoIterator for &'a Vars<V> {
   }
 }
 
-/// Action of an instruction.
-enum InstAction {
+/// Control flow actions.
+enum ControlFlow {
   NextPC,
   SetPC(u64),
   Stop,
