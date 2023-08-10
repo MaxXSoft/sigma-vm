@@ -98,6 +98,13 @@ impl Loader {
     self.loaded_mods.remove(&source)
   }
 
+  /// Unloads all loaded modules.
+  pub fn unload_all(&mut self) {
+    self.resolved_paths.clear();
+    self.loaded_mods.clear();
+    self.next_mem_id = 0;
+  }
+
   /// Returns a loaded module by the given source.
   pub fn module(&self, source: Source) -> Option<&Module> {
     self.loaded_mods.get(&source)
