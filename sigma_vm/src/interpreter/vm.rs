@@ -1,11 +1,28 @@
 use crate::bytecode::consts::HeapConst;
 use crate::interpreter::gc::PotentialRoots;
 use crate::interpreter::heap::{Heap, Obj, ObjKind};
+use crate::interpreter::loader::Loader;
 use crate::interpreter::policy::Policy;
 use crate::utils::IntoU64;
 use std::mem;
 
-/// Global heap for all contexts.
+/// Virtual machine for running bytecode.
+pub struct VM<P: Policy> {
+  global_heap: GlobalHeap<P>,
+  loader: Loader,
+}
+
+impl<P: Policy> VM<P> {
+  /// Creates a new virtual machine.
+  pub fn new(policy: P) -> Self {
+    Self {
+      global_heap: GlobalHeap::new(policy),
+      loader: Loader::new(),
+    }
+  }
+}
+
+/// Global heap for all contexts, containing a heap and a garbage collector.
 pub struct GlobalHeap<P: Policy> {
   policy: P,
   heap: P::Heap,
@@ -102,10 +119,10 @@ pub enum ControlFlow<P: Policy> {
   Error(P::Error),
   /// Stop execution.
   Stop,
-  /// Requests a external call, with a heap pointer to the call information.
-  CallExt(u64),
   /// Requests a garbage collection.
   GC,
+  /// Requests an external call, with a heap pointer to the call information.
+  CallExt(u64),
 }
 
 /// Result that returns a control flow action as an error.
