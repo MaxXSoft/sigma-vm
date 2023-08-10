@@ -1,7 +1,7 @@
 use crate::bytecode::consts::{Const, HeapConst};
 use crate::bytecode::insts::Inst;
 use crate::bytecode::reader::Reader;
-use crate::interpreter::gc::PotentialRoots;
+use crate::interpreter::gc::{GarbageCollector, PotentialRoots};
 use crate::interpreter::heap::{Heap, Obj, ObjKind};
 use crate::interpreter::policy::Policy;
 use std::iter::Flatten;
@@ -83,6 +83,17 @@ impl<P: Policy> VM<P> {
     }
     // push to stack
     self.value_stack.push(P::ptr_val(ptr))
+  }
+
+  /// Resets the state of the current VM.
+  pub fn reset(&mut self) {
+    self.pc = 0;
+    self.value_stack.clear();
+    self.var_stack.clear();
+    self.var_stack.push(Vars::new());
+    self.ra_stack.clear();
+    self.heap.reset();
+    self.gc.reset();
   }
 }
 
