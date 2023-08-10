@@ -1,15 +1,20 @@
 use crate::bytecode::consts::HeapConst;
+use crate::interpreter::context::Context;
 use crate::interpreter::gc::PotentialRoots;
 use crate::interpreter::heap::{Heap, Obj, ObjKind};
-use crate::interpreter::loader::Loader;
+use crate::interpreter::loader::{Error, Loader, Source};
 use crate::interpreter::policy::Policy;
 use crate::utils::IntoU64;
+use std::alloc::Layout;
+use std::collections::HashMap;
 use std::mem;
+use std::path::Path;
 
 /// Virtual machine for running bytecode.
 pub struct VM<P: Policy> {
   global_heap: GlobalHeap<P>,
   loader: Loader,
+  contexts: HashMap<Source, Context<P>>,
 }
 
 impl<P: Policy> VM<P> {
@@ -18,7 +23,70 @@ impl<P: Policy> VM<P> {
     Self {
       global_heap: GlobalHeap::new(policy),
       loader: Loader::new(),
+      contexts: HashMap::new(),
     }
+  }
+
+  /// Returns a reference to the loader.
+  pub fn loader(&self) -> &Loader {
+    &self.loader
+  }
+
+  /// Returns a mutable reference to the loader.
+  pub fn loader_mut(&mut self) -> &mut Loader {
+    &mut self.loader
+  }
+
+  /// Loads a module from the given path.
+  pub fn load_from_path<T>(&mut self, path: T) -> std::result::Result<Source, Error>
+  where
+    T: AsRef<Path>,
+  {
+    self.loader.load_from_path(path, &mut self.global_heap.heap)
+  }
+
+  /// Loads a module from the given bytes.
+  pub fn load_from_bytes(&mut self, bytes: &[u8]) -> std::result::Result<Source, Error> {
+    self
+      .loader
+      .load_from_bytes(bytes, &mut self.global_heap.heap)
+  }
+
+  /// Loads a module from the standard input.
+  pub fn load_from_stdin(&mut self) -> std::result::Result<Source, Error> {
+    self.loader.load_from_stdin(&mut self.global_heap.heap)
+  }
+
+  /// Resets the state of the VM.
+  pub fn reset(&mut self) {
+    self.contexts.clear();
+  }
+
+  /// Returns a mutable reference to the context of the given module.
+  pub fn context(&mut self, module: Source) -> &mut Context<P> {
+    self.contexts.entry(module).or_default()
+  }
+
+  /// Adds the given string to the value stack of the given module.
+  ///
+  /// This method will allocates a heap memory to store the given string,
+  /// and push its address to the value stack.
+  pub fn add_str(&mut self, module: Source, s: &str) {
+    // allocate heap memory
+    let bs = s.as_bytes();
+    let len = bs.len() as u64;
+    let align = mem::size_of_val(&len);
+    let layout = Layout::from_size_align(align + len as usize, align).unwrap();
+    let ptr = self.global_heap.heap.alloc(layout);
+    // write string data
+    let addr = self.global_heap.heap.addr_mut(ptr);
+    // safety: `Str`'s memory layout is same as the following code's description
+    unsafe {
+      *(addr as *mut u64) = len;
+      std::ptr::copy_nonoverlapping(bs.as_ptr(), (addr as *mut u8).add(align), bs.len());
+    }
+    // push to stack
+    self.context(module).add_ptr(ptr)
   }
 }
 
