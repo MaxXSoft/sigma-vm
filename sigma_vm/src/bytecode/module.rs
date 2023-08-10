@@ -3,6 +3,7 @@ use crate::bytecode::insts::Inst;
 
 /// Module, contains all static data in a bytecode file,
 /// including constants, instructions, etc.
+#[derive(Debug)]
 pub struct Module {
   pub(in crate::bytecode) consts: Box<[HeapConst]>,
   pub(in crate::bytecode) insts: Box<[Inst]>,
