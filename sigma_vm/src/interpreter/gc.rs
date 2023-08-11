@@ -11,39 +11,46 @@ pub trait GarbageCollector {
   fn new() -> Self;
 
   /// Collects garbage on the given heap.
-  fn collect<P>(&mut self, heap: &mut P::Heap, proots: PotentialRoots<P>) -> Result<(), P::Error>
+  fn collect<'gc, P, I>(&mut self, heap: &mut P::Heap, roots: I) -> Result<(), P::Error>
   where
-    P: Policy;
+    P: 'gc + Policy,
+    I: Iterator<Item = Roots<'gc, P>>;
 
   /// Resets the internal state.
   fn reset(&mut self);
 }
 
-/// Potential GC roots.
-pub struct PotentialRoots<'gc, P: ?Sized + Policy> {
+/// Garbage collection roots.
+pub struct Roots<'gc, P: ?Sized + Policy> {
   pub consts: &'gc [HeapConst],
-  pub values: &'gc [P::Value],
-  pub vars: &'gc [Vars<P::Value>],
+  pub proots: PotentialRoots<'gc, P>,
 }
 
-impl<'gc, P> PotentialRoots<'gc, P>
+impl<'gc, P> Roots<'gc, P>
 where
   P: 'gc + ?Sized + Policy,
 {
-  /// Returns an iterator of all GC roots (pointers).
+  /// Returns an iterator of all garbage collection roots (pointers).
   pub fn roots(&self) -> impl 'gc + Iterator<Item = u64> {
     self
       .consts
       .iter()
       .map(|c| c.ptr())
-      .chain(self.values.iter().filter_map(P::ptr_or_none))
+      .chain(self.proots.values.iter().filter_map(P::ptr_or_none))
       .chain(
         self
+          .proots
           .vars
           .iter()
           .flat_map(|vs| vs.iter().filter_map(P::ptr_or_none)),
       )
   }
+}
+
+/// Potential garbage collection roots.
+pub struct PotentialRoots<'gc, P: ?Sized + Policy> {
+  pub values: &'gc [P::Value],
+  pub vars: &'gc [Vars<P::Value>],
 }
 
 /// Garbage collector that does nothing.
@@ -54,9 +61,10 @@ impl GarbageCollector for Nothing {
     Self
   }
 
-  fn collect<P>(&mut self, _: &mut P::Heap, _: PotentialRoots<P>) -> Result<(), P::Error>
+  fn collect<'gc, P, I>(&mut self, heap: &mut P::Heap, roots: I) -> Result<(), P::Error>
   where
-    P: Policy,
+    P: 'gc + Policy,
+    I: Iterator<Item = Roots<'gc, P>>,
   {
     Ok(())
   }
@@ -93,13 +101,14 @@ impl GarbageCollector for MarkSweep {
     Self
   }
 
-  fn collect<P>(&mut self, heap: &mut P::Heap, proots: PotentialRoots<P>) -> Result<(), P::Error>
+  fn collect<'gc, P, I>(&mut self, heap: &mut P::Heap, roots: I) -> Result<(), P::Error>
   where
-    P: Policy,
+    P: 'gc + Policy,
+    I: Iterator<Item = Roots<'gc, P>>,
   {
     // mark reachable pointers
     let mut reachable = HashSet::new();
-    let mut worklist: Vec<_> = proots.roots().collect();
+    let mut worklist: Vec<_> = roots.flat_map(|r| r.roots()).collect();
     while let Some(ptr) = worklist.pop() {
       if !reachable.insert(ptr) {
         continue;
