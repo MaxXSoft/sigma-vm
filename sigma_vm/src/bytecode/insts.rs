@@ -203,6 +203,14 @@ def_opc_inst! {
   NewAC(u64),
   /// Delete the allocated heap memory s0.
   Del,
+  /// Load an external module with a string pointer s0 as it's path.
+  /// Returns an integer for module handle, or 0 if failed.
+  Load,
+  /// Load an external module with a string constant opr as it's path.
+  /// Returns an integer for module handle, or 0 if failed.
+  LoadC(u64),
+  /// Unload module with handle s0.
+  Unload,
   /// Branch to pc + opr if s0 is zero.
   Bz(i64),
   /// Branch to pc + opr if s0 is not zero.
@@ -211,10 +219,10 @@ def_opc_inst! {
   Jmp(i64),
   /// Call the function at pc + opr with arguments s{n - 1}, ..., s0.
   Call(i64),
-  /// Call an external function with call information pointer s0
-  /// and arguments s{n}, ..., s1.
+  /// Call an external function with module handle s1, function name pointer s0
+  /// and arguments s{n + 1}, ..., s2.
   CallExt,
-  /// Call an external function with call information constant pool index opr
+  /// Call an external function with module handle s0, function name constant opr
   /// and arguments s{n}, ..., s1.
   CallExtC(u64),
   /// Return from the current function.

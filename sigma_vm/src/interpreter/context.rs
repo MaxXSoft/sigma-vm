@@ -478,6 +478,18 @@ where
         heap.dealloc(ptr);
         PcUpdate::Next
       }
+      Inst::Load => {
+        todo!();
+        PcUpdate::Next
+      }
+      Inst::LoadC(opr) => {
+        todo!();
+        PcUpdate::Next
+      }
+      Inst::Unload => {
+        todo!();
+        PcUpdate::Next
+      }
       Inst::Bz(opr) => {
         if self.pop_any()? == 0 {
           PcUpdate::Set((self.pc as i64 + opr) as u64)
