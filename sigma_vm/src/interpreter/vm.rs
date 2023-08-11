@@ -188,12 +188,8 @@ where
           //
           todo!()
         }
-        ControlFlow::CallExt(ptr) => {
-          // get call information
-          let ci = P::call_info(&self.global_heap.heap, ptr)?;
-          // load module from path
-          let path = P::utf8_str(&self.global_heap.heap, ci.module)?.to_string();
-          let module = self.load_from_path(path);
+        ControlFlow::CallExt(handle, ptr) => {
+          // get the target module
           todo!()
         }
       }
@@ -321,6 +317,7 @@ pub enum ControlFlow {
   LoadModule(u64),
   /// Requests to unload a external module, with a module handle.
   UnloadModule(u64),
-  /// Requests an external call, with a pointer to the call information.
-  CallExt(u64),
+  /// Requests an external call, with a module handle and
+  /// a pointer to the function name.
+  CallExt(u64, u64),
 }
