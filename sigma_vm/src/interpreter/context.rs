@@ -1,7 +1,7 @@
 use crate::bytecode::insts::Inst;
 use crate::bytecode::module::Module;
 use crate::interpreter::policy::Policy;
-use crate::interpreter::vm::{cfr, ControlFlow, GlobalHeap, Result};
+use crate::interpreter::vm::{ControlFlow, GlobalHeap};
 use std::iter::Flatten;
 use std::mem;
 use std::slice::Iter;
@@ -80,43 +80,43 @@ impl<P: Policy> Context<P> {
   }
 
   /// Pops a value from the value stack.
-  fn pop(&mut self) -> Result<P::Value, P> {
-    cfr!(P::unwrap_val(self.value_stack.pop()))
+  fn pop(&mut self) -> Result<P::Value, P::Error> {
+    P::unwrap_val(self.value_stack.pop())
   }
 
   /// Pops an integer/pointer from the value stack.
-  fn pop_int_ptr(&mut self) -> Result<u64, P> {
-    cfr!(P::get_int_ptr(&self.pop()?))
+  fn pop_int_ptr(&mut self) -> Result<u64, P::Error> {
+    P::get_int_ptr(&self.pop()?)
   }
 
   /// Pops a 32-bit floating point from the value stack.
-  fn pop_f32(&mut self) -> Result<f32, P> {
-    cfr!(P::get_f32(&self.pop()?))
+  fn pop_f32(&mut self) -> Result<f32, P::Error> {
+    P::get_f32(&self.pop()?)
   }
 
   /// Pops a 64-bit floating point from the value stack.
-  fn pop_f64(&mut self) -> Result<f64, P> {
-    cfr!(P::get_f64(&self.pop()?))
+  fn pop_f64(&mut self) -> Result<f64, P::Error> {
+    P::get_f64(&self.pop()?)
   }
 
   /// Pops a pointer from the value stack.
-  fn pop_ptr(&mut self) -> Result<u64, P> {
-    cfr!(P::get_ptr(&self.pop()?))
+  fn pop_ptr(&mut self) -> Result<u64, P::Error> {
+    P::get_ptr(&self.pop()?)
   }
 
   /// Pops a untyped value from the value stack.
-  fn pop_any(&mut self) -> Result<u64, P> {
+  fn pop_any(&mut self) -> Result<u64, P::Error> {
     Ok(P::get_any(&self.pop()?))
   }
 
   /// Peeks the last value in the value stack.
-  fn peek_s0(&self) -> Result<&P::Value, P> {
-    cfr!(P::unwrap_val(self.value_stack.last()))
+  fn peek_s0(&self) -> Result<&P::Value, P::Error> {
+    P::unwrap_val(self.value_stack.last())
   }
 
   /// Peeks the last mutable value in the value stack.
-  fn peek_s0_mut(&mut self) -> Result<&mut P::Value, P> {
-    cfr!(P::unwrap_val(self.value_stack.last_mut()))
+  fn peek_s0_mut(&mut self) -> Result<&mut P::Value, P::Error> {
+    P::unwrap_val(self.value_stack.last_mut())
   }
 }
 
@@ -130,12 +130,16 @@ where
   }
 
   /// Runs the virtual machine.
-  pub fn run(&mut self, module: &Module, heap: &mut GlobalHeap<P>) -> ControlFlow<P> {
+  pub fn run(
+    &mut self,
+    module: &Module,
+    heap: &mut GlobalHeap<P>,
+  ) -> Result<ControlFlow, P::Error> {
     loop {
-      match self.run_inst(module, heap, module.insts()[self.pc as usize]) {
-        Ok(PcUpdate::Next) => self.pc += 1,
-        Ok(PcUpdate::Set(pc)) => self.pc = pc,
-        Err(c) => return c,
+      match self.run_inst(module, heap, module.insts()[self.pc as usize])? {
+        PcUpdate::Next => self.pc += 1,
+        PcUpdate::Set(pc) => self.pc = pc,
+        PcUpdate::ControlFlow(c) => return Ok(c),
       }
     }
   }
@@ -148,7 +152,7 @@ where
     module: &Module,
     heap: &mut GlobalHeap<P>,
     inst: Inst,
-  ) -> Result<PcUpdate, P> {
+  ) -> Result<PcUpdate, P::Error> {
     /// Helper macro for manipulating stack.
     macro_rules! stack {
       (pop($v:ident: u64)) => {
@@ -318,24 +322,24 @@ where
         PcUpdate::Next
       }
       Inst::LdV(opr) => {
-        let locals = cfr!(P::unwrap_val(self.var_stack.last()))?;
-        let var = cfr!(P::unwrap_val(locals.get(opr as usize)))?;
+        let locals = P::unwrap_val(self.var_stack.last())?;
+        let var = P::unwrap_val(locals.get(opr as usize))?;
         self.push(var.clone());
         PcUpdate::Next
       }
       Inst::LdG(opr) => {
-        let globals = cfr!(P::unwrap_val(self.var_stack.first()))?;
-        let var = cfr!(P::unwrap_val(globals.get(opr as usize)))?;
+        let globals = P::unwrap_val(self.var_stack.first())?;
+        let var = P::unwrap_val(globals.get(opr as usize))?;
         self.push(var.clone());
         PcUpdate::Next
       }
       Inst::LdC(opr) => {
-        let c = cfr!(P::unwrap_val(module.consts().get(opr as usize)))?;
+        let c = P::unwrap_val(module.consts().get(opr as usize))?;
         self.push(heap.val_from_const(c));
         PcUpdate::Next
       }
       Inst::LaC(opr) => {
-        let c = cfr!(P::unwrap_val(module.consts().get(opr as usize)))?;
+        let c = P::unwrap_val(module.consts().get(opr as usize))?;
         self.push_ptr(c.ptr());
         PcUpdate::Next
       }
@@ -393,55 +397,65 @@ where
       }
       Inst::StV(opr) => {
         let v = self.pop()?;
-        let locals = cfr!(P::unwrap_val(self.var_stack.last_mut()))?;
+        let locals = P::unwrap_val(self.var_stack.last_mut())?;
         locals.set_or_create(opr as usize, v);
         PcUpdate::Next
       }
       Inst::StG(opr) => {
         let v = self.pop()?;
-        let globals = cfr!(P::unwrap_val(self.var_stack.first_mut()))?;
+        let globals = P::unwrap_val(self.var_stack.first_mut())?;
         globals.set_or_create(opr as usize, v);
         PcUpdate::Next
       }
       Inst::StA(opr) => {
         for index in (0..=opr as usize).rev() {
           let v = self.pop()?;
-          cfr!(P::unwrap_val(self.var_stack.last_mut()))?.set_or_create(index, v);
+          P::unwrap_val(self.var_stack.last_mut())?.set_or_create(index, v);
         }
         PcUpdate::Next
       }
       Inst::New => {
-        heap.should_collect()?;
+        if heap.should_collect() {
+          return Ok(PcUpdate::ControlFlow(ControlFlow::GC));
+        }
         let align = self.pop_int_ptr()?;
         let size = self.pop_int_ptr()?;
         self.push_ptr(heap.alloc(size, align)?);
         PcUpdate::Next
       }
       Inst::NewO => {
-        heap.should_collect()?;
+        if heap.should_collect() {
+          return Ok(PcUpdate::ControlFlow(ControlFlow::GC));
+        }
         let obj_ptr = self.pop_ptr()?;
         heap.new_object(obj_ptr)?;
         PcUpdate::Next
       }
       Inst::NewOC(opr) => {
-        heap.should_collect()?;
-        let c = cfr!(P::unwrap_val(module.consts().get(opr as usize)))?;
-        let obj_ptr = cfr!(P::obj_ptr_from_const(c))?;
+        if heap.should_collect() {
+          return Ok(PcUpdate::ControlFlow(ControlFlow::GC));
+        }
+        let c = P::unwrap_val(module.consts().get(opr as usize))?;
+        let obj_ptr = P::obj_ptr_from_const(c)?;
         heap.new_object(obj_ptr)?;
         PcUpdate::Next
       }
       Inst::NewA => {
-        heap.should_collect()?;
+        if heap.should_collect() {
+          return Ok(PcUpdate::ControlFlow(ControlFlow::GC));
+        }
         let len = self.pop_int_ptr()?;
         let obj_ptr = self.pop_ptr()?;
         heap.new_array(obj_ptr, len)?;
         PcUpdate::Next
       }
       Inst::NewAC(opr) => {
-        heap.should_collect()?;
+        if heap.should_collect() {
+          return Ok(PcUpdate::ControlFlow(ControlFlow::GC));
+        }
         let len = self.pop_int_ptr()?;
-        let c = cfr!(P::unwrap_val(module.consts().get(opr as usize)))?;
-        let obj_ptr = cfr!(P::obj_ptr_from_const(c))?;
+        let c = P::unwrap_val(module.consts().get(opr as usize))?;
+        let obj_ptr = P::obj_ptr_from_const(c)?;
         heap.new_array(obj_ptr, len)?;
         PcUpdate::Next
       }
@@ -474,7 +488,7 @@ where
         self.var_stack.pop();
         match self.ra_stack.pop() {
           Some(pc) => PcUpdate::Set(pc),
-          None => return Err(ControlFlow::Stop),
+          None => return Ok(PcUpdate::ControlFlow(ControlFlow::Stop)),
         }
       }
       Inst::Sys(_) => unimplemented!("system call"),
@@ -510,7 +524,7 @@ where
       Inst::Add => {
         let rhs = self.pop()?;
         let lhs = self.pop()?;
-        let sum = cfr!(P::get_int_ptr(&lhs))?.wrapping_add(cfr!(P::get_int_ptr(&rhs))?);
+        let sum = P::get_int_ptr(&lhs)?.wrapping_add(P::get_int_ptr(&rhs)?);
         if P::ptr_or_none(&lhs).is_some() ^ P::ptr_or_none(&rhs).is_some() {
           self.push_ptr(sum);
         } else {
@@ -521,7 +535,7 @@ where
       Inst::Sub => {
         let rhs = self.pop()?;
         let lhs = self.pop()?;
-        let sub = cfr!(P::get_int_ptr(&lhs))?.wrapping_sub(cfr!(P::get_int_ptr(&rhs))?);
+        let sub = P::get_int_ptr(&lhs)?.wrapping_sub(P::get_int_ptr(&rhs)?);
         if P::ptr_or_none(&lhs).is_some() {
           self.push_ptr(sub);
         } else {
@@ -531,19 +545,19 @@ where
       }
       Inst::Mul => binary!((lhs, rhs): u64, lhs.wrapping_mul(rhs)),
       Inst::Div => binary!((lhs, rhs): u64, {
-        cfr!(P::check_div(rhs))?;
+        P::check_div(rhs)?;
         (lhs as i64).wrapping_div(rhs as i64) as u64
       }),
       Inst::DivU => binary!((lhs, rhs): u64, {
-        cfr!(P::check_div(rhs))?;
+        P::check_div(rhs)?;
         lhs / rhs
       }),
       Inst::Mod => binary!((lhs, rhs): u64, {
-        cfr!(P::check_div(rhs))?;
+        P::check_div(rhs)?;
         (lhs as i64).wrapping_rem(rhs as i64) as u64
       }),
       Inst::ModU => binary!((lhs, rhs): u64, {
-        cfr!(P::check_div(rhs))?;
+        P::check_div(rhs)?;
         lhs % rhs
       }),
       Inst::LtF => binary!((lhs, rhs): f32, u64: (lhs < rhs) as u64),
@@ -644,4 +658,5 @@ impl<'a, V> IntoIterator for &'a Vars<V> {
 enum PcUpdate {
   Next,
   Set(u64),
+  ControlFlow(ControlFlow),
 }
