@@ -17,7 +17,7 @@ pub struct Export<Bytes: ?Sized + Array<u8>> {
 
 /// Pair of function's program counter and number of returned values.
 #[repr(C)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PcRets {
   pub pc: u64,
   pub num_rets: u64,
