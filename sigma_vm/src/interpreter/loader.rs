@@ -1,4 +1,5 @@
 use crate::bytecode::consts::Const;
+use crate::bytecode::export::ExportInfo;
 use crate::bytecode::insts::Inst;
 use crate::bytecode::module::Module;
 use crate::bytecode::reader::{Error as ReaderError, Reader};
@@ -96,6 +97,7 @@ impl Loader {
   pub fn new_module<H>(
     &mut self,
     consts: Box<[Const]>,
+    exports: ExportInfo,
     insts: Box<[Inst]>,
     heap: &mut H,
   ) -> Result<Source, Error>
@@ -111,6 +113,7 @@ impl Loader {
         .into_iter()
         .map(|c| c.into_heap_const(heap))
         .collect(),
+      exports,
       insts,
     };
     // add to loaded modules

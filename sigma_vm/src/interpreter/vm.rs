@@ -1,4 +1,5 @@
 use crate::bytecode::consts::{Const, HeapConst};
+use crate::bytecode::export::ExportInfo;
 use crate::bytecode::insts::Inst;
 use crate::interpreter::context::Context;
 use crate::interpreter::gc::{GarbageCollector, Roots};
@@ -59,10 +60,15 @@ impl<P: Policy> VM<P> {
   }
 
   /// Creates a module from the given constants and instructions.
-  pub fn new_module(&mut self, consts: Box<[Const]>, insts: Box<[Inst]>) -> Result<Source, Error> {
+  pub fn new_module(
+    &mut self,
+    consts: Box<[Const]>,
+    exports: ExportInfo,
+    insts: Box<[Inst]>,
+  ) -> Result<Source, Error> {
     self
       .loader
-      .new_module(consts, insts, &mut self.global_heap.heap)
+      .new_module(consts, exports, insts, &mut self.global_heap.heap)
   }
 
   /// Resets the state of the VM.
@@ -154,12 +160,12 @@ where
   }
 
   /// Calls a function in the given module.
-  pub fn call(&mut self, module: Source) -> Result<(), P::Error> {
+  pub fn call(&mut self, module: Source, func: &str) -> Result<(), P::Error> {
     todo!()
   }
 
   /// Calls a function by the given call information.
-  fn call_ext(&mut self, call_info: u64) -> Result<(), P::Error> {
+  fn call_by_info(&mut self, info: u64) -> Result<(), P::Error> {
     todo!()
   }
 }
