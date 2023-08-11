@@ -1,4 +1,4 @@
-use crate::bytecode::consts::{Const, HeapCallInfo, HeapConst};
+use crate::bytecode::consts::{Const, HeapConst};
 use crate::bytecode::export::ExportInfo;
 use crate::bytecode::insts::Inst;
 use crate::interpreter::context::Context;
@@ -71,8 +71,9 @@ impl<P: Policy> VM<P> {
       .new_module(consts, exports, insts, &mut self.global_heap.heap)
   }
 
-  /// Resets the state of the VM.
+  /// Resets the state of the VM. Loaded modules will not be unloaded.
   pub fn reset(&mut self) {
+    self.global_heap.reset();
     self.contexts.clear();
   }
 
@@ -128,45 +129,68 @@ impl<P: Policy> VM<P>
 where
   P::Value: Clone,
 {
-  /// Runs the given module.
-  pub fn run(&mut self, module: Source) -> Result<(), P::Error> {
-    let mut next_to_run = vec![module];
-    while let Some(module) = next_to_run.pop() {
-      match self.run_until_cf(module)? {
+  /// Runs the given module's `main` function.
+  pub fn run<I, S>(&mut self, module: Source, args: I) -> Result<Vec<P::Value>, P::Error>
+  where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+  {
+    // push arguments
+    let mut count = 0;
+    for arg in args {
+      self.add_str(module, arg.as_ref());
+      count += 1;
+    }
+    self.context(module).add_value(P::int_val(count));
+    // call main function
+    self.call(module, "main")
+  }
+
+  /// Calls a function in the given module, returns the return values.
+  ///
+  /// If the function has arguments, they should first be pushed onto
+  /// the the module context's value stack.
+  pub fn call(&mut self, module: Source, func: &str) -> Result<Vec<P::Value>, P::Error> {
+    todo!()
+  }
+
+  /// Runs the given module from the given PC.
+  fn run_from_pc(&mut self, module: Source, pc: u64) -> Result<(), P::Error> {
+    let mut next_to_run = vec![(module, pc)];
+    while let Some((s, pc)) = next_to_run.pop() {
+      // check if the context is initialized
+      let context_info = self.contexts.entry(s).or_default();
+      if !context_info.initialized {
+        // prevent from infinite loop
+        context_info.initialized = true;
+        if pc != 0 {
+          next_to_run.push((s, pc));
+        }
+        next_to_run.push((s, 0));
+        continue;
+      }
+      // get module and context
+      let module = P::unwrap_module(self.loader.module(s))?;
+      let context = &mut context_info.context;
+      // run the context
+      context.set_pc(pc);
+      match context.run(module, &mut self.global_heap)? {
         ControlFlow::Stop => continue,
         ControlFlow::GC => {
           self.collect()?;
-          next_to_run.push(module);
+          next_to_run.push((s, pc));
         }
-        ControlFlow::CallExt(ci) => todo!(),
+        ControlFlow::CallExt(ptr) => {
+          // get call information
+          let ci = P::call_info(&self.global_heap.heap, ptr)?;
+          // load module from path
+          let path = P::utf8_str(&self.global_heap.heap, ci.module)?.to_string();
+          let module = self.load_from_path(path);
+          todo!()
+        }
       }
     }
     Ok(())
-  }
-
-  /// Runs the given module until control flow.
-  fn run_until_cf(&mut self, module: Source) -> Result<ControlFlow, P::Error> {
-    // get context and module
-    let context_info = self.contexts.entry(module).or_default();
-    let module = P::unwrap_module(self.loader.module(module))?;
-    // the context should not be initialized
-    assert!(
-      !context_info.initialized,
-      "context has already been initialized"
-    );
-    context_info.initialized = false;
-    // run the module
-    context_info.context.run(module, &mut self.global_heap)
-  }
-
-  /// Calls a function in the given module.
-  pub fn call(&mut self, module: Source, func: &str) -> Result<(), P::Error> {
-    todo!()
-  }
-
-  /// Calls a function by the given call information.
-  fn call_by_info(&mut self, info: u64) -> Result<(), P::Error> {
-    todo!()
   }
 }
 
