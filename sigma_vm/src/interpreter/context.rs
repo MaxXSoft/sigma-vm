@@ -507,11 +507,12 @@ where
         return Ok(PcUpdate::ControlFlow(ControlFlow::CallExt(ptr)));
       }
       Inst::Ret => {
-        self.var_stack.pop();
-        match self.ra_stack.pop() {
+        let pcu = match self.ra_stack.pop() {
           Some(pc) => PcUpdate::Set(pc),
           None => return Ok(PcUpdate::ControlFlow(ControlFlow::Stop)),
-        }
+        };
+        self.var_stack.pop();
+        pcu
       }
       Inst::Sys(_) => unimplemented!("system call"),
       Inst::Break => unimplemented!("breakpoint"),
