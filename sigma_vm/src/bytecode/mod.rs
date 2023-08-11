@@ -18,7 +18,7 @@ const VERSION: [u64; 3] = [
 #[cfg(test)]
 mod test {
   use crate::bytecode::consts::{CallInfo, Const, ManagedPtr, Object, Raw, Str};
-  use crate::bytecode::export::{ExportInfo, PcRets};
+  use crate::bytecode::export::{CallSite, ExportInfo};
   use crate::bytecode::insts::Inst;
   use crate::bytecode::reader::Reader;
   use crate::bytecode::writer::Writer;
@@ -64,15 +64,17 @@ mod test {
     let mut exports = ExportInfo::new();
     exports.insert(
       "hello".into(),
-      PcRets {
+      CallSite {
         pc: 0xff112233eeaabbcc,
+        num_args: 0.into(),
         num_rets: 1,
       },
     );
     exports.insert(
       "hello".into(),
-      PcRets {
+      CallSite {
         pc: 0x998877665,
+        num_args: 10.into(),
         num_rets: 4,
       },
     );
