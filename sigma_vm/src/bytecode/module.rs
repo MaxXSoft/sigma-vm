@@ -1,5 +1,5 @@
 use crate::bytecode::consts::HeapConst;
-use crate::bytecode::export::{ExportInfo, PcRets};
+use crate::bytecode::export::{CallSite, ExportInfo};
 use crate::bytecode::insts::Inst;
 
 /// Module, contains all static data in a bytecode file,
@@ -17,8 +17,8 @@ impl Module {
     &self.consts
   }
 
-  /// Returns a reference to the export information of the given function.
-  pub fn export(&self, name: &str) -> Option<&PcRets> {
+  /// Returns a reference to the call site information of the given function.
+  pub fn call_site(&self, name: &str) -> Option<&CallSite> {
     self.exports.get(name)
   }
 
