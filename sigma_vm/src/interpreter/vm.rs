@@ -191,7 +191,7 @@ where
       let module = P::unwrap_module(self.loader.module(s))?;
       let context = &mut context_info.context;
       // push values to stack
-      context.value_stack.extend(values);
+      context.value_stack.extend(values.into_iter().rev());
       // run the context
       context.set_pc(pc);
       match context.run(module, &mut self.global_heap)? {
