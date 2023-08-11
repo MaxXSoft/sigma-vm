@@ -1,3 +1,5 @@
+use crate::bytecode::consts::Const;
+use crate::bytecode::insts::Inst;
 use crate::bytecode::module::Module;
 use crate::bytecode::reader::{Error as ReaderError, Reader};
 use crate::interpreter::heap::Heap;
@@ -87,6 +89,32 @@ impl Loader {
     // add to loaded modules
     let source = Source::Stdin;
     self.loaded_mods.insert(source, reader.into_module(heap));
+    Ok(source)
+  }
+
+  /// Creates a module from the given constants and instructions.
+  pub fn new_module<H>(
+    &mut self,
+    consts: Box<[Const]>,
+    insts: Box<[Inst]>,
+    heap: &mut H,
+  ) -> Result<Source, Error>
+  where
+    H: Heap,
+  {
+    let source = Source::Memory(self.next_mem_id);
+    self.next_mem_id += 1;
+    // create module
+    let module = Module {
+      consts: consts
+        .into_vec()
+        .into_iter()
+        .map(|c| c.into_heap_const(heap))
+        .collect(),
+      insts,
+    };
+    // add to loaded modules
+    self.loaded_mods.insert(source, module);
     Ok(source)
   }
 
