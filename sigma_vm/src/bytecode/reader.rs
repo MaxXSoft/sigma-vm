@@ -1,5 +1,5 @@
 use crate::bytecode::consts::{CallInfo, Const, ConstKind, Object, Raw, Str};
-use crate::bytecode::export::Export;
+use crate::bytecode::export::{Export, ExportInfo};
 use crate::bytecode::insts::{Inst, Opcode, Operand, OperandType};
 use crate::bytecode::module::Module;
 use crate::bytecode::{MAGIC, VERSION};
@@ -27,6 +27,10 @@ pub enum Error {
   UnknownConstKind(u8),
   /// Layout error.
   Layout(LayoutError),
+  /// Invalid export function name.
+  InvalidName,
+  /// Duplicate export.
+  DuplicateExport,
   /// Unknown opcode.
   UnknownOpcode(u8),
 }
@@ -49,6 +53,8 @@ impl fmt::Display for Error {
       Self::Overflow => write!(f, "integer overflow when reading bytecode"),
       Self::UnknownConstKind(k) => write!(f, "unknown constant kind: {k}"),
       Self::Layout(l) => write!(f, "{l}"),
+      Self::InvalidName => write!(f, "invalid export function name"),
+      Self::DuplicateExport => write!(f, "duplicate export"),
       Self::UnknownOpcode(o) => write!(f, "unknown opcode: {o}"),
     }
   }
@@ -61,7 +67,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub struct Reader<R> {
   reader: R,
   consts: Vec<Const>,
-  exports: Vec<Box<Export<[u8]>>>,
+  exports: ExportInfo,
   insts: Vec<Inst>,
 }
 
@@ -71,7 +77,7 @@ impl<R> Reader<R> {
     Self {
       reader,
       consts: vec![],
-      exports: vec![],
+      exports: ExportInfo::new(),
       insts: vec![],
     }
   }
@@ -82,7 +88,7 @@ impl<R> Reader<R> {
   }
 
   /// Returns a reference to the export information.
-  pub fn exports(&self) -> &[Box<Export<[u8]>>] {
+  pub fn exports(&self) -> &ExportInfo {
     &self.exports
   }
 
@@ -102,6 +108,7 @@ impl<R> Reader<R> {
         .into_iter()
         .map(|c| c.into_heap_const(heap))
         .collect(),
+      exports: self.exports,
       insts: self.insts.into_boxed_slice(),
     }
   }
@@ -160,9 +167,17 @@ where
   fn read_exports(&mut self) -> Result<()> {
     let len: u64 = self.reader.read_leb128()?;
     self.exports.clear();
-    self.exports.reserve_exact(len as usize);
+    self.exports.reserve(len as usize);
     for _ in 0..len {
-      self.exports.push(self.reader.read_export()?);
+      let export = self.reader.read_export()?;
+      let name = export.name.to_str().ok_or(Error::InvalidName)?;
+      if self
+        .exports
+        .insert(name.into(), export.pc_rets.clone())
+        .is_some()
+      {
+        return Err(Error::DuplicateExport);
+      }
     }
     Ok(())
   }
