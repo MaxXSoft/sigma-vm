@@ -10,7 +10,7 @@ use std::slice::Iter;
 /// Execution context of virtual machine.
 pub struct Context<P: Policy> {
   pc: u64,
-  value_stack: Vec<P::Value>,
+  pub(super) value_stack: Vec<P::Value>,
   var_stack: Vec<Vars<P::Value>>,
   ra_stack: Vec<u64>,
 }
@@ -94,12 +94,12 @@ impl<P: Policy> Context<P> {
   }
 
   /// Pops a value from the value stack.
-  fn pop(&mut self) -> Result<P::Value, P::Error> {
+  pub(super) fn pop(&mut self) -> Result<P::Value, P::Error> {
     P::unwrap_val(self.value_stack.pop())
   }
 
   /// Pops an integer/pointer from the value stack.
-  fn pop_int_ptr(&mut self) -> Result<u64, P::Error> {
+  pub(super) fn pop_int_ptr(&mut self) -> Result<u64, P::Error> {
     P::get_int_ptr(&self.pop()?)
   }
 
