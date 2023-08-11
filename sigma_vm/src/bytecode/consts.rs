@@ -381,7 +381,7 @@ pub struct Raw<Bytes: ?Sized + Array<u8>> {
 /// With a constant pool index to a string constant ([`Str`]) of the
 /// target module name, and an index to a string of function name.
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct CallInfo {
   pub module: u64,
   pub function: u64,
@@ -391,7 +391,7 @@ pub struct CallInfo {
 ///
 /// Same memory layout as [`CallInfo`], but all indices become pointers.
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct HeapCallInfo {
   pub module: u64,
   pub function: u64,
