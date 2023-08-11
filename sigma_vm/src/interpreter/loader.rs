@@ -166,17 +166,20 @@ impl From<Source> for u64 {
   }
 }
 
-impl TryFrom<u64> for Source {
-  type Error = ();
-
-  fn try_from(value: u64) -> Result<Self, Self::Error> {
+impl From<u64> for Source {
+  fn from(value: u64) -> Self {
     match value >> 32 {
-      0 => Ok(Self::Invalid),
-      1 => Ok(Self::File(value as u32)),
-      2 => Ok(Self::Memory(value as u32)),
-      3 if value as u32 == 0 => Ok(Self::Stdin),
-      _ => Err(()),
+      1 => Self::File(value as u32),
+      2 => Self::Memory(value as u32),
+      3 if value as u32 == 0 => Self::Stdin,
+      _ => Self::Invalid,
     }
+  }
+}
+
+impl<E> From<Result<Source, E>> for Source {
+  fn from(result: Result<Source, E>) -> Self {
+    result.unwrap_or(Self::Invalid)
   }
 }
 
