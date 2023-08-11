@@ -1,5 +1,5 @@
 use crate::bytecode::consts::{Const, HeapConst};
-use crate::bytecode::export::ExportInfo;
+use crate::bytecode::export::{ExportInfo, NumArgs};
 use crate::bytecode::insts::Inst;
 use crate::interpreter::context::Context;
 use crate::interpreter::gc::{GarbageCollector, Roots};
@@ -156,41 +156,84 @@ where
 
   /// Runs the given module from the given PC.
   fn run_from_pc(&mut self, module: Source, pc: u64) -> Result<(), P::Error> {
-    let mut next_to_run = vec![(module, pc)];
-    while let Some((s, pc)) = next_to_run.pop() {
+    let mut next_to_run = vec![NextToRun::<P>::new(module, pc)];
+    while let Some(NextToRun {
+      module: s,
+      pc,
+      values,
+      num_rets,
+    }) = next_to_run.pop()
+    {
       // check if the context is initialized
       let context_info = self.contexts.entry(s).or_default();
       if !context_info.initialized {
         // prevent from infinite loop
         context_info.initialized = true;
         if pc != 0 {
-          next_to_run.push((s, pc));
+          next_to_run.push(NextToRun::new(s, pc));
         }
-        next_to_run.push((s, 0));
+        next_to_run.push(NextToRun::new(s, 0));
         continue;
       }
       // get module and context
       let module = P::unwrap_module(self.loader.module(s))?;
       let context = &mut context_info.context;
+      // push values to stack
+      context.value_stack.extend(values);
       // run the context
       context.set_pc(pc);
       match context.run(module, &mut self.global_heap)? {
-        ControlFlow::Stop => continue,
+        ControlFlow::Stop => {
+          if num_rets != 0 {
+            // push values to the last next-to-run
+            let ntr = next_to_run.last_mut().unwrap();
+            for _ in 0..num_rets {
+              ntr.values.push(context.pop()?);
+            }
+          }
+          continue;
+        }
         ControlFlow::GC => {
           self.collect()?;
-          next_to_run.push((s, pc));
+          next_to_run.push(NextToRun::new(s, pc));
         }
         ControlFlow::LoadModule(ptr) => {
-          //
-          todo!()
+          // load module
+          let path = P::utf8_str(&self.global_heap.heap, ptr)?.to_string();
+          let handle = Source::from(self.loader.load_from_path(path, &mut self.global_heap.heap));
+          // push handle to value stack
+          context.add_value(P::int_val(handle.into()));
+          next_to_run.push(NextToRun::new(s, pc + 1));
         }
         ControlFlow::UnloadModule(handle) => {
-          //
-          todo!()
+          self.loader.unload(handle.into());
+          next_to_run.push(NextToRun::new(s, pc + 1));
         }
         ControlFlow::CallExt(handle, ptr) => {
           // get the target module
-          todo!()
+          let source = Source::from(handle);
+          let module = P::unwrap_module(self.loader.module(source))?;
+          // get call site information
+          let name = P::utf8_str(&self.global_heap.heap, ptr)?;
+          let call_site = P::unwrap_module(module.call_site(name))?;
+          // create new next-to-run
+          let mut ntr = NextToRun::new(source, call_site.pc);
+          ntr.num_rets = call_site.num_rets;
+          // collect arguments
+          let num_args = match call_site.num_args {
+            NumArgs::Variadic => {
+              let n = context.pop_int_ptr()?;
+              ntr.values.push(P::int_val(n));
+              n
+            }
+            NumArgs::PlusOne(np1) => np1.get() - 1,
+          };
+          for _ in 0..num_args {
+            ntr.values.push(context.pop()?);
+          }
+          // update next-to-run
+          next_to_run.push(NextToRun::new(s, pc + 1));
+          next_to_run.push(ntr);
         }
       }
     }
@@ -303,6 +346,26 @@ impl<P: Policy> Default for ContextInfo<P> {
     Self {
       context: Default::default(),
       initialized: false,
+    }
+  }
+}
+
+/// Next-to-run information.
+struct NextToRun<P: Policy> {
+  module: Source,
+  pc: u64,
+  values: Vec<P::Value>,
+  num_rets: u64,
+}
+
+impl<P: Policy> NextToRun<P> {
+  /// Creates a new next-to-run.
+  fn new(module: Source, pc: u64) -> Self {
+    Self {
+      module,
+      pc,
+      values: vec![],
+      num_rets: 0,
     }
   }
 }
