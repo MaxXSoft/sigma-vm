@@ -17,7 +17,7 @@ const VERSION: [u64; 3] = [
 
 #[cfg(test)]
 mod test {
-  use crate::bytecode::consts::{CallInfo, Const, ManagedPtr, Object, Raw, Str};
+  use crate::bytecode::consts::{Const, ManagedPtr, Object, Raw, Str};
   use crate::bytecode::export::{CallSite, ExportInfo};
   use crate::bytecode::insts::Inst;
   use crate::bytecode::reader::Reader;
@@ -51,10 +51,6 @@ mod test {
       Const::from(Raw {
         len: 5,
         bytes: [b'H', b'e', b'l', b'l', b'o'],
-      }),
-      Const::from(CallInfo {
-        module: 10,
-        function: 111,
       }),
     ]
     .into_boxed_slice()

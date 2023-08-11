@@ -1,4 +1,4 @@
-use crate::bytecode::consts::{CallInfo, Const, ConstKind, Object, Raw, Str};
+use crate::bytecode::consts::{Const, ConstKind, Object, Raw, Str};
 use crate::bytecode::export::{CallSite, Export, ExportInfo};
 use crate::bytecode::insts::{Inst, Opcode, Operand, OperandType};
 use crate::bytecode::module::Module;
@@ -387,7 +387,6 @@ impl ReadConst for Const {
       ConstKind::Str => Str::<[u8]>::read(reader),
       ConstKind::Object => Object::<[u64]>::read(reader),
       ConstKind::Raw => Raw::<[u8]>::read(reader),
-      ConstKind::CallInfo => CallInfo::read(reader),
     }
   }
 }
@@ -487,21 +486,5 @@ impl ReadConst for Raw<[u8]> {
     // safety: layout of `Raw` and `Str` must be the same.
     unsafe { c.set_kind(ConstKind::Raw) };
     Ok(c)
-  }
-}
-
-impl ReadConst for CallInfo {
-  type Const = Const;
-
-  fn read<R>(reader: &mut R) -> Result<Self::Const>
-  where
-    R: Read,
-  {
-    let size = mem::size_of::<Self>();
-    let mut data: Box<Self> =
-      unsafe { alloc_uninit(size, mem::align_of::<Self>(), ()) }.map_err(Error::Layout)?;
-    data.module = reader.read_leb128()?;
-    data.function = reader.read_leb128()?;
-    Ok(unsafe { Const::new(ConstKind::CallInfo, data, size) })
   }
 }
