@@ -51,15 +51,15 @@ impl Loader {
     .ok_or(Error::InvalidPath(path.into()))?;
     // update resolved path, return if the module has already been loaded
     let id = self.resolved_paths.len() as u32;
-    match self.resolved_paths.get(&final_path) {
-      Some(id) => return Ok(Source::File(*id)),
-      None => self.resolved_paths.insert(final_path.clone(), id),
-    };
+    if let Some(id) = self.resolved_paths.get(&final_path) {
+      return Ok(Source::File(*id));
+    }
     // read bytecode from the path
-    let mut reader = Reader::from_path(final_path).map_err(Error::IO)?;
+    let mut reader = Reader::from_path(final_path.clone()).map_err(Error::IO)?;
     reader.read().map_err(Error::Reader)?;
     // add to loaded modules
     let source = Source::File(id);
+    self.resolved_paths.insert(final_path, id);
     self.loaded_mods.insert(source, reader.into_module(heap));
     Ok(source)
   }
