@@ -5,8 +5,8 @@ use crate::bytecode::insts::Inst;
 /// including constants, instructions, etc.
 #[derive(Debug)]
 pub struct Module {
-  pub(super) consts: Box<[HeapConst]>,
-  pub(super) insts: Box<[Inst]>,
+  pub(crate) consts: Box<[HeapConst]>,
+  pub(crate) insts: Box<[Inst]>,
 }
 
 impl Module {
