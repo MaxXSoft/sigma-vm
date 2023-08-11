@@ -50,6 +50,11 @@ impl<P: Policy> Context<P> {
     self.ra_stack.clear();
   }
 
+  /// Returns the current PC.
+  pub fn pc(&self) -> u64 {
+    self.pc
+  }
+
   /// Sets the PC to the given value.
   pub fn set_pc(&mut self, pc: u64) {
     self.pc = pc;
@@ -57,7 +62,10 @@ impl<P: Policy> Context<P> {
 
   /// Returns potential garbage collection roots of the current context.
   pub fn proots(&self) -> PotentialRoots<P> {
-    PotentialRoots { values: &self.value_stack, vars: &self.var_stack }
+    PotentialRoots {
+      values: &self.value_stack,
+      vars: &self.var_stack,
+    }
   }
 
   /// Pushes a value to the value stack.
@@ -142,7 +150,7 @@ where
     heap: &mut GlobalHeap<P>,
   ) -> Result<ControlFlow, P::Error> {
     loop {
-      match self.run_inst(module, heap, module.insts()[self.pc as usize])? {
+      match self.run_inst(module, heap, module.insts[self.pc as usize])? {
         PcUpdate::Next => self.pc += 1,
         PcUpdate::Set(pc) => self.pc = pc,
         PcUpdate::ControlFlow(c) => return Ok(c),
@@ -340,12 +348,12 @@ where
         PcUpdate::Next
       }
       Inst::LdC(opr) => {
-        let c = P::unwrap_val(module.consts().get(opr as usize))?;
+        let c = P::unwrap_val(module.consts.get(opr as usize))?;
         self.push(heap.val_from_const(c));
         PcUpdate::Next
       }
       Inst::LaC(opr) => {
-        let c = P::unwrap_val(module.consts().get(opr as usize))?;
+        let c = P::unwrap_val(module.consts.get(opr as usize))?;
         self.push_ptr(c.ptr());
         PcUpdate::Next
       }
@@ -441,7 +449,7 @@ where
         if heap.should_collect() {
           return Ok(PcUpdate::ControlFlow(ControlFlow::GC));
         }
-        let c = P::unwrap_val(module.consts().get(opr as usize))?;
+        let c = P::unwrap_val(module.consts.get(opr as usize))?;
         let obj_ptr = P::obj_ptr_from_const(c)?;
         heap.new_object(obj_ptr)?;
         PcUpdate::Next
@@ -460,7 +468,7 @@ where
           return Ok(PcUpdate::ControlFlow(ControlFlow::GC));
         }
         let len = self.pop_int_ptr()?;
-        let c = P::unwrap_val(module.consts().get(opr as usize))?;
+        let c = P::unwrap_val(module.consts.get(opr as usize))?;
         let obj_ptr = P::obj_ptr_from_const(c)?;
         heap.new_array(obj_ptr, len)?;
         PcUpdate::Next
@@ -489,6 +497,14 @@ where
         self.var_stack.push(Vars::new());
         self.ra_stack.push(self.pc + 1);
         PcUpdate::Set((self.pc as i64 + opr) as u64)
+      }
+      Inst::CallExt => {
+        return Ok(PcUpdate::ControlFlow(ControlFlow::CallExt(self.pop_ptr()?)));
+      }
+      Inst::CallExtC(opr) => {
+        let c = P::unwrap_val(module.consts.get(opr as usize))?;
+        let ptr = P::call_info_from_const(c)?;
+        return Ok(PcUpdate::ControlFlow(ControlFlow::CallExt(ptr)));
       }
       Inst::Ret => {
         self.var_stack.pop();
