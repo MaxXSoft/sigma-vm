@@ -325,6 +325,14 @@ pub struct Str<Bytes: ?Sized + Array<u8>> {
   pub bytes: Bytes,
 }
 
+impl Str<[u8]> {
+  /// Converts the current string constant to a <code>&[str]</code>.
+  /// Returns [`None`] if it's not a valid UTF-8 string.
+  pub fn to_str(&self) -> Option<&str> {
+    std::str::from_utf8(&self.bytes).ok()
+  }
+}
+
 /// Object metadata.
 ///
 /// With object size, align and managed pointer information.
