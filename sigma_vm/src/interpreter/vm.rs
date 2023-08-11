@@ -180,6 +180,10 @@ where
           self.collect()?;
           next_to_run.push((s, pc));
         }
+        ControlFlow::LoadModule(ptr) => {
+          //
+          todo!()
+        }
         ControlFlow::CallExt(ptr) => {
           // get call information
           let ci = P::call_info(&self.global_heap.heap, ptr)?;
@@ -309,6 +313,8 @@ pub enum ControlFlow {
   Stop,
   /// Requests a garbage collection.
   GC,
+  /// Requests to load a external module, with a pointer to the module name.
+  LoadModule(u64),
   /// Requests an external call, with a pointer to the call information.
   CallExt(u64),
 }
