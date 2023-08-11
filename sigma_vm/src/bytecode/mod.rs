@@ -1,6 +1,7 @@
-pub mod module;
 pub mod consts;
+pub mod export;
 pub mod insts;
+pub mod module;
 pub mod reader;
 pub mod writer;
 
