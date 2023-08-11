@@ -61,7 +61,7 @@ impl GarbageCollector for Nothing {
     Self
   }
 
-  fn collect<'gc, P, I>(&mut self, heap: &mut P::Heap, roots: I) -> Result<(), P::Error>
+  fn collect<'gc, P, I>(&mut self, _: &mut P::Heap, _: I) -> Result<(), P::Error>
   where
     P: 'gc + Policy,
     I: Iterator<Item = Roots<'gc, P>>,
