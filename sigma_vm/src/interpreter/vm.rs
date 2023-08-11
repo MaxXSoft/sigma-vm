@@ -39,7 +39,7 @@ impl<P: Policy> VM<P> {
   }
 
   /// Loads a module from the given path.
-  pub fn load_from_path<T>(&mut self, path: T) -> StdResult<Source, Error>
+  pub fn load_from_path<T>(&mut self, path: T) -> Result<Source, Error>
   where
     T: AsRef<Path>,
   {
@@ -47,23 +47,19 @@ impl<P: Policy> VM<P> {
   }
 
   /// Loads a module from the given bytes.
-  pub fn load_from_bytes(&mut self, bytes: &[u8]) -> StdResult<Source, Error> {
+  pub fn load_from_bytes(&mut self, bytes: &[u8]) -> Result<Source, Error> {
     self
       .loader
       .load_from_bytes(bytes, &mut self.global_heap.heap)
   }
 
   /// Loads a module from the standard input.
-  pub fn load_from_stdin(&mut self) -> StdResult<Source, Error> {
+  pub fn load_from_stdin(&mut self) -> Result<Source, Error> {
     self.loader.load_from_stdin(&mut self.global_heap.heap)
   }
 
   /// Creates a module from the given constants and instructions.
-  pub fn new_module(
-    &mut self,
-    consts: Box<[Const]>,
-    insts: Box<[Inst]>,
-  ) -> StdResult<Source, Error> {
+  pub fn new_module(&mut self, consts: Box<[Const]>, insts: Box<[Inst]>) -> Result<Source, Error> {
     self
       .loader
       .new_module(consts, insts, &mut self.global_heap.heap)
@@ -109,7 +105,7 @@ where
   P::Value: Clone,
 {
   /// Runs the given module.
-  pub fn run(&mut self, module: Source) -> StdResult<(), P::Error> {
+  pub fn run(&mut self, module: Source) -> Result<(), P::Error> {
     // get context and module
     let mut context_info = self.contexts.entry(module).or_default();
     let module = P::unwrap_module(self.loader.module(module))?;
@@ -121,8 +117,7 @@ where
     context_info.initialized = false;
     // run the module
     loop {
-      match context_info.context.run(module, &mut self.global_heap) {
-        ControlFlow::Error(e) => return Err(e),
+      match context_info.context.run(module, &mut self.global_heap)? {
         ControlFlow::Stop => return Ok(()),
         ControlFlow::GC => todo!(),
         ControlFlow::CallExt(ci) => todo!(),
@@ -131,12 +126,12 @@ where
   }
 
   /// Calls a function in the given module.
-  pub fn call(&mut self, module: Source) -> StdResult<(), P::Error> {
+  pub fn call(&mut self, module: Source) -> Result<(), P::Error> {
     todo!()
   }
 
   /// Calls a function by the given call information.
-  fn call_ext(&mut self, call_info: u64) -> StdResult<(), P::Error> {
+  fn call_ext(&mut self, call_info: u64) -> Result<(), P::Error> {
     todo!()
   }
 }
@@ -157,12 +152,12 @@ impl<P: Policy> GlobalHeap<P> {
   }
 
   /// Loads the given pointer as type `T`.
-  pub(super) fn load<T>(&mut self, ptr: u64) -> Result<u64, P>
+  pub(super) fn load<T>(&mut self, ptr: u64) -> Result<u64, P::Error>
   where
     T: Copy + IntoU64,
   {
     let len = mem::size_of::<T>();
-    cfr!(P::check_access(&self.heap, ptr, len, len))?;
+    P::check_access(&self.heap, ptr, len, len)?;
     Ok(unsafe { *(self.heap.addr(ptr) as *const T) }.into_u64())
   }
 
@@ -173,40 +168,36 @@ impl<P: Policy> GlobalHeap<P> {
 
   /// Stores the given value (of type `T`) to the memory
   /// pointed by the given pointer.
-  pub(super) fn store<T>(&mut self, v: P::Value, ptr: u64) -> Result<(), P>
+  pub(super) fn store<T>(&mut self, v: P::Value, ptr: u64) -> Result<(), P::Error>
   where
     T: Copy,
   {
     let len = mem::size_of::<T>();
-    cfr!(P::check_access(&self.heap, ptr, len, len))?;
+    P::check_access(&self.heap, ptr, len, len)?;
     unsafe { *(self.heap.addr_mut(ptr) as *mut T) = *(&P::get_any(&v) as *const _ as *const T) };
     Ok(())
   }
 
   /// Checks if the heap should be collected.
-  pub(super) fn should_collect(&self) -> Result<(), P> {
-    if self.policy.should_collect(&self.heap) {
-      Err(ControlFlow::GC)
-    } else {
-      Ok(())
-    }
+  pub(super) fn should_collect(&self) -> bool {
+    self.policy.should_collect(&self.heap)
   }
 
   /// Allocates a new heap memory.
-  pub(super) fn alloc(&mut self, size: u64, align: u64) -> Result<u64, P> {
-    let layout = cfr!(P::layout(size as usize, align as usize))?;
+  pub(super) fn alloc(&mut self, size: u64, align: u64) -> Result<u64, P::Error> {
+    let layout = P::layout(size as usize, align as usize)?;
     Ok(self.heap.alloc(layout))
   }
 
   /// Allocates heap memory for the given object metadata pointer.
-  pub(super) fn new_object(&mut self, obj_ptr: u64) -> Result<u64, P> {
-    let object = cfr!(P::object(&self.heap, obj_ptr))?;
+  pub(super) fn new_object(&mut self, obj_ptr: u64) -> Result<u64, P::Error> {
+    let object = P::object(&self.heap, obj_ptr)?;
     self.alloc_obj(object.size, object.align, ObjKind::Obj, obj_ptr)
   }
 
   /// Allocates array for the given object metadata pointer.
-  pub(super) fn new_array(&mut self, obj_ptr: u64, len: u64) -> Result<u64, P> {
-    let object = cfr!(P::object(&self.heap, obj_ptr))?;
+  pub(super) fn new_array(&mut self, obj_ptr: u64, len: u64) -> Result<u64, P::Error> {
+    let object = P::object(&self.heap, obj_ptr)?;
     let size = if len != 0 {
       object.aligned_size() * (len - 1) + object.size
     } else {
@@ -221,14 +212,20 @@ impl<P: Policy> GlobalHeap<P> {
   }
 
   /// Allocates a new memory with object metadata.
-  fn alloc_obj(&mut self, size: u64, align: u64, kind: ObjKind, obj_ptr: u64) -> Result<u64, P> {
-    let layout = cfr!(P::layout(size as usize, align as usize))?;
+  fn alloc_obj(
+    &mut self,
+    size: u64,
+    align: u64,
+    kind: ObjKind,
+    obj_ptr: u64,
+  ) -> Result<u64, P::Error> {
+    let layout = P::layout(size as usize, align as usize)?;
     Ok(self.heap.alloc_obj(layout, Obj { kind, ptr: obj_ptr }))
   }
 
   /// Runs garbage collector.
-  fn collect(&mut self, proots: PotentialRoots<P>) -> Result<(), P> {
-    cfr!(self.policy.collect(&mut self.gc, &mut self.heap, proots))
+  fn collect(&mut self, proots: PotentialRoots<P>) -> Result<(), P::Error> {
+    self.policy.collect(&mut self.gc, &mut self.heap, proots)
   }
 }
 
@@ -248,9 +245,7 @@ impl<P: Policy> Default for ContextInfo<P> {
 }
 
 /// Control flow actions.
-pub enum ControlFlow<P: Policy> {
-  /// Error occurred.
-  Error(P::Error),
+pub enum ControlFlow {
   /// Stop execution.
   Stop,
   /// Requests a garbage collection.
@@ -258,17 +253,3 @@ pub enum ControlFlow<P: Policy> {
   /// Requests an external call, with a heap pointer to the call information.
   CallExt(u64),
 }
-
-/// Result type in standard library.
-type StdResult<T, E> = std::result::Result<T, E>;
-
-/// Result that returns a control flow action as an error.
-pub(super) type Result<T, P> = StdResult<T, ControlFlow<P>>;
-
-/// Helper macro for converting policy results into control flow results.
-macro_rules! cfr {
-  ($pr:expr) => {
-    $pr.map_err(crate::interpreter::vm::ControlFlow::Error)
-  };
-}
-pub(super) use cfr;
