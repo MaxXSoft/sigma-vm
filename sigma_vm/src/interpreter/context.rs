@@ -130,11 +130,12 @@ where
   }
 
   /// Runs the virtual machine.
-  pub fn run(&mut self, module: &Module, heap: &mut GlobalHeap<P>) -> Result<(), P> {
+  pub fn run(&mut self, module: &Module, heap: &mut GlobalHeap<P>) -> ControlFlow<P> {
     loop {
-      match self.run_inst(module, heap, module.insts()[self.pc as usize])? {
-        PcUpdate::Next => self.pc += 1,
-        PcUpdate::Set(pc) => self.pc = pc,
+      match self.run_inst(module, heap, module.insts()[self.pc as usize]) {
+        Ok(PcUpdate::Next) => self.pc += 1,
+        Ok(PcUpdate::Set(pc)) => self.pc = pc,
+        Err(c) => return c,
       }
     }
   }
