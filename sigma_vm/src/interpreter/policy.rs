@@ -59,6 +59,9 @@ pub trait Policy {
   /// Unwraps an [`Option<Value>`], returns an error if necessary.
   fn unwrap_val<V>(v: Option<V>) -> Result<V, Self::Error>;
 
+  /// Unwraps an [`Option<Module>`], returns an error if necessary.
+  fn unwrap_module<M>(m: Option<M>) -> Result<M, Self::Error>;
+
   /// Checks the given integer divisor, returns an error if necessary.
   fn check_div(divisor: u64) -> Result<(), Self::Error>;
 
@@ -227,6 +230,10 @@ where
     v.ok_or(StrictError::ExpectedValue)
   }
 
+  fn unwrap_module<M>(m: Option<M>) -> Result<M, Self::Error> {
+    m.ok_or(StrictError::ModuleNotFound)
+  }
+
   fn check_div(divisor: u64) -> Result<(), Self::Error> {
     if divisor == 0 {
       Err(StrictError::ZeroDivision)
@@ -290,6 +297,8 @@ pub enum StrictError {
   TypeMismatch,
   /// Expected a value.
   ExpectedValue,
+  /// Module not found.
+  ModuleNotFound,
   /// Divisor is zero.
   ZeroDivision,
   /// Memory access out of bounds.
@@ -307,6 +316,7 @@ impl fmt::Display for StrictError {
     match self {
       Self::TypeMismatch => write!(f, "value type mismatch"),
       Self::ExpectedValue => write!(f, "expected a value, got nothing"),
+      Self::ModuleNotFound => write!(f, "module not found"),
       Self::ZeroDivision => write!(f, "divisor is zero"),
       Self::OutOfBounds => write!(f, "memory access out of bounds"),
       Self::OutOfHeap => write!(f, "out of heap memory"),
@@ -388,6 +398,10 @@ where
 
   fn unwrap_val<V>(v: Option<V>) -> Result<V, Self::Error> {
     Strict::<H, GC>::unwrap_val(v).map_err(StrictAlignError::Strict)
+  }
+
+  fn unwrap_module<M>(m: Option<M>) -> Result<M, Self::Error> {
+    Strict::<H, GC>::unwrap_module(m).map_err(StrictAlignError::Strict)
   }
 
   fn check_div(divisor: u64) -> Result<(), Self::Error> {
@@ -535,6 +549,10 @@ where
 
   fn unwrap_val<V>(v: Option<V>) -> Result<V, Self::Error> {
     Ok(unsafe { v.unwrap_unchecked() })
+  }
+
+  fn unwrap_module<M>(m: Option<M>) -> Result<M, Self::Error> {
+    Ok(unsafe { m.unwrap_unchecked() })
   }
 
   fn check_div(_: u64) -> Result<(), Self::Error> {
