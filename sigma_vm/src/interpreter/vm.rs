@@ -1,4 +1,5 @@
-use crate::bytecode::consts::HeapConst;
+use crate::bytecode::consts::{Const, HeapConst};
+use crate::bytecode::insts::Inst;
 use crate::interpreter::context::Context;
 use crate::interpreter::gc::PotentialRoots;
 use crate::interpreter::heap::{Heap, Obj, ObjKind};
@@ -55,6 +56,17 @@ impl<P: Policy> VM<P> {
   /// Loads a module from the standard input.
   pub fn load_from_stdin(&mut self) -> std::result::Result<Source, Error> {
     self.loader.load_from_stdin(&mut self.global_heap.heap)
+  }
+
+  /// Creates a module from the given constants and instructions.
+  pub fn new_module(
+    &mut self,
+    consts: Box<[Const]>,
+    insts: Box<[Inst]>,
+  ) -> std::result::Result<Source, Error> {
+    self
+      .loader
+      .new_module(consts, insts, &mut self.global_heap.heap)
   }
 
   /// Resets the state of the VM.
