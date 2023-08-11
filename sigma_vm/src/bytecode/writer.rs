@@ -1,4 +1,5 @@
 use crate::bytecode::consts::{CallInfo, Const, ConstKind, Object, Raw, Str};
+use crate::bytecode::export::{ExportInfo, PcRets};
 use crate::bytecode::insts::{Inst, Operand};
 use crate::bytecode::{MAGIC, VERSION};
 use leb128::write::{signed, unsigned};
@@ -10,15 +11,17 @@ use std::path::Path;
 pub struct Writer<'w, W> {
   writer: W,
   consts: &'w [Const],
+  exports: &'w ExportInfo,
   insts: &'w [Inst],
 }
 
 impl<'w, W> Writer<'w, W> {
   /// Creates a new writer.
-  pub fn new(writer: W, consts: &'w [Const], insts: &'w [Inst]) -> Self {
+  pub fn new(writer: W, consts: &'w [Const], exports: &'w ExportInfo, insts: &'w [Inst]) -> Self {
     Self {
       writer,
       consts,
+      exports,
       insts,
     }
   }
@@ -38,6 +41,7 @@ where
     self.write_magic()?;
     self.write_version()?;
     self.write_consts()?;
+    self.write_exports()?;
     self.write_insts()
   }
 
@@ -63,6 +67,16 @@ where
     Ok(())
   }
 
+  /// Writes exports.
+  fn write_exports(&mut self) -> Result<()> {
+    unsigned(&mut self.writer, self.exports.len() as u64)?;
+    for (name, pc_rets) in self.exports {
+      pc_rets.write(&mut self.writer)?;
+      name.write(&mut self.writer)?;
+    }
+    Ok(())
+  }
+
   /// Writes instructions.
   fn write_insts(&mut self) -> Result<()> {
     unsigned(&mut self.writer, self.insts.len() as u64)?;
@@ -83,25 +97,30 @@ impl<'w> Writer<'w, File> {
   ///
   /// The corresponding file will be overwritten.
   /// If the file does not exist, a new file will be created.
-  pub fn from_path<P>(path: P, consts: &'w [Const], insts: &'w [Inst]) -> Result<Self>
+  pub fn from_path<P>(
+    path: P,
+    consts: &'w [Const],
+    exports: &'w ExportInfo,
+    insts: &'w [Inst],
+  ) -> Result<Self>
   where
     P: AsRef<Path>,
   {
-    File::create(path).map(|f| Self::new(f, consts, insts))
+    File::create(path).map(|f| Self::new(f, consts, exports, insts))
   }
 }
 
 impl<'w> Writer<'w, Stdout> {
   /// Creates a new writer from stdout.
-  pub fn from_stdout(consts: &'w [Const], insts: &'w [Inst]) -> Self {
-    Self::new(stdout(), consts, insts)
+  pub fn from_stdout(consts: &'w [Const], exports: &'w ExportInfo, insts: &'w [Inst]) -> Self {
+    Self::new(stdout(), consts, exports, insts)
   }
 }
 
 impl<'w> Writer<'w, Stderr> {
   /// Creates a new writer from stderr.
-  pub fn from_stderr(consts: &'w [Const], insts: &'w [Inst]) -> Self {
-    Self::new(stderr(), consts, insts)
+  pub fn from_stderr(consts: &'w [Const], exports: &'w ExportInfo, insts: &'w [Inst]) -> Self {
+    Self::new(stderr(), consts, exports, insts)
   }
 }
 
@@ -204,6 +223,28 @@ impl WriteData for CallInfo {
   {
     unsigned(writer, self.module)?;
     unsigned(writer, self.function)?;
+    Ok(())
+  }
+}
+
+impl WriteData for String {
+  fn write<W>(&self, writer: &mut W) -> Result<()>
+  where
+    W: Write,
+  {
+    unsigned(writer, self.len() as u64)?;
+    writer.write_all(self.as_bytes())?;
+    Ok(())
+  }
+}
+
+impl WriteData for PcRets {
+  fn write<W>(&self, writer: &mut W) -> Result<()>
+  where
+    W: Write,
+  {
+    unsigned(writer, self.pc)?;
+    unsigned(writer, self.num_rets)?;
     Ok(())
   }
 }
