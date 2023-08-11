@@ -17,7 +17,8 @@ const VERSION: [u64; 3] = [
 
 #[cfg(test)]
 mod test {
-  use crate::bytecode::consts::{Const, ManagedPtr, Object, Raw, Str};
+  use crate::bytecode::consts::{CallInfo, Const, ManagedPtr, Object, Raw, Str};
+  use crate::bytecode::export::{ExportInfo, PcRets};
   use crate::bytecode::insts::Inst;
   use crate::bytecode::reader::Reader;
   use crate::bytecode::writer::Writer;
@@ -51,8 +52,31 @@ mod test {
         len: 5,
         bytes: [b'H', b'e', b'l', b'l', b'o'],
       }),
+      Const::from(CallInfo {
+        module: 10,
+        function: 111,
+      }),
     ]
     .into_boxed_slice()
+  }
+
+  fn some_exports() -> ExportInfo {
+    let mut exports = ExportInfo::new();
+    exports.insert(
+      "hello".into(),
+      PcRets {
+        pc: 0xff112233eeaabbcc,
+        num_rets: 1,
+      },
+    );
+    exports.insert(
+      "hello".into(),
+      PcRets {
+        pc: 0x998877665,
+        num_rets: 4,
+      },
+    );
+    exports
   }
 
   fn some_insts() -> Box<[Inst]> {
@@ -69,8 +93,9 @@ mod test {
   #[test]
   fn identity() {
     let consts = some_consts();
+    let exports = some_exports();
     let insts = some_insts();
-    let mut w = Writer::new(Cursor::new(Vec::<u8>::new()), &consts, &insts);
+    let mut w = Writer::new(Cursor::new(Vec::<u8>::new()), &consts, &exports, &insts);
     w.write().unwrap();
     let data = w.into_inner().into_inner();
     let mut r = Reader::new(data.as_slice());
@@ -81,5 +106,6 @@ mod test {
       .zip(r.data())
       .all(|(l, r)| l == r)));
     assert_eq!(insts.as_ref(), r.insts());
+    assert_eq!(&exports, r.exports());
   }
 }
