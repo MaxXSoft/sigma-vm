@@ -1,5 +1,5 @@
 use crate::bytecode::consts::{CallInfo, Const, ConstKind, Object, Raw, Str};
-use crate::bytecode::export::{ExportInfo, PcRets};
+use crate::bytecode::export::{CallSite, ExportInfo};
 use crate::bytecode::insts::{Inst, Operand};
 use crate::bytecode::{MAGIC, VERSION};
 use leb128::write::{signed, unsigned};
@@ -70,8 +70,8 @@ where
   /// Writes exports.
   fn write_exports(&mut self) -> Result<()> {
     unsigned(&mut self.writer, self.exports.len() as u64)?;
-    for (name, pc_rets) in self.exports {
-      pc_rets.write(&mut self.writer)?;
+    for (name, call_site) in self.exports {
+      call_site.write(&mut self.writer)?;
       name.write(&mut self.writer)?;
     }
     Ok(())
@@ -238,12 +238,13 @@ impl WriteData for String {
   }
 }
 
-impl WriteData for PcRets {
+impl WriteData for CallSite {
   fn write<W>(&self, writer: &mut W) -> Result<()>
   where
     W: Write,
   {
     unsigned(writer, self.pc)?;
+    unsigned(writer, self.num_args.into())?;
     unsigned(writer, self.num_rets)?;
     Ok(())
   }

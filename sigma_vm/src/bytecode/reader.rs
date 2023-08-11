@@ -1,5 +1,5 @@
 use crate::bytecode::consts::{CallInfo, Const, ConstKind, Object, Raw, Str};
-use crate::bytecode::export::{Export, ExportInfo};
+use crate::bytecode::export::{CallSite, Export, ExportInfo};
 use crate::bytecode::insts::{Inst, Opcode, Operand, OperandType};
 use crate::bytecode::module::Module;
 use crate::bytecode::{MAGIC, VERSION};
@@ -173,7 +173,7 @@ where
       let name = export.name.to_str().ok_or(Error::InvalidName)?;
       if self
         .exports
-        .insert(name.into(), export.pc_rets.clone())
+        .insert(name.into(), export.call_site.clone())
         .is_some()
       {
         return Err(Error::DuplicateExport);
@@ -271,14 +271,16 @@ where
 
   fn read_export(&mut self) -> Result<Box<Export<[u8]>>> {
     let pc = self.read_leb128()?;
+    let num_args: u64 = self.read_leb128()?;
     let num_rets = self.read_leb128()?;
     let len = self.read_leb128()?;
     let len_size = mem::size_of_val(&len);
-    let size = len_size * 3 + len as usize;
+    let size = mem::size_of::<CallSite>() + len_size + len as usize;
     let mut data: Box<Export<[u8]>> =
       unsafe { alloc_uninit(size, len_size, len as usize) }.map_err(Error::Layout)?;
-    data.pc_rets.pc = pc;
-    data.pc_rets.num_rets = num_rets;
+    data.call_site.pc = pc;
+    data.call_site.num_args = num_args.into();
+    data.call_site.num_rets = num_rets;
     data.name.len = len;
     self.fill(&mut data.name.bytes)?;
     Ok(data)
