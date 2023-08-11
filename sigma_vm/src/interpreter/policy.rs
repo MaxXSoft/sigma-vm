@@ -52,11 +52,15 @@ pub trait Policy {
   /// otherwise [`None`].
   fn ptr_or_none(v: &Self::Value) -> Option<u64>;
 
+  /// Returns a string pointer from the given heap constant,
+  /// returns an error if necessary.
+  fn str_ptr_from_const(c: &HeapConst) -> Result<u64, Self::Error>;
+
   /// Returns an object metadata pointer from the given heap constant,
   /// returns an error if necessary.
   fn obj_ptr_from_const(c: &HeapConst) -> Result<u64, Self::Error>;
 
-  /// Returns an call information pointer from the given heap constant,
+  /// Returns a call information pointer from the given heap constant,
   /// returns an error if necessary.
   fn call_info_from_const(c: &HeapConst) -> Result<u64, Self::Error>;
 
@@ -250,6 +254,14 @@ where
     }
   }
 
+  fn str_ptr_from_const(c: &HeapConst) -> Result<u64, Self::Error> {
+    if c.kind() == ConstKind::Str {
+      Ok(c.ptr())
+    } else {
+      Err(StrictError::InvalidStr)
+    }
+  }
+
   fn obj_ptr_from_const(c: &HeapConst) -> Result<u64, Self::Error> {
     if c.kind() == ConstKind::Object {
       Ok(c.ptr())
@@ -354,6 +366,8 @@ pub enum StrictError {
   OutOfBounds,
   /// Out of heap memory.
   OutOfHeap,
+  /// Invalid string.
+  InvalidStr,
   /// Invalid object metadata.
   InvalidObject,
   /// Invalid call information.
@@ -373,6 +387,7 @@ impl fmt::Display for StrictError {
       Self::ZeroDivision => write!(f, "divisor is zero"),
       Self::OutOfBounds => write!(f, "memory access out of bounds"),
       Self::OutOfHeap => write!(f, "out of heap memory"),
+      Self::InvalidStr => write!(f, "invalid string"),
       Self::InvalidObject => write!(f, "invalid object metadata"),
       Self::InvalidCallInfo => write!(f, "invalid call information"),
       Self::InvalidUtf8 => write!(f, "invalid UTF-8 string"),
@@ -445,6 +460,10 @@ where
 
   fn ptr_or_none(v: &Self::Value) -> Option<u64> {
     Strict::<H, GC>::ptr_or_none(v)
+  }
+
+  fn str_ptr_from_const(c: &HeapConst) -> Result<u64, Self::Error> {
+    Strict::<H, GC>::str_ptr_from_const(c).map_err(StrictAlignError::Strict)
   }
 
   fn obj_ptr_from_const(c: &HeapConst) -> Result<u64, Self::Error> {
@@ -609,6 +628,10 @@ where
 
   fn ptr_or_none(v: &Self::Value) -> Option<u64> {
     v.is_ptr.then_some(v.value)
+  }
+
+  fn str_ptr_from_const(c: &HeapConst) -> Result<u64, Self::Error> {
+    Ok(c.ptr())
   }
 
   fn obj_ptr_from_const(c: &HeapConst) -> Result<u64, Self::Error> {
