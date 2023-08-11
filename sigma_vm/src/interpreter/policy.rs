@@ -1,4 +1,4 @@
-use crate::bytecode::consts::{ConstKind, HeapCallInfo, HeapConst, Object, Str};
+use crate::bytecode::consts::{ConstKind, HeapConst, Object, Str};
 use crate::interpreter::gc::{GarbageCollector, PotentialRoots, Roots};
 use crate::interpreter::heap::{CheckedHeap, Heap};
 use std::alloc::Layout;
@@ -59,10 +59,6 @@ pub trait Policy {
   /// Returns an object metadata pointer from the given heap constant,
   /// returns an error if necessary.
   fn obj_ptr_from_const(c: &HeapConst) -> Result<u64, Self::Error>;
-
-  /// Returns a call information pointer from the given heap constant,
-  /// returns an error if necessary.
-  fn call_info_from_const(c: &HeapConst) -> Result<u64, Self::Error>;
 
   /// Unwraps an [`Option<Value>`], returns an error if necessary.
   fn unwrap_val<V>(v: Option<V>) -> Result<V, Self::Error>;
@@ -129,17 +125,6 @@ pub trait Policy {
       field_size,
     )?;
     Ok(unsafe { &*ptr::from_raw_parts(addr, len as usize) })
-  }
-
-  /// Returns a call information by the given pointer.
-  fn call_info(heap: &Self::Heap, ptr: u64) -> Result<HeapCallInfo, Self::Error> {
-    Self::check_access(
-      heap,
-      ptr,
-      mem::size_of::<HeapCallInfo>(),
-      mem::align_of::<HeapCallInfo>(),
-    )?;
-    Ok(unsafe { *(heap.addr(ptr) as *const HeapCallInfo) })
   }
 
   /// Returns a layout for allocation by the given size and align.
@@ -267,14 +252,6 @@ where
       Ok(c.ptr())
     } else {
       Err(StrictError::InvalidObject)
-    }
-  }
-
-  fn call_info_from_const(c: &HeapConst) -> Result<u64, Self::Error> {
-    if c.kind() == ConstKind::CallInfo {
-      Ok(c.ptr())
-    } else {
-      Err(StrictError::InvalidCallInfo)
     }
   }
 
@@ -470,10 +447,6 @@ where
     Strict::<H, GC>::obj_ptr_from_const(c).map_err(StrictAlignError::Strict)
   }
 
-  fn call_info_from_const(c: &HeapConst) -> Result<u64, Self::Error> {
-    Strict::<H, GC>::call_info_from_const(c).map_err(StrictAlignError::Strict)
-  }
-
   fn unwrap_val<V>(v: Option<V>) -> Result<V, Self::Error> {
     Strict::<H, GC>::unwrap_val(v).map_err(StrictAlignError::Strict)
   }
@@ -635,10 +608,6 @@ where
   }
 
   fn obj_ptr_from_const(c: &HeapConst) -> Result<u64, Self::Error> {
-    Ok(c.ptr())
-  }
-
-  fn call_info_from_const(c: &HeapConst) -> Result<u64, Self::Error> {
     Ok(c.ptr())
   }
 
