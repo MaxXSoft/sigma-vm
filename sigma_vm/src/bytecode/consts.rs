@@ -102,6 +102,16 @@ impl Const {
     self.bytes(ConstKind::Raw)
   }
 
+  /// Returns a reference of call information, or [`None`] if
+  /// the current constant is not a call information.
+  ///
+  /// # Safety
+  ///
+  /// The kind must match the data.
+  pub unsafe fn call_info(&self) -> Option<&CallInfo> {
+    (self.kind == ConstKind::CallInfo).then(|| &*(self.addr() as *const CallInfo))
+  }
+
   /// Returns a reference of byte sequence (string constant or raw data),
   /// or [`None`] if the current constant is not a byte sequence.
   ///
@@ -199,6 +209,7 @@ impl_from!(f64, F64);
 impl_from!(Str<Bytes: Array<u8>>, Str);
 impl_from!(Object<Offsets: Array<u64>>, Object);
 impl_from!(Raw<Bytes: Array<u8>>, Raw);
+impl_from!(CallInfo, CallInfo);
 
 /// Trait for constructing values from constant.
 pub trait FromConst: Sized {
@@ -277,6 +288,8 @@ const_kind! {
   Object,
   /// Raw data.
   Raw,
+  /// Call information.
+  CallInfo,
 }
 
 impl ConstKind {
@@ -296,6 +309,7 @@ impl ConstKind {
       Self::Str => mem::align_of::<Str<[u8; 0]>>(),
       Self::Object => mem::align_of::<Object<[u64; 0]>>(),
       Self::Raw => mem::align_of::<Raw<[u8; 0]>>(),
+      Self::CallInfo => mem::align_of::<CallInfo>(),
     }
   }
 }
@@ -352,6 +366,27 @@ pub struct ManagedPtr<Offsets: ?Sized + Array<u64>> {
 pub struct Raw<Bytes: ?Sized + Array<u8>> {
   pub len: u64,
   pub bytes: Bytes,
+}
+
+/// Call information.
+///
+/// With a constant pool index to a string constant ([`Str`]) of the
+/// target module name, and an index to a string of function name.
+#[repr(C)]
+#[derive(Debug)]
+pub struct CallInfo {
+  pub module: u64,
+  pub function: u64,
+}
+
+/// Call information on heap.
+///
+/// Same memory layout as [`CallInfo`], but all indices become pointers.
+#[repr(C)]
+#[derive(Debug)]
+pub struct HeapCallInfo {
+  pub module: u64,
+  pub function: u64,
 }
 
 /// Marker trait for arrays (`[T; N]` and `[T]`).
