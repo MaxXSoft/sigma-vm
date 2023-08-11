@@ -1,5 +1,6 @@
 use crate::bytecode::insts::Inst;
 use crate::bytecode::module::Module;
+use crate::interpreter::gc::PotentialRoots;
 use crate::interpreter::policy::Policy;
 use crate::interpreter::vm::{ControlFlow, GlobalHeap};
 use std::iter::Flatten;
@@ -50,8 +51,13 @@ impl<P: Policy> Context<P> {
   }
 
   /// Sets the PC to the given value.
-  pub fn pc(&mut self, pc: u64) {
+  pub fn set_pc(&mut self, pc: u64) {
     self.pc = pc;
+  }
+
+  /// Returns potential garbage collection roots of the current context.
+  pub fn proots(&self) -> PotentialRoots<P> {
+    PotentialRoots { values: &self.value_stack, vars: &self.var_stack }
   }
 
   /// Pushes a value to the value stack.
