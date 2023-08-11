@@ -1,7 +1,7 @@
 use crate::bytecode::consts::{Const, HeapConst};
 use crate::bytecode::insts::Inst;
 use crate::interpreter::context::Context;
-use crate::interpreter::gc::PotentialRoots;
+use crate::interpreter::gc::{GarbageCollector, Roots};
 use crate::interpreter::heap::{Heap, Obj, ObjKind};
 use crate::interpreter::loader::{Error, Loader, Source};
 use crate::interpreter::policy::Policy;
@@ -98,6 +98,24 @@ impl<P: Policy> VM<P> {
     // push to stack
     self.context(module).add_ptr(ptr)
   }
+
+  /// Runs garbage collector.
+  fn collect(&mut self) -> Result<(), P::Error> {
+    let roots = self.contexts.iter().filter_map(|(s, c)| {
+      if c.initialized {
+        self.loader.module(*s).map(|m| Roots {
+          consts: &m.consts,
+          proots: c.context.proots(),
+        })
+      } else {
+        None
+      }
+    });
+    self
+      .global_heap
+      .policy
+      .collect(&mut self.global_heap.gc, &mut self.global_heap.heap, roots)
+  }
 }
 
 impl<P: Policy> VM<P>
@@ -106,8 +124,24 @@ where
 {
   /// Runs the given module.
   pub fn run(&mut self, module: Source) -> Result<(), P::Error> {
+    let mut next_to_run = vec![module];
+    while let Some(module) = next_to_run.pop() {
+      match self.run_until_cf(module)? {
+        ControlFlow::Stop => continue,
+        ControlFlow::GC => {
+          self.collect()?;
+          next_to_run.push(module);
+        }
+        ControlFlow::CallExt(ci) => todo!(),
+      }
+    }
+    Ok(())
+  }
+
+  /// Runs the given module until control flow.
+  fn run_until_cf(&mut self, module: Source) -> Result<ControlFlow, P::Error> {
     // get context and module
-    let mut context_info = self.contexts.entry(module).or_default();
+    let context_info = self.contexts.entry(module).or_default();
     let module = P::unwrap_module(self.loader.module(module))?;
     // the context should not be initialized
     assert!(
@@ -116,13 +150,7 @@ where
     );
     context_info.initialized = false;
     // run the module
-    loop {
-      match context_info.context.run(module, &mut self.global_heap)? {
-        ControlFlow::Stop => return Ok(()),
-        ControlFlow::GC => todo!(),
-        ControlFlow::CallExt(ci) => todo!(),
-      }
-    }
+    context_info.context.run(module, &mut self.global_heap)
   }
 
   /// Calls a function in the given module.
@@ -149,6 +177,12 @@ impl<P: Policy> GlobalHeap<P> {
     let heap = policy.new_heap();
     let gc = policy.new_gc();
     Self { policy, heap, gc }
+  }
+
+  /// Resets the internal state.
+  pub fn reset(&mut self) {
+    self.heap.reset();
+    self.gc.reset();
   }
 
   /// Loads the given pointer as type `T`.
@@ -221,11 +255,6 @@ impl<P: Policy> GlobalHeap<P> {
   ) -> Result<u64, P::Error> {
     let layout = P::layout(size as usize, align as usize)?;
     Ok(self.heap.alloc_obj(layout, Obj { kind, ptr: obj_ptr }))
-  }
-
-  /// Runs garbage collector.
-  fn collect(&mut self, proots: PotentialRoots<P>) -> Result<(), P::Error> {
-    self.policy.collect(&mut self.gc, &mut self.heap, proots)
   }
 }
 
