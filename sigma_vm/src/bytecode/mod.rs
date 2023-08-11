@@ -75,12 +75,11 @@ mod test {
     let data = w.into_inner().into_inner();
     let mut r = Reader::new(data.as_slice());
     r.read().unwrap();
-    let (c2, i2) = r.into_consts_insts();
-    assert!(consts.iter().zip(c2.iter()).all(|(l, r)| l
+    assert!(consts.iter().zip(r.consts().iter()).all(|(l, r)| l
       .data()
       .iter()
       .zip(r.data())
       .all(|(l, r)| l == r)));
-    assert_eq!(insts, i2);
+    assert_eq!(insts.as_ref(), r.insts());
   }
 }

@@ -83,14 +83,6 @@ impl<R> Reader<R> {
     &self.insts
   }
 
-  /// Converts the reader into a constant pool and an instruction list.
-  pub fn into_consts_insts(self) -> (Box<[Const]>, Box<[Inst]>) {
-    (
-      self.consts.into_boxed_slice(),
-      self.insts.into_boxed_slice(),
-    )
-  }
-
   /// Converts the reader into a module.
   pub fn into_module<H>(self, heap: &mut H) -> Module
   where
