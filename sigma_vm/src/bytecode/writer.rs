@@ -1,4 +1,4 @@
-use crate::bytecode::consts::{Const, ConstKind, Object, Raw, Str};
+use crate::bytecode::consts::{CallInfo, Const, ConstKind, Object, Raw, Str};
 use crate::bytecode::insts::{Inst, Operand};
 use crate::bytecode::{MAGIC, VERSION};
 use leb128::write::{signed, unsigned};
@@ -157,6 +157,7 @@ impl WriteData for Const {
       ConstKind::Str => unsafe { self.str() }.unwrap().write(writer),
       ConstKind::Object => unsafe { self.object() }.unwrap().write(writer),
       ConstKind::Raw => unsafe { self.raw() }.unwrap().write(writer),
+      ConstKind::CallInfo => unsafe { self.call_info() }.unwrap().write(writer),
     }
   }
 }
@@ -193,5 +194,16 @@ impl WriteData for Raw<[u8]> {
   {
     unsigned(writer, self.len)?;
     writer.write_all(&self.bytes)
+  }
+}
+
+impl WriteData for CallInfo {
+  fn write<W>(&self, writer: &mut W) -> Result<()>
+  where
+    W: Write,
+  {
+    unsigned(writer, self.module)?;
+    unsigned(writer, self.function)?;
+    Ok(())
   }
 }
