@@ -1,4 +1,4 @@
-use crate::bytecode::consts::{ConstKind, HeapCallInfo, HeapConst, Object};
+use crate::bytecode::consts::{ConstKind, HeapCallInfo, HeapConst, Object, Str};
 use crate::interpreter::gc::{GarbageCollector, PotentialRoots, Roots};
 use crate::interpreter::heap::{CheckedHeap, Heap};
 use std::alloc::Layout;
@@ -95,13 +95,28 @@ pub trait Policy {
     }
   }
 
+  /// Returns a reference of string by the given pointer.
+  fn str(heap: &Self::Heap, ptr: u64) -> Result<&Str<[u8]>, Self::Error> {
+    // read string's length from heap
+    let addr = heap.addr(ptr);
+    let field_size = mem::size_of::<u64>();
+    Self::check_access(heap, ptr, field_size, field_size)?;
+    let len = unsafe { *(addr as *const u64) };
+    // create string reference
+    Self::check_access(heap, ptr + field_size as u64, len as usize, 1)?;
+    Ok(unsafe { &*ptr::from_raw_parts(addr, len as usize) })
+  }
+
+  /// Returns a reference of a UTF-8 string by the given pointer.
+  fn utf8_str(heap: &Self::Heap, ptr: u64) -> Result<&str, Self::Error>;
+
   /// Returns a reference of object metadata by the given pointer.
   fn object(heap: &Self::Heap, ptr: u64) -> Result<&Object<[u64]>, Self::Error> {
     // read object metadata's length from heap
-    let addr = heap.addr(ptr) as *const u64;
+    let addr = heap.addr(ptr);
     let field_size = mem::size_of::<u64>();
     Self::check_access(heap, ptr, field_size * 3, field_size)?;
-    let len = unsafe { *addr.offset(2) };
+    let len = unsafe { *(addr as *const u64).offset(2) };
     // create object reference
     Self::check_access(
       heap,
@@ -109,7 +124,7 @@ pub trait Policy {
       field_size * len as usize,
       field_size,
     )?;
-    Ok(unsafe { &*ptr::from_raw_parts(addr as *const (), len as usize) })
+    Ok(unsafe { &*ptr::from_raw_parts(addr, len as usize) })
   }
 
   /// Returns a call information by the given pointer.
@@ -279,6 +294,12 @@ where
     }
   }
 
+  fn utf8_str(heap: &Self::Heap, ptr: u64) -> Result<&str, Self::Error> {
+    Self::str(heap, ptr)?
+      .to_str()
+      .ok_or(StrictError::InvalidUtf8)
+  }
+
   fn layout(size: usize, align: usize) -> Result<Layout, Self::Error> {
     Layout::from_size_align(size, align).map_err(|_| StrictError::InvalidLayout)
   }
@@ -337,6 +358,8 @@ pub enum StrictError {
   InvalidObject,
   /// Invalid call information.
   InvalidCallInfo,
+  /// Invalid UTF-8 string.
+  InvalidUtf8,
   /// Invalid allocation layout.
   InvalidLayout,
 }
@@ -352,6 +375,7 @@ impl fmt::Display for StrictError {
       Self::OutOfHeap => write!(f, "out of heap memory"),
       Self::InvalidObject => write!(f, "invalid object metadata"),
       Self::InvalidCallInfo => write!(f, "invalid call information"),
+      Self::InvalidUtf8 => write!(f, "invalid UTF-8 string"),
       Self::InvalidLayout => write!(f, "invalid allocation layout"),
     }
   }
@@ -454,6 +478,10 @@ where
     } else {
       Ok(())
     }
+  }
+
+  fn utf8_str(heap: &Self::Heap, ptr: u64) -> Result<&str, Self::Error> {
+    Strict::<H, GC>::utf8_str(heap, ptr).map_err(StrictAlignError::Strict)
   }
 
   fn layout(size: usize, align: usize) -> Result<Layout, Self::Error> {
@@ -609,6 +637,10 @@ where
 
   fn check_access(_: &Self::Heap, _: u64, _: usize, _: usize) -> Result<(), Self::Error> {
     Ok(())
+  }
+
+  fn utf8_str(heap: &Self::Heap, ptr: u64) -> Result<&str, Self::Error> {
+    Ok(unsafe { std::str::from_utf8_unchecked(&Self::str(heap, ptr)?.bytes) })
   }
 
   fn layout(size: usize, align: usize) -> Result<Layout, Self::Error> {
