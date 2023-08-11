@@ -1,4 +1,4 @@
-use crate::bytecode::consts::{Const, HeapConst};
+use crate::bytecode::consts::{Const, HeapCallInfo, HeapConst};
 use crate::bytecode::export::ExportInfo;
 use crate::bytecode::insts::Inst;
 use crate::interpreter::context::Context;
@@ -285,6 +285,6 @@ pub enum ControlFlow {
   Stop,
   /// Requests a garbage collection.
   GC,
-  /// Requests an external call, with a heap pointer to the call information.
-  CallExt(u64),
+  /// Requests an external call, with a call information.
+  CallExt(HeapCallInfo),
 }
