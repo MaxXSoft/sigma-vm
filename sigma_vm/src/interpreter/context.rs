@@ -479,16 +479,17 @@ where
         PcUpdate::Next
       }
       Inst::Load => {
-        todo!();
-        PcUpdate::Next
+        let ptr = self.pop_ptr()?;
+        return Ok(PcUpdate::ControlFlow(ControlFlow::LoadModule(ptr)));
       }
       Inst::LoadC(opr) => {
-        todo!();
-        PcUpdate::Next
+        let c = P::unwrap_val(module.consts.get(opr as usize))?;
+        let ptr = P::str_ptr_from_const(c)?;
+        return Ok(PcUpdate::ControlFlow(ControlFlow::LoadModule(ptr)));
       }
       Inst::Unload => {
-        todo!();
-        PcUpdate::Next
+        let handle = self.pop_int_ptr()?;
+        return Ok(PcUpdate::ControlFlow(ControlFlow::UnloadModule(handle)));
       }
       Inst::Bz(opr) => {
         if self.pop_any()? == 0 {
