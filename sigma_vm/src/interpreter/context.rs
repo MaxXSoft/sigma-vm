@@ -512,12 +512,15 @@ where
         PcUpdate::Set((self.pc as i64 + opr) as u64)
       }
       Inst::CallExt => {
-        return Ok(PcUpdate::ControlFlow(ControlFlow::CallExt(self.pop_ptr()?)));
+        let ptr = self.pop_ptr()?;
+        let handle = self.pop_int_ptr()?;
+        return Ok(PcUpdate::ControlFlow(ControlFlow::CallExt(handle, ptr)));
       }
       Inst::CallExtC(opr) => {
+        let handle = self.pop_int_ptr()?;
         let c = P::unwrap_val(module.consts.get(opr as usize))?;
-        let ptr = P::call_info_from_const(c)?;
-        return Ok(PcUpdate::ControlFlow(ControlFlow::CallExt(ptr)));
+        let ptr = P::str_ptr_from_const(c)?;
+        return Ok(PcUpdate::ControlFlow(ControlFlow::CallExt(handle, ptr)));
       }
       Inst::Ret => {
         let pcu = match self.ra_stack.pop() {
