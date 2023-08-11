@@ -209,8 +209,14 @@ def_opc_inst! {
   Bnz(i64),
   /// Jump to pc + opr.
   Jmp(i64),
-  /// Call the function at pc + opr with arguments s0, ..., s{n - 1}.
+  /// Call the function at pc + opr with arguments s{n - 1}, ..., s0.
   Call(i64),
+  /// Call an external function with call information pointer s0
+  /// and arguments s{n}, ..., s1.
+  CallExt,
+  /// Call an external function with call information constant pool index opr
+  /// and arguments s{n}, ..., s1.
+  CallExtC(u64),
   /// Return from the current function.
   Ret,
   /// System call.
