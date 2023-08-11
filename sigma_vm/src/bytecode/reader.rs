@@ -255,7 +255,18 @@ where
   }
 
   fn read_export(&mut self) -> Result<Box<Export<[u8]>>> {
-    Export::read(self)
+    let pc = self.read_leb128()?;
+    let num_rets = self.read_leb128()?;
+    let len = self.read_leb128()?;
+    let len_size = mem::size_of_val(&len);
+    let size = len_size * 3 + len as usize;
+    let mut data: Box<Export<[u8]>> =
+      unsafe { alloc_uninit(size, len_size, len as usize) }.map_err(Error::Layout)?;
+    data.pc_rets.pc = pc;
+    data.pc_rets.num_rets = num_rets;
+    data.name.len = len;
+    self.fill(&mut data.name.bytes)?;
+    Ok(data)
   }
 
   fn read_inst(&mut self) -> Result<Inst> {
@@ -475,32 +486,5 @@ impl ReadConst for CallInfo {
     data.module = reader.read_leb128()?;
     data.function = reader.read_leb128()?;
     Ok(unsafe { Const::new(ConstKind::CallInfo, data, size) })
-  }
-}
-
-/// Helper trait for reading export entries.
-trait ReadExport {
-  fn read<R>(reader: &mut R) -> Result<Box<Self>>
-  where
-    R: Read;
-}
-
-impl ReadExport for Export<[u8]> {
-  fn read<R>(reader: &mut R) -> Result<Box<Self>>
-  where
-    R: Read,
-  {
-    let pc = reader.read_leb128()?;
-    let num_rets = reader.read_leb128()?;
-    let len = reader.read_leb128()?;
-    let len_size = mem::size_of_val(&len);
-    let size = len_size * 3 + len as usize;
-    let mut data: Box<Self> =
-      unsafe { alloc_uninit(size, len_size, len as usize) }.map_err(Error::Layout)?;
-    data.pc = pc;
-    data.num_rets = num_rets;
-    data.name.len = len;
-    reader.fill(&mut data.name.bytes)?;
-    Ok(data)
   }
 }
