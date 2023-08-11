@@ -151,7 +151,19 @@ where
   /// If the function has arguments, they should first be pushed onto
   /// the the module context's value stack.
   pub fn call(&mut self, module: Source, func: &str) -> Result<Vec<P::Value>, P::Error> {
-    todo!()
+    // get call site information
+    let m = P::unwrap_module(self.loader.module(module))?;
+    let call_site = P::unwrap_module(m.call_site(func))?;
+    let num_rets = call_site.num_rets;
+    // call the target function
+    self.run_from_pc(module, call_site.pc)?;
+    // collect return values
+    let mut rets = Vec::new();
+    let context = self.context(module);
+    for _ in 0..num_rets {
+      rets.push(context.pop()?);
+    }
+    Ok(rets)
   }
 
   /// Runs the given module from the given PC.
