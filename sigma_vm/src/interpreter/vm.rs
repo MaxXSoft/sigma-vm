@@ -15,7 +15,7 @@ use std::path::Path;
 pub struct VM<P: Policy> {
   global_heap: GlobalHeap<P>,
   loader: Loader,
-  contexts: HashMap<Source, Context<P>>,
+  contexts: HashMap<Source, ContextInfo<P>>,
 }
 
 impl<P: Policy> VM<P> {
@@ -39,7 +39,7 @@ impl<P: Policy> VM<P> {
   }
 
   /// Loads a module from the given path.
-  pub fn load_from_path<T>(&mut self, path: T) -> std::result::Result<Source, Error>
+  pub fn load_from_path<T>(&mut self, path: T) -> StdResult<Source, Error>
   where
     T: AsRef<Path>,
   {
@@ -47,14 +47,14 @@ impl<P: Policy> VM<P> {
   }
 
   /// Loads a module from the given bytes.
-  pub fn load_from_bytes(&mut self, bytes: &[u8]) -> std::result::Result<Source, Error> {
+  pub fn load_from_bytes(&mut self, bytes: &[u8]) -> StdResult<Source, Error> {
     self
       .loader
       .load_from_bytes(bytes, &mut self.global_heap.heap)
   }
 
   /// Loads a module from the standard input.
-  pub fn load_from_stdin(&mut self) -> std::result::Result<Source, Error> {
+  pub fn load_from_stdin(&mut self) -> StdResult<Source, Error> {
     self.loader.load_from_stdin(&mut self.global_heap.heap)
   }
 
@@ -63,7 +63,7 @@ impl<P: Policy> VM<P> {
     &mut self,
     consts: Box<[Const]>,
     insts: Box<[Inst]>,
-  ) -> std::result::Result<Source, Error> {
+  ) -> StdResult<Source, Error> {
     self
       .loader
       .new_module(consts, insts, &mut self.global_heap.heap)
@@ -75,8 +75,10 @@ impl<P: Policy> VM<P> {
   }
 
   /// Returns a mutable reference to the context of the given module.
+  ///
+  /// If the given context does not exists, it will be created first.
   pub fn context(&mut self, module: Source) -> &mut Context<P> {
-    self.contexts.entry(module).or_default()
+    &mut self.contexts.entry(module).or_default().context
   }
 
   /// Adds the given string to the value stack of the given module.
@@ -99,6 +101,43 @@ impl<P: Policy> VM<P> {
     }
     // push to stack
     self.context(module).add_ptr(ptr)
+  }
+}
+
+impl<P: Policy> VM<P>
+where
+  P::Value: Clone,
+{
+  /// Runs the given module.
+  pub fn run(&mut self, module: Source) -> StdResult<(), P::Error> {
+    // get context and module
+    let mut context_info = self.contexts.entry(module).or_default();
+    let module = P::unwrap_module(self.loader.module(module))?;
+    // the context should not be initialized
+    assert!(
+      !context_info.initialized,
+      "context has already been initialized"
+    );
+    context_info.initialized = false;
+    // run the module
+    loop {
+      match context_info.context.run(module, &mut self.global_heap) {
+        ControlFlow::Error(e) => return Err(e),
+        ControlFlow::Stop => return Ok(()),
+        ControlFlow::GC => todo!(),
+        ControlFlow::CallExt(ci) => todo!(),
+      }
+    }
+  }
+
+  /// Calls a function in the given module.
+  pub fn call(&mut self, module: Source) -> StdResult<(), P::Error> {
+    todo!()
+  }
+
+  /// Calls a function by the given call information.
+  fn call_ext(&mut self, call_info: u64) -> StdResult<(), P::Error> {
+    todo!()
   }
 }
 
@@ -193,6 +232,21 @@ impl<P: Policy> GlobalHeap<P> {
   }
 }
 
+/// Context information.
+struct ContextInfo<P: Policy> {
+  context: Context<P>,
+  initialized: bool,
+}
+
+impl<P: Policy> Default for ContextInfo<P> {
+  fn default() -> Self {
+    Self {
+      context: Default::default(),
+      initialized: false,
+    }
+  }
+}
+
 /// Control flow actions.
 pub enum ControlFlow<P: Policy> {
   /// Error occurred.
@@ -205,8 +259,11 @@ pub enum ControlFlow<P: Policy> {
   CallExt(u64),
 }
 
+/// Result type in standard library.
+type StdResult<T, E> = std::result::Result<T, E>;
+
 /// Result that returns a control flow action as an error.
-pub(super) type Result<T, P> = std::result::Result<T, ControlFlow<P>>;
+pub(super) type Result<T, P> = StdResult<T, ControlFlow<P>>;
 
 /// Helper macro for converting policy results into control flow results.
 macro_rules! cfr {
