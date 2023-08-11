@@ -1,5 +1,5 @@
 use crate::bytecode::consts::{ConstKind, HeapConst, Object};
-use crate::interpreter::gc::{GarbageCollector, PotentialRoots};
+use crate::interpreter::gc::{GarbageCollector, PotentialRoots, Roots};
 use crate::interpreter::heap::{CheckedHeap, Heap};
 use std::alloc::Layout;
 use std::marker::PhantomData;
@@ -121,12 +121,14 @@ pub trait Policy {
   /// the GC succeeded in reducing the heap size.
   ///
   /// Returns an error if necessary.
-  fn collect(
-    &self,
+  fn collect<'gc, I>(
+    &'gc self,
     gc: &mut Self::GarbageCollector,
     heap: &mut Self::Heap,
-    proots: PotentialRoots<Self>,
-  ) -> Result<(), Self::Error>;
+    roots: I,
+  ) -> Result<(), Self::Error>
+  where
+    I: Iterator<Item = Roots<'gc, Self>>;
 }
 
 /// Strict policy.
@@ -266,13 +268,16 @@ where
     heap.size() > self.gc_threshold
   }
 
-  fn collect(
-    &self,
+  fn collect<'gc, I>(
+    &'gc self,
     gc: &mut Self::GarbageCollector,
     heap: &mut Self::Heap,
-    proots: PotentialRoots<Self>,
-  ) -> Result<(), Self::Error> {
-    gc.collect(heap, proots)?;
+    roots: I,
+  ) -> Result<(), Self::Error>
+  where
+    I: Iterator<Item = Roots<'gc, Self>>,
+  {
+    gc.collect(heap, roots)?;
     if heap.size() > self.gc_threshold {
       Err(StrictError::OutOfHeap)
     } else {
@@ -433,20 +438,25 @@ where
     self.strict.should_collect(heap)
   }
 
-  fn collect(
-    &self,
+  fn collect<'gc, I>(
+    &'gc self,
     gc: &mut Self::GarbageCollector,
     heap: &mut Self::Heap,
-    proots: PotentialRoots<Self>,
-  ) -> Result<(), Self::Error> {
-    let proots = PotentialRoots {
-      consts: proots.consts,
-      values: proots.values,
-      vars: proots.vars,
-    };
+    roots: I,
+  ) -> Result<(), Self::Error>
+  where
+    I: Iterator<Item = Roots<'gc, Self>>,
+  {
+    let roots = roots.map(|r| Roots {
+      consts: r.consts,
+      proots: PotentialRoots {
+        values: r.proots.values,
+        vars: r.proots.vars,
+      },
+    });
     self
       .strict
-      .collect(gc, heap, proots)
+      .collect(gc, heap, roots)
       .map_err(StrictAlignError::Strict)
   }
 }
@@ -585,13 +595,16 @@ where
   /// # Panics
   ///
   /// Panics if unsuccess.
-  fn collect(
-    &self,
+  fn collect<'gc, I>(
+    &'gc self,
     gc: &mut Self::GarbageCollector,
     heap: &mut Self::Heap,
-    proots: PotentialRoots<Self>,
-  ) -> Result<(), Self::Error> {
-    gc.collect(heap, proots)?;
+    roots: I,
+  ) -> Result<(), Self::Error>
+  where
+    I: Iterator<Item = Roots<'gc, Self>>,
+  {
+    gc.collect(heap, roots)?;
     if heap.size() > self.gc_threshold {
       panic!("out of heap memory");
     }
