@@ -285,6 +285,6 @@ pub enum ControlFlow {
   Stop,
   /// Requests a garbage collection.
   GC,
-  /// Requests an external call, with a call information.
-  CallExt(HeapCallInfo),
+  /// Requests an external call, with a pointer to the call information.
+  CallExt(u64),
 }
