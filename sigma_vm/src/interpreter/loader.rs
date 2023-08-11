@@ -145,6 +145,8 @@ impl Loader {
 /// Source identifier of the loaded module.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Source {
+  /// Invalid source.
+  Invalid,
   /// Module is loaded from file.
   File(u32),
   /// Module is loaded from memory.
@@ -156,9 +158,10 @@ pub enum Source {
 impl From<Source> for u64 {
   fn from(source: Source) -> Self {
     match source {
-      Source::File(id) => (0 << 32) | id as u64,
-      Source::Memory(id) => (1 << 32) | id as u64,
-      Source::Stdin => 2 << 32,
+      Source::Invalid => 0,
+      Source::File(id) => (1 << 32) | id as u64,
+      Source::Memory(id) => (2 << 32) | id as u64,
+      Source::Stdin => 3 << 32,
     }
   }
 }
@@ -168,9 +171,10 @@ impl TryFrom<u64> for Source {
 
   fn try_from(value: u64) -> Result<Self, Self::Error> {
     match value >> 32 {
-      0 => Ok(Self::File(value as u32)),
-      1 => Ok(Self::Memory(value as u32)),
-      2 if value as u32 == 0 => Ok(Self::Stdin),
+      0 => Ok(Self::Invalid),
+      1 => Ok(Self::File(value as u32)),
+      2 => Ok(Self::Memory(value as u32)),
+      3 if value as u32 == 0 => Ok(Self::Stdin),
       _ => Err(()),
     }
   }
