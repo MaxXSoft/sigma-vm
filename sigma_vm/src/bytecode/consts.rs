@@ -7,7 +7,7 @@ use std::ptr::{self, Pointee};
 use std::{mem, slice};
 
 /// Constant.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Const {
   kind: ConstKind,
   data: Box<[u8]>,
