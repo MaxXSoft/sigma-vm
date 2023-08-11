@@ -1,4 +1,5 @@
 use crate::bytecode::consts::{CallInfo, Const, ConstKind, Object, Raw, Str};
+use crate::bytecode::export::Export;
 use crate::bytecode::insts::{Inst, Opcode, Operand, OperandType};
 use crate::bytecode::module::Module;
 use crate::bytecode::{MAGIC, VERSION};
@@ -60,6 +61,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub struct Reader<R> {
   reader: R,
   consts: Vec<Const>,
+  exports: Vec<Box<Export<[u8]>>>,
   insts: Vec<Inst>,
 }
 
@@ -69,6 +71,7 @@ impl<R> Reader<R> {
     Self {
       reader,
       consts: vec![],
+      exports: vec![],
       insts: vec![],
     }
   }
@@ -76,6 +79,11 @@ impl<R> Reader<R> {
   /// Returns a reference to the constant pool.
   pub fn consts(&self) -> &[Const] {
     &self.consts
+  }
+
+  /// Returns a reference to the export information.
+  pub fn exports(&self) -> &[Box<Export<[u8]>>] {
+    &self.exports
   }
 
   /// Returns a reference to the instruction list.
@@ -108,6 +116,7 @@ where
     self.check_magic()?;
     self.check_version()?;
     self.read_consts()?;
+    self.read_exports()?;
     self.read_insts()
   }
 
@@ -143,6 +152,17 @@ where
     self.consts.reserve_exact(len as usize);
     for _ in 0..len {
       self.consts.push(self.reader.read_const()?);
+    }
+    Ok(())
+  }
+
+  /// Reads export information.
+  fn read_exports(&mut self) -> Result<()> {
+    let len: u64 = self.reader.read_leb128()?;
+    self.exports.clear();
+    self.exports.reserve_exact(len as usize);
+    for _ in 0..len {
+      self.exports.push(self.reader.read_export()?);
     }
     Ok(())
   }
@@ -201,6 +221,9 @@ trait ReadData {
   /// Reads a constant.
   fn read_const(&mut self) -> Result<Const>;
 
+  /// Reads an export entry.
+  fn read_export(&mut self) -> Result<Box<Export<[u8]>>>;
+
   /// Reads a instruction.
   fn read_inst(&mut self) -> Result<Inst>;
 }
@@ -229,6 +252,10 @@ where
 
   fn read_const(&mut self) -> Result<Const> {
     Const::read(self)
+  }
+
+  fn read_export(&mut self) -> Result<Box<Export<[u8]>>> {
+    Export::read(self)
   }
 
   fn read_inst(&mut self) -> Result<Inst> {
@@ -448,5 +475,32 @@ impl ReadConst for CallInfo {
     data.module = reader.read_leb128()?;
     data.function = reader.read_leb128()?;
     Ok(unsafe { Const::new(ConstKind::CallInfo, data, size) })
+  }
+}
+
+/// Helper trait for reading export entries.
+trait ReadExport {
+  fn read<R>(reader: &mut R) -> Result<Box<Self>>
+  where
+    R: Read;
+}
+
+impl ReadExport for Export<[u8]> {
+  fn read<R>(reader: &mut R) -> Result<Box<Self>>
+  where
+    R: Read,
+  {
+    let pc = reader.read_leb128()?;
+    let num_rets = reader.read_leb128()?;
+    let len = reader.read_leb128()?;
+    let len_size = mem::size_of_val(&len);
+    let size = len_size * 3 + len as usize;
+    let mut data: Box<Self> =
+      unsafe { alloc_uninit(size, len_size, len as usize) }.map_err(Error::Layout)?;
+    data.pc = pc;
+    data.num_rets = num_rets;
+    data.name.len = len;
+    reader.fill(&mut data.name.bytes)?;
+    Ok(data)
   }
 }
