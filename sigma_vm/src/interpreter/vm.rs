@@ -184,6 +184,10 @@ where
           //
           todo!()
         }
+        ControlFlow::UnloadModule(handle) => {
+          //
+          todo!()
+        }
         ControlFlow::CallExt(ptr) => {
           // get call information
           let ci = P::call_info(&self.global_heap.heap, ptr)?;
@@ -315,6 +319,8 @@ pub enum ControlFlow {
   GC,
   /// Requests to load a external module, with a pointer to the module name.
   LoadModule(u64),
+  /// Requests to unload a external module, with a module handle.
+  UnloadModule(u64),
   /// Requests an external call, with a pointer to the call information.
   CallExt(u64),
 }
