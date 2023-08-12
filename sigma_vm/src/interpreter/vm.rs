@@ -89,21 +89,8 @@ impl<P: Policy> VM<P> {
   /// This method will allocates a heap memory to store the given string,
   /// and push its address to the value stack.
   pub fn add_str(&mut self, module: Source, s: &str) {
-    // allocate heap memory
-    let bs = s.as_bytes();
-    let len = bs.len() as u64;
-    let align = mem::size_of_val(&len);
-    let layout = Layout::from_size_align(align + len as usize, align).unwrap();
-    let ptr = self.global_heap.heap.alloc(layout);
-    // write string data
-    let addr = self.global_heap.heap.addr_mut(ptr);
-    // safety: `Str`'s memory layout is same as the following code's description
-    unsafe {
-      *(addr as *mut u64) = len;
-      std::ptr::copy_nonoverlapping(bs.as_ptr(), (addr as *mut u8).add(align), bs.len());
-    }
-    // push to stack
-    self.context(module).add_ptr(ptr)
+    let ptr = self.global_heap.alloc_str(s);
+    self.context(module).add_ptr(ptr);
   }
 
   /// Runs garbage collector.
@@ -136,120 +123,128 @@ where
     S: AsRef<str>,
   {
     // push arguments
-    let mut count = 0;
-    for arg in args {
-      self.add_str(module, arg.as_ref());
-      count += 1;
-    }
-    self.context(module).add_value(P::int_val(count));
+    let mut args: Vec<_> = args
+      .into_iter()
+      .map(|s| P::ptr_val(self.global_heap.alloc_str(s.as_ref())))
+      .collect();
+    args.push(P::int_val(args.len() as u64));
     // call main function
-    self.call(module, "main")
+    self.call(module, "main", args)
   }
 
   /// Calls a function in the given module, returns the return values.
-  ///
-  /// If the function has arguments, they should first be pushed onto
-  /// the the module context's value stack.
-  pub fn call(&mut self, module: Source, func: &str) -> Result<Vec<P::Value>, P::Error> {
+  pub fn call<I>(&mut self, module: Source, func: &str, args: I) -> Result<Vec<P::Value>, P::Error>
+  where
+    I: IntoIterator<Item = P::Value>,
+  {
     // get call site information
     let m = P::unwrap_module(self.loader.module(module))?;
     let call_site = P::unwrap_module(m.call_site(func))?;
-    let num_rets = call_site.num_rets;
-    // call the target function
-    self.run_from_pc(module, call_site.pc)?;
-    // collect return values
-    let mut rets = Vec::new();
-    let context = self.context(module);
-    for _ in 0..num_rets {
-      rets.push(context.pop()?);
+    // check arguments
+    let mut args: Vec<_> = args.into_iter().collect();
+    let is_valid = match call_site.num_args {
+      NumArgs::Variadic => match args.last() {
+        Some(v) => P::get_int_ptr(v)? + 1 == args.len() as u64,
+        None => false,
+      },
+      NumArgs::PlusOne(np1) => np1.get() - 1 == args.len() as u64,
+    };
+    if !is_valid {
+      P::report_invalid_args()?;
     }
-    Ok(rets)
+    // call the target function
+    args.reverse();
+    self.run_from_pc(module, call_site.pc, true, args, call_site.num_rets)
   }
 
   /// Runs the given module from the given PC.
-  fn run_from_pc(&mut self, module: Source, pc: u64) -> Result<(), P::Error> {
-    let mut next_to_run = vec![NextToRun::<P>::new(module, pc)];
-    while let Some(NextToRun {
-      module: s,
-      pc,
-      values,
-      num_rets,
-    }) = next_to_run.pop()
-    {
-      // check if the context is initialized
-      let context_info = self.contexts.entry(s).or_default();
-      if !context_info.initialized {
-        // prevent from infinite loop
-        context_info.initialized = true;
-        if pc != 0 {
-          next_to_run.push(NextToRun::new(s, pc));
-        }
-        next_to_run.push(NextToRun::new(s, 0));
-        continue;
-      }
-      // get module and context
-      let module = P::unwrap_module(self.loader.module(s))?;
-      let context = &mut context_info.context;
-      // push values to stack
-      context.value_stack.extend(values.into_iter().rev());
-      // run the context
-      context.set_pc(pc);
-      match context.run(module, &mut self.global_heap)? {
-        ControlFlow::Stop => {
-          if num_rets != 0 {
-            // push values to the last next-to-run
-            let ntr = next_to_run.last_mut().unwrap();
-            for _ in 0..num_rets {
-              ntr.values.push(context.pop()?);
-            }
-          }
-          continue;
-        }
-        ControlFlow::GC => {
-          self.collect()?;
-          next_to_run.push(NextToRun::new(s, pc));
-        }
-        ControlFlow::LoadModule(ptr) => {
-          // load module
-          let path = P::utf8_str(&self.global_heap.heap, ptr)?.to_string();
-          let handle = Source::from(self.loader.load_from_path(path, &mut self.global_heap.heap));
-          // push handle to value stack
-          context.add_value(P::int_val(handle.into()));
-          next_to_run.push(NextToRun::new(s, pc + 1));
-        }
-        ControlFlow::UnloadModule(handle) => {
-          self.loader.unload(handle.into());
-          next_to_run.push(NextToRun::new(s, pc + 1));
-        }
-        ControlFlow::CallExt(handle, ptr) => {
-          // get the target module
-          let source = Source::from(handle);
-          let module = P::unwrap_module(self.loader.module(source))?;
-          // get call site information
-          let name = P::utf8_str(&self.global_heap.heap, ptr)?;
-          let call_site = P::unwrap_module(module.call_site(name))?;
-          // create new next-to-run
-          let mut ntr = NextToRun::new(source, call_site.pc);
-          ntr.num_rets = call_site.num_rets;
-          // collect arguments
-          let num_args = match call_site.num_args {
-            NumArgs::Variadic => {
-              let n = context.pop_int_ptr()?;
-              ntr.values.push(P::int_val(n));
-              n
-            }
-            NumArgs::PlusOne(np1) => np1.get() - 1,
-          };
-          for _ in 0..num_args {
-            ntr.values.push(context.pop()?);
-          }
-          // update next-to-run
-          next_to_run.push(NextToRun::new(s, pc + 1));
-          next_to_run.push(ntr);
-        }
+  fn run_from_pc(
+    &mut self,
+    source: Source,
+    pc: u64,
+    is_call: bool,
+    args_rev: Vec<P::Value>,
+    num_rets: u64,
+  ) -> Result<Vec<P::Value>, P::Error> {
+    // check if the context is initialized
+    let context_info = self.contexts.entry(source).or_default();
+    if !context_info.initialized {
+      // prevent from infinite recursion
+      context_info.initialized = true;
+      if pc != 0 {
+        self.run_from_pc(source, 0, false, vec![], 0)?;
       }
     }
-    Ok(())
+    // get module and context
+    let module = P::unwrap_module(self.loader.module(source))?;
+    let context = &mut self.contexts.entry(source).or_default().context;
+    // setup value stack, variable stack and PC
+    context.value_stack.extend(args_rev.into_iter().rev());
+    if is_call {
+      context.var_stack.push(Default::default());
+    }
+    context.set_pc(pc);
+    // run the context
+    match context.run(module, &mut self.global_heap)? {
+      ControlFlow::Stop => {
+        // clean up stacks
+        let mut rets_rev = vec![];
+        for _ in 0..num_rets {
+          rets_rev.push(context.pop()?);
+        }
+        if is_call {
+          context.var_stack.pop();
+        }
+        Ok(rets_rev)
+      }
+      ControlFlow::GC => {
+        self.collect()?;
+        return self.run_from_pc(source, pc, is_call, vec![], num_rets);
+      }
+      ControlFlow::LoadModule(ptr) => {
+        // load module
+        let path = P::utf8_str(&self.global_heap.heap, ptr)?.to_string();
+        let handle = Source::from(self.loader.load_from_path(path, &mut self.global_heap.heap));
+        // push handle to value stack
+        context.add_value(P::int_val(handle.into()));
+        return self.run_from_pc(source, pc + 1, is_call, vec![], num_rets);
+      }
+      ControlFlow::UnloadModule(handle) => {
+        self.loader.unload(handle.into());
+        return self.run_from_pc(source, pc + 1, is_call, vec![], num_rets);
+      }
+      ControlFlow::CallExt(handle, ptr) => {
+        // get the target module
+        let target = Source::from(handle);
+        let module = P::unwrap_module(self.loader.module(target))?;
+        // get call site information
+        let name = P::utf8_str(&self.global_heap.heap, ptr)?;
+        let call_site = P::unwrap_module(module.call_site(name))?;
+        // collect arguments
+        let mut args_rev = vec![];
+        let num_args = match call_site.num_args {
+          NumArgs::Variadic => {
+            let n = context.pop_int_ptr()?;
+            args_rev.push(P::int_val(n));
+            n
+          }
+          NumArgs::PlusOne(np1) => np1.get() - 1,
+        };
+        for _ in 0..num_args {
+          args_rev.push(context.pop()?);
+        }
+        // perform call
+        let rets_rev =
+          self.run_from_pc(target, call_site.pc, true, args_rev, call_site.num_rets)?;
+        // push return values
+        self
+          .context(source)
+          .value_stack
+          .extend(rets_rev.into_iter().rev());
+        // continue to run
+        return self.run_from_pc(source, pc + 1, is_call, vec![], num_rets);
+      }
+    }
   }
 }
 
@@ -345,6 +340,24 @@ impl<P: Policy> GlobalHeap<P> {
     let layout = P::layout(size as usize, align as usize)?;
     Ok(self.heap.alloc_obj(layout, Obj { kind, ptr: obj_ptr }))
   }
+
+  /// Allocates a new string on heap, returns the heap pointer.
+  fn alloc_str(&mut self, s: &str) -> u64 {
+    // allocate heap memory
+    let bs = s.as_bytes();
+    let len = bs.len() as u64;
+    let align = mem::size_of_val(&len);
+    let layout = Layout::from_size_align(align + len as usize, align).unwrap();
+    let ptr = self.heap.alloc(layout);
+    // write string data
+    let addr = self.heap.addr_mut(ptr);
+    // safety: `Str`'s memory layout is same as the following code's description
+    unsafe {
+      *(addr as *mut u64) = len;
+      std::ptr::copy_nonoverlapping(bs.as_ptr(), (addr as *mut u8).add(align), bs.len());
+    }
+    ptr
+  }
 }
 
 /// Context information.
@@ -358,26 +371,6 @@ impl<P: Policy> Default for ContextInfo<P> {
     Self {
       context: Default::default(),
       initialized: false,
-    }
-  }
-}
-
-/// Next-to-run information.
-struct NextToRun<P: Policy> {
-  module: Source,
-  pc: u64,
-  values: Vec<P::Value>,
-  num_rets: u64,
-}
-
-impl<P: Policy> NextToRun<P> {
-  /// Creates a new next-to-run.
-  fn new(module: Source, pc: u64) -> Self {
-    Self {
-      module,
-      pc,
-      values: vec![],
-      num_rets: 0,
     }
   }
 }
