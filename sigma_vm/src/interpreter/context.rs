@@ -11,7 +11,7 @@ use std::slice::Iter;
 pub struct Context<P: Policy> {
   pc: u64,
   pub(super) value_stack: Vec<P::Value>,
-  var_stack: Vec<Vars<P::Value>>,
+  pub(super) var_stack: Vec<Vars<P::Value>>,
   ra_stack: Vec<u64>,
 }
 
@@ -37,7 +37,7 @@ impl<P: Policy> Context<P> {
   }
 
   /// Adds the given pointer to the value stack.
-  pub(super) fn add_ptr(&mut self, ptr: u64) {
+  pub fn add_ptr(&mut self, ptr: u64) {
     self.value_stack.push(P::ptr_val(ptr))
   }
 
@@ -681,6 +681,12 @@ impl<V> Vars<V> {
   /// Returns an iterator of all variables.
   pub fn iter(&self) -> Flatten<Iter<Option<V>>> {
     self.vars.iter().flatten()
+  }
+}
+
+impl<V> Default for Vars<V> {
+  fn default() -> Self {
+    Self::new()
   }
 }
 
