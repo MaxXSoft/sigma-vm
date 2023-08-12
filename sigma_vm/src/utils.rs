@@ -88,3 +88,38 @@ impl_into_u64!(u16);
 impl_into_u64!(i32);
 impl_into_u64!(u32);
 impl_into_u64!(u64);
+
+/// Trait for manipulating an unsized type.
+pub trait Unsized {
+  /// Size of the sized part in the current type.
+  const SIZE: usize;
+
+  /// Align of the current type.
+  const ALIGN: usize;
+
+  /// Type of metadata.
+  ///
+  /// This metadata is different from the fat pointer's metadata.
+  type Metadata;
+
+  /// Offset of metadata in bytes.
+  const METADATA_OFFSET: usize;
+
+  /// Returns the real size of the current type.
+  fn size(metadata: Self::Metadata) -> usize;
+
+  /// Returns the metadata of the current unsized type by the given pointer
+  /// that pointed to a value of the current type.
+  unsafe fn metadata<T>(ptr: *const T) -> Self::Metadata
+  where
+    Self::Metadata: Copy,
+  {
+    *((ptr as *const u8).add(Self::METADATA_OFFSET) as *const Self::Metadata)
+  }
+
+  /// Sets the metadata of the current unsized type by the given pointer
+  /// that pointed to a value of the current type.
+  unsafe fn set_metadata<T>(ptr: *mut T, metadata: Self::Metadata) {
+    *((ptr as *mut u8).add(Self::METADATA_OFFSET) as *mut Self::Metadata) = metadata;
+  }
+}
