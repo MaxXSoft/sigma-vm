@@ -217,6 +217,10 @@ where
           context.add_value(P::int_val(handle.into()));
           ris.push(ri.into_cont());
         }
+        ControlFlow::LoadModuleMem(ptr) => {
+          todo!();
+          ris.push(ri.into_cont());
+        }
         ControlFlow::UnloadModule(handle) => {
           let source = handle.into();
           self.loader.unload(source);
@@ -452,6 +456,8 @@ pub enum ControlFlow {
   GC,
   /// Requests to load a external module, with a pointer to the module name.
   LoadModule(u64),
+  /// Requests to load a external module, with a pointer to the module data.
+  LoadModuleMem(u64),
   /// Requests to unload a external module, with a module handle.
   UnloadModule(u64),
   /// Requests an external call, with a module handle and
