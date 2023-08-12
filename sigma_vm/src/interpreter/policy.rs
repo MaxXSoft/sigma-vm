@@ -101,12 +101,18 @@ pub trait Policy {
 
   /// Returns a reference of string by the given pointer.
   fn str(heap: &Self::Heap, ptr: u64) -> Result<&Str<[u8]>, Self::Error> {
-    // read string's length from heap
+    type S = Str<[u8]>;
     let addr = heap.addr(ptr);
-    Self::check_access(heap, ptr, Str::<[u8]>::SIZE, Str::<[u8]>::ALIGN)?;
-    let len = unsafe { Str::<[u8]>::metadata(addr) };
+    // read string's length from heap
+    Self::check_access(
+      heap,
+      ptr + S::METADATA_OFFSET as u64,
+      S::METADATA_SIZE,
+      S::METADATA_ALIGN,
+    )?;
+    let len = unsafe { S::metadata(addr) };
     // create string reference
-    Self::check_access(heap, ptr, Str::<[u8]>::size(len), Str::<[u8]>::ALIGN)?;
+    Self::check_access(heap, ptr, S::size(len), S::ALIGN)?;
     Ok(unsafe { &*ptr::from_raw_parts(addr, len as usize) })
   }
 
@@ -115,17 +121,18 @@ pub trait Policy {
 
   /// Returns a reference of object metadata by the given pointer.
   fn object(heap: &Self::Heap, ptr: u64) -> Result<&Object<[u64]>, Self::Error> {
-    // read object metadata's length from heap
+    type O = Object<[u64]>;
     let addr = heap.addr(ptr);
-    Self::check_access(heap, ptr, Object::<[u64]>::SIZE, Object::<[u64]>::ALIGN)?;
-    let len = unsafe { Object::<[u64]>::metadata(addr) };
-    // create object reference
+    // read object metadata's length from heap
     Self::check_access(
       heap,
-      ptr,
-      Object::<[u64]>::size(len),
-      Object::<[u64]>::ALIGN,
+      ptr + O::METADATA_OFFSET as u64,
+      O::METADATA_SIZE,
+      O::METADATA_ALIGN,
     )?;
+    let len = unsafe { O::metadata(addr) };
+    // create object reference
+    Self::check_access(heap, ptr, O::size(len), O::ALIGN)?;
     Ok(unsafe { &*ptr::from_raw_parts(addr, len as usize) })
   }
 
