@@ -85,7 +85,7 @@ impl Const {
   /// The kind must match the data.
   pub unsafe fn object(&self) -> Option<&Object<[u64]>> {
     if self.kind == ConstKind::Object {
-      let len = *(self.addr() as *const u64).offset(2) as usize;
+      let len = Object::<[u64]>::metadata(self.addr()) as usize;
       Some(&*ptr::from_raw_parts(self.addr() as *const _, len))
     } else {
       None
@@ -110,10 +110,10 @@ impl Const {
   /// The kind must match the data.
   unsafe fn bytes<T>(&self, kind: ConstKind) -> Option<&T>
   where
-    T: ?Sized + Pointee<Metadata = usize>,
+    T: ?Sized + Unsized<Metadata = u64> + Pointee<Metadata = usize>,
   {
     if self.kind == kind {
-      let len = *(self.addr() as *const u64) as usize;
+      let len = T::metadata(self.addr()) as usize;
       Some(&*ptr::from_raw_parts(self.addr() as *const _, len))
     } else {
       None
