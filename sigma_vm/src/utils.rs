@@ -1,4 +1,5 @@
 use std::alloc::{self, Layout, LayoutError};
+use std::mem;
 use std::ptr::{self, Pointee};
 
 /// Implements [`TryFrom<integer>`] for the given enumerate.
@@ -104,6 +105,12 @@ pub trait Unsized {
 
   /// Offset of metadata in bytes.
   const METADATA_OFFSET: usize;
+
+  /// Size of metadata.
+  const METADATA_SIZE: usize = mem::size_of::<Self::Metadata>();
+
+  /// Align of metadata.
+  const METADATA_ALIGN: usize = mem::align_of::<Self::Metadata>();
 
   /// Returns the real size of the current type.
   fn size(metadata: Self::Metadata) -> usize;
