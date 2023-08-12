@@ -442,7 +442,7 @@ where
           return Ok(PcUpdate::ControlFlow(ControlFlow::GC));
         }
         let obj_ptr = self.pop_ptr()?;
-        heap.new_object(obj_ptr)?;
+        self.push_ptr(heap.new_object(obj_ptr)?);
         PcUpdate::Next
       }
       Inst::NewOC(opr) => {
@@ -451,7 +451,7 @@ where
         }
         let c = P::unwrap_val(module.consts.get(opr as usize))?;
         let obj_ptr = P::obj_ptr_from_const(c)?;
-        heap.new_object(obj_ptr)?;
+        self.push_ptr(heap.new_object(obj_ptr)?);
         PcUpdate::Next
       }
       Inst::NewA => {
@@ -460,7 +460,7 @@ where
         }
         let len = self.pop_int_ptr()?;
         let obj_ptr = self.pop_ptr()?;
-        heap.new_array(obj_ptr, len)?;
+        self.push_ptr(heap.new_array(obj_ptr, len)?);
         PcUpdate::Next
       }
       Inst::NewAC(opr) => {
@@ -470,7 +470,7 @@ where
         let len = self.pop_int_ptr()?;
         let c = P::unwrap_val(module.consts.get(opr as usize))?;
         let obj_ptr = P::obj_ptr_from_const(c)?;
-        heap.new_array(obj_ptr, len)?;
+        self.push_ptr(heap.new_array(obj_ptr, len)?);
         PcUpdate::Next
       }
       Inst::Del => {
