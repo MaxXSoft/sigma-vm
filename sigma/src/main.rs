@@ -1,4 +1,4 @@
-use clap::{Parser, ValueEnum};
+use clap::{ArgAction, Parser, ValueEnum};
 use sigma_vm::interpreter::gc::{GarbageCollector, MarkSweep, Nothing};
 use sigma_vm::interpreter::heap::{Checked, Heap, System};
 use sigma_vm::interpreter::policy::{NoCheck, Policy, Strict, StrictAlign};
@@ -12,6 +12,10 @@ use std::{env, fmt, process};
 struct CommandLineArgs {
   /// Path to the bytecode file.
   bytecode: Option<String>,
+
+  /// Add directory to search path of module loader.
+  #[arg(short = 'L', id = "PATH", action = ArgAction::Append)]
+  search_paths: Vec<String>,
 
   /// Execution policy of the virtual machine.
   #[arg(value_enum, short, long, default_value_t = PolicyArg::StrictAlign)]
@@ -161,6 +165,9 @@ where
 {
   // create VM instance
   let mut vm = VM::new(policy);
+  for path in &args.search_paths {
+    vm.loader_mut().add_search_path(path);
+  }
   // load module
   let module = ok_or_exit(
     match &args.bytecode {
