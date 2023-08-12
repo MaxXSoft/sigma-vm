@@ -430,7 +430,7 @@ where
       }
       Inst::New => {
         if heap.should_collect() {
-          return Ok(PcUpdate::ControlFlow(ControlFlow::GC));
+          return ControlFlow::GC.into();
         }
         let align = self.pop_int_ptr()?;
         let size = self.pop_int_ptr()?;
@@ -439,7 +439,7 @@ where
       }
       Inst::NewO => {
         if heap.should_collect() {
-          return Ok(PcUpdate::ControlFlow(ControlFlow::GC));
+          return ControlFlow::GC.into();
         }
         let obj_ptr = self.pop_ptr()?;
         self.push_ptr(heap.new_object(obj_ptr)?);
@@ -447,7 +447,7 @@ where
       }
       Inst::NewOC(opr) => {
         if heap.should_collect() {
-          return Ok(PcUpdate::ControlFlow(ControlFlow::GC));
+          return ControlFlow::GC.into();
         }
         let c = P::unwrap_val(module.consts.get(opr as usize))?;
         let obj_ptr = P::obj_ptr_from_const(c)?;
@@ -456,7 +456,7 @@ where
       }
       Inst::NewA => {
         if heap.should_collect() {
-          return Ok(PcUpdate::ControlFlow(ControlFlow::GC));
+          return ControlFlow::GC.into();
         }
         let len = self.pop_int_ptr()?;
         let obj_ptr = self.pop_ptr()?;
@@ -465,7 +465,7 @@ where
       }
       Inst::NewAC(opr) => {
         if heap.should_collect() {
-          return Ok(PcUpdate::ControlFlow(ControlFlow::GC));
+          return ControlFlow::GC.into();
         }
         let len = self.pop_int_ptr()?;
         let c = P::unwrap_val(module.consts.get(opr as usize))?;
@@ -480,16 +480,20 @@ where
       }
       Inst::Load => {
         let ptr = self.pop_ptr()?;
-        return Ok(PcUpdate::ControlFlow(ControlFlow::LoadModule(ptr)));
+        return ControlFlow::LoadModule(ptr).into();
       }
       Inst::LoadC(opr) => {
         let c = P::unwrap_val(module.consts.get(opr as usize))?;
         let ptr = P::str_ptr_from_const(c)?;
-        return Ok(PcUpdate::ControlFlow(ControlFlow::LoadModule(ptr)));
+        return ControlFlow::LoadModule(ptr).into();
+      }
+      Inst::LoadM => {
+        let ptr = self.pop_ptr()?;
+        return ControlFlow::LoadModuleMem(ptr).into();
       }
       Inst::Unload => {
         let handle = self.pop_int_ptr()?;
-        return Ok(PcUpdate::ControlFlow(ControlFlow::UnloadModule(handle)));
+        return ControlFlow::UnloadModule(handle).into();
       }
       Inst::Bz(opr) => {
         if self.pop_any()? == 0 {
@@ -514,18 +518,18 @@ where
       Inst::CallExt => {
         let ptr = self.pop_ptr()?;
         let handle = self.pop_int_ptr()?;
-        return Ok(PcUpdate::ControlFlow(ControlFlow::CallExt(handle, ptr)));
+        return ControlFlow::CallExt(handle, ptr).into();
       }
       Inst::CallExtC(opr) => {
         let handle = self.pop_int_ptr()?;
         let c = P::unwrap_val(module.consts.get(opr as usize))?;
         let ptr = P::str_ptr_from_const(c)?;
-        return Ok(PcUpdate::ControlFlow(ControlFlow::CallExt(handle, ptr)));
+        return ControlFlow::CallExt(handle, ptr).into();
       }
       Inst::Ret => {
         let pcu = match self.ra_stack.pop() {
           Some(pc) => PcUpdate::Set(pc),
-          None => return Ok(PcUpdate::ControlFlow(ControlFlow::Stop)),
+          None => return ControlFlow::Stop.into(),
         };
         self.var_stack.pop();
         pcu
@@ -704,4 +708,10 @@ enum PcUpdate {
   Next,
   Set(u64),
   ControlFlow(ControlFlow),
+}
+
+impl<E> From<ControlFlow> for Result<PcUpdate, E> {
+  fn from(cf: ControlFlow) -> Self {
+    Ok(PcUpdate::ControlFlow(cf))
+  }
 }
