@@ -209,6 +209,9 @@ def_opc_inst! {
   /// Load an external module with a string constant opr as it's path.
   /// Returns an integer for module handle, or 0 if failed.
   LoadC(u64),
+  /// Load an module from s0 pointed heap memory.
+  /// Returns an integer for module handle, or 0 if failed.
+  LoadM,
   /// Unload module with handle s0.
   Unload,
   /// Branch to pc + opr if s0 is zero.
