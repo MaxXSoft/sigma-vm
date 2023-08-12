@@ -1,10 +1,10 @@
 use crate::bytecode::consts::{Const, ConstKind, Object, Raw, Str};
-use crate::bytecode::export::{CallSite, Export, ExportInfo};
+use crate::bytecode::export::{Export, ExportInfo};
 use crate::bytecode::insts::{Inst, Opcode, Operand, OperandType};
 use crate::bytecode::module::Module;
 use crate::bytecode::{MAGIC, VERSION};
 use crate::interpreter::heap::Heap;
-use crate::utils::alloc_uninit;
+use crate::utils::{alloc_uninit, Unsized};
 use leb128::read::{signed, unsigned, Error as LebError};
 use std::alloc::LayoutError;
 use std::fs::File;
@@ -274,10 +274,9 @@ where
     let num_args: u64 = self.read_leb128()?;
     let num_rets = self.read_leb128()?;
     let len = self.read_leb128()?;
-    let len_size = mem::size_of_val(&len);
-    let size = mem::size_of::<CallSite>() + len_size + len as usize;
+    let size = Export::<[u8]>::size(len);
     let mut data: Box<Export<[u8]>> =
-      unsafe { alloc_uninit(size, len_size, len as usize) }.map_err(Error::Layout)?;
+      unsafe { alloc_uninit(size, Export::<[u8]>::ALIGN, len as usize) }.map_err(Error::Layout)?;
     data.call_site.pc = pc;
     data.call_site.num_args = num_args.into();
     data.call_site.num_rets = num_rets;
@@ -438,10 +437,9 @@ impl ReadConst for Str<[u8]> {
     R: Read,
   {
     let len = reader.read_leb128()?;
-    let len_size = mem::size_of_val(&len);
-    let size = len_size + len as usize;
+    let size = Self::size(len);
     let mut data: Box<Self> =
-      unsafe { alloc_uninit(size, len_size, len as usize) }.map_err(Error::Layout)?;
+      unsafe { alloc_uninit(size, Self::ALIGN, len as usize) }.map_err(Error::Layout)?;
     data.len = len;
     reader.fill(&mut data.bytes)?;
     Ok(unsafe { Const::new(ConstKind::Str, data, size) })
@@ -458,13 +456,9 @@ impl ReadConst for Object<[u64]> {
     let size = reader.read_leb128()?;
     let align = reader.read_leb128()?;
     let len = reader.read_leb128()?;
-    let size_size = mem::size_of_val(&size);
-    let total_size = size_size
-      + mem::size_of_val(&align)
-      + mem::size_of_val(&len)
-      + len as usize * mem::size_of::<u64>();
+    let total_size = Self::size(len);
     let mut data: Box<Self> =
-      unsafe { alloc_uninit(total_size, size_size, len as usize) }.map_err(Error::Layout)?;
+      unsafe { alloc_uninit(total_size, Self::ALIGN, len as usize) }.map_err(Error::Layout)?;
     data.size = size;
     data.align = align;
     data.managed_ptr.len = len;
