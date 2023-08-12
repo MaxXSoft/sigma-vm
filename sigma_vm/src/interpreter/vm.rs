@@ -117,7 +117,7 @@ where
   P::Value: Clone,
 {
   /// Runs the given module's `main` function.
-  pub fn run<I, S>(&mut self, module: Source, args: I) -> Result<Vec<P::Value>, P::Error>
+  pub fn run_main<I, S>(&mut self, module: Source, args: I) -> Result<Vec<P::Value>, P::Error>
   where
     I: IntoIterator<Item = S>,
     S: AsRef<str>,
@@ -154,33 +154,31 @@ where
     }
     // call the target function
     args.reverse();
-    self.run_from_pc(module, call_site.pc, true, args, call_site.num_rets)
+    let ci = CallInfo::call(args, call_site.num_rets);
+    self.run(module, call_site.pc, ci).map(|mut r| {
+      r.reverse();
+      r
+    })
   }
 
   /// Runs the given module from the given PC.
-  fn run_from_pc(
-    &mut self,
-    source: Source,
-    pc: u64,
-    is_call: bool,
-    args_rev: Vec<P::Value>,
-    num_rets: u64,
-  ) -> Result<Vec<P::Value>, P::Error> {
+  /// Returns return values in reversed order.
+  fn run(&mut self, source: Source, pc: u64, ci: CallInfo<P>) -> Result<Vec<P::Value>, P::Error> {
     // check if the context is initialized
     let context_info = self.contexts.entry(source).or_default();
     if !context_info.initialized {
       // prevent from infinite recursion
       context_info.initialized = true;
       if pc != 0 {
-        self.run_from_pc(source, 0, false, vec![], 0)?;
+        self.run(source, 0, CallInfo::init())?;
       }
     }
     // get module and context
     let module = P::unwrap_module(self.loader.module(source))?;
     let context = &mut self.contexts.entry(source).or_default().context;
     // setup value stack, variable stack and PC
-    context.value_stack.extend(args_rev.into_iter().rev());
-    if is_call {
+    if let Some(args_rev) = ci.args_rev {
+      context.value_stack.extend(args_rev.into_iter().rev());
       context.var_stack.push(Default::default());
     }
     context.set_pc(pc);
@@ -189,17 +187,17 @@ where
       ControlFlow::Stop => {
         // clean up stacks
         let mut rets_rev = vec![];
-        for _ in 0..num_rets {
-          rets_rev.push(context.pop()?);
-        }
-        if is_call {
+        if let Some(num_rets) = ci.num_rets {
+          for _ in 0..num_rets {
+            rets_rev.push(context.pop()?);
+          }
           context.var_stack.pop();
         }
         Ok(rets_rev)
       }
       ControlFlow::GC => {
         self.collect()?;
-        return self.run_from_pc(source, pc, is_call, vec![], num_rets);
+        return self.run(source, pc, CallInfo::cont(ci.num_rets));
       }
       ControlFlow::LoadModule(ptr) => {
         // load module
@@ -207,11 +205,11 @@ where
         let handle = Source::from(self.loader.load_from_path(path, &mut self.global_heap.heap));
         // push handle to value stack
         context.add_value(P::int_val(handle.into()));
-        return self.run_from_pc(source, pc + 1, is_call, vec![], num_rets);
+        return self.run(source, pc + 1, CallInfo::cont(ci.num_rets));
       }
       ControlFlow::UnloadModule(handle) => {
         self.loader.unload(handle.into());
-        return self.run_from_pc(source, pc + 1, is_call, vec![], num_rets);
+        return self.run(source, pc + 1, CallInfo::cont(ci.num_rets));
       }
       ControlFlow::CallExt(handle, ptr) => {
         // get the target module
@@ -234,15 +232,13 @@ where
           args_rev.push(context.pop()?);
         }
         // perform call
-        let rets_rev =
-          self.run_from_pc(target, call_site.pc, true, args_rev, call_site.num_rets)?;
+        let call = CallInfo::call(args_rev, call_site.num_rets);
+        let rets_rev = self.run(target, call_site.pc, call)?;
         // push return values
-        self
-          .context(source)
-          .value_stack
-          .extend(rets_rev.into_iter().rev());
+        let context = self.context(source);
+        context.value_stack.extend(rets_rev.into_iter().rev());
         // continue to run
-        return self.run_from_pc(source, pc + 1, is_call, vec![], num_rets);
+        return self.run(source, pc + 1, CallInfo::cont(ci.num_rets));
       }
     }
   }
@@ -371,6 +367,35 @@ impl<P: Policy> Default for ContextInfo<P> {
     Self {
       context: Default::default(),
       initialized: false,
+    }
+  }
+}
+
+/// Call information.
+struct CallInfo<P: Policy> {
+  args_rev: Option<Vec<P::Value>>,
+  num_rets: Option<u64>,
+}
+
+impl<P: Policy> CallInfo<P> {
+  fn init() -> Self {
+    Self {
+      args_rev: None,
+      num_rets: None,
+    }
+  }
+
+  fn call(args_rev: Vec<P::Value>, num_rets: u64) -> Self {
+    Self {
+      args_rev: Some(args_rev),
+      num_rets: Some(num_rets),
+    }
+  }
+
+  fn cont(num_rets: Option<u64>) -> Self {
+    Self {
+      args_rev: None,
+      num_rets,
     }
   }
 }
