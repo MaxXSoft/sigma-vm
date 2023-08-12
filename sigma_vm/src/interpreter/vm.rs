@@ -1,4 +1,4 @@
-use crate::bytecode::consts::{Const, HeapConst};
+use crate::bytecode::consts::{Const, HeapConst, Str};
 use crate::bytecode::export::{ExportInfo, NumArgs};
 use crate::bytecode::insts::Inst;
 use crate::interpreter::context::Context;
@@ -6,7 +6,7 @@ use crate::interpreter::gc::{GarbageCollector, Roots};
 use crate::interpreter::heap::{Heap, Obj, ObjKind};
 use crate::interpreter::loader::{Error, Loader, Source};
 use crate::interpreter::policy::Policy;
-use crate::utils::IntoU64;
+use crate::utils::{IntoU64, Unsized};
 use std::alloc::Layout;
 use std::collections::HashMap;
 use std::mem;
@@ -350,15 +350,18 @@ impl<P: Policy> GlobalHeap<P> {
     // allocate heap memory
     let bs = s.as_bytes();
     let len = bs.len() as u64;
-    let align = mem::size_of_val(&len);
-    let layout = Layout::from_size_align(align + len as usize, align).unwrap();
+    let layout = Layout::from_size_align(Str::<[u8]>::size(len), Str::<[u8]>::ALIGN).unwrap();
     let ptr = self.heap.alloc(layout);
     // write string data
     let addr = self.heap.addr_mut(ptr);
     // safety: `Str`'s memory layout is same as the following code's description
     unsafe {
-      *(addr as *mut u64) = len;
-      std::ptr::copy_nonoverlapping(bs.as_ptr(), (addr as *mut u8).add(align), bs.len());
+      Str::<[u8]>::set_metadata(addr, len);
+      std::ptr::copy_nonoverlapping(
+        bs.as_ptr(),
+        (addr as *mut u8).add(Str::<[u8]>::SIZE),
+        bs.len(),
+      );
     }
     ptr
   }

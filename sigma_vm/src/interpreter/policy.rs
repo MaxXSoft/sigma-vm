@@ -1,9 +1,10 @@
 use crate::bytecode::consts::{ConstKind, HeapConst, Object, Str};
 use crate::interpreter::gc::{GarbageCollector, PotentialRoots, Roots};
 use crate::interpreter::heap::{CheckedHeap, Heap};
+use crate::utils::Unsized;
 use std::alloc::Layout;
 use std::marker::PhantomData;
-use std::{fmt, mem, ptr};
+use std::{fmt, ptr};
 
 /// Execution policy of the VM (interpreter).
 pub trait Policy {
@@ -102,11 +103,10 @@ pub trait Policy {
   fn str(heap: &Self::Heap, ptr: u64) -> Result<&Str<[u8]>, Self::Error> {
     // read string's length from heap
     let addr = heap.addr(ptr);
-    let field_size = mem::size_of::<u64>();
-    Self::check_access(heap, ptr, field_size, field_size)?;
-    let len = unsafe { *(addr as *const u64) };
+    Self::check_access(heap, ptr, Str::<[u8]>::SIZE, Str::<[u8]>::ALIGN)?;
+    let len = unsafe { Str::<[u8]>::metadata(addr) };
     // create string reference
-    Self::check_access(heap, ptr + field_size as u64, len as usize, 1)?;
+    Self::check_access(heap, ptr, Str::<[u8]>::size(len), Str::<[u8]>::ALIGN)?;
     Ok(unsafe { &*ptr::from_raw_parts(addr, len as usize) })
   }
 
@@ -117,15 +117,14 @@ pub trait Policy {
   fn object(heap: &Self::Heap, ptr: u64) -> Result<&Object<[u64]>, Self::Error> {
     // read object metadata's length from heap
     let addr = heap.addr(ptr);
-    let field_size = mem::size_of::<u64>();
-    Self::check_access(heap, ptr, field_size * 3, field_size)?;
-    let len = unsafe { *(addr as *const u64).offset(2) };
+    Self::check_access(heap, ptr, Object::<[u64]>::SIZE, Object::<[u64]>::ALIGN)?;
+    let len = unsafe { Object::<[u64]>::metadata(addr) };
     // create object reference
     Self::check_access(
       heap,
-      ptr + field_size as u64 * 3,
-      field_size * len as usize,
-      field_size,
+      ptr,
+      Object::<[u64]>::size(len),
+      Object::<[u64]>::ALIGN,
     )?;
     Ok(unsafe { &*ptr::from_raw_parts(addr, len as usize) })
   }
