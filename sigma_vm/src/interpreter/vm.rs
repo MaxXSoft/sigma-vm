@@ -218,7 +218,9 @@ where
           ris.push(ri.into_cont());
         }
         ControlFlow::UnloadModule(handle) => {
-          self.loader.unload(handle.into());
+          let source = handle.into();
+          self.loader.unload(source);
+          self.contexts.remove(&source);
           ris.push(ri.into_cont());
         }
         ControlFlow::CallExt(handle, ptr) => {
