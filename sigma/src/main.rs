@@ -1,11 +1,10 @@
 use clap::{Parser, ValueEnum};
-use sigma_vm::bytecode::reader::Reader;
 use sigma_vm::interpreter::gc::{GarbageCollector, MarkSweep, Nothing};
 use sigma_vm::interpreter::heap::{Checked, Heap, System};
 use sigma_vm::interpreter::policy::{NoCheck, Policy, Strict, StrictAlign};
 use sigma_vm::interpreter::vm::VM;
 use std::str::FromStr;
-use std::{env, fmt, io, process};
+use std::{env, fmt, process};
 
 /// Sigma Virtual Machine.
 #[derive(Parser, Debug)]
@@ -147,45 +146,33 @@ where
 {
   let gc_threshold = args.gc_threshold.into();
   match args.policy {
-    PolicyArg::Strict => select_reader(args, Strict::<Checked<H>, GC>::new(gc_threshold)),
-    PolicyArg::StrictAlign => select_reader(args, StrictAlign::<Checked<H>, GC>::new(gc_threshold)),
-    PolicyArg::NoCheck => select_reader(args, NoCheck::<H, GC>::new(gc_threshold)),
-  }
-}
-
-/// Select bytecode reader from the command line arguments.
-fn select_reader<P, V, E>(args: &CommandLineArgs, policy: P)
-where
-  P: Policy<Value = V, Error = E>,
-  V: Clone,
-  E: fmt::Debug + fmt::Display,
-{
-  match &args.bytecode {
-    Some(path) => run_bytecode(policy, ok_or_exit(Reader::from_path(path), PROMPT_READER)),
-    None => run_bytecode(policy, Reader::from_stdin()),
+    PolicyArg::Strict => run_bytecode(args, Strict::<Checked<H>, GC>::new(gc_threshold)),
+    PolicyArg::StrictAlign => run_bytecode(args, StrictAlign::<Checked<H>, GC>::new(gc_threshold)),
+    PolicyArg::NoCheck => run_bytecode(args, NoCheck::<H, GC>::new(gc_threshold)),
   }
 }
 
 /// Runs the bytecode from the given policy and reader.
-fn run_bytecode<P, V, E, R>(policy: P, mut reader: Reader<R>)
+fn run_bytecode<P, V, E>(args: &CommandLineArgs, policy: P)
 where
   P: Policy<Value = V, Error = E>,
   V: Clone,
   E: fmt::Debug + fmt::Display,
-  R: io::Read,
 {
-  // read bytecode file
-  ok_or_exit(reader.read(), PROMPT_READER);
   // create VM instance
-  let mut vm = VM::from_reader(policy, reader);
-  // push arguments
-  for arg in env::args() {
-    vm.add_str(&arg);
-  }
+  let mut vm = VM::new(policy);
+  // load module
+  let module = ok_or_exit(
+    match &args.bytecode {
+      Some(path) => vm.load_from_path(path),
+      None => vm.load_from_stdin(),
+    },
+    PROMPT_LOADER,
+  );
   // run VM
-  ok_or_exit(vm.run(), PROMPT_VM);
-  // return the top most integer value on the stack
-  if let Some(v) = vm.value_stack().last() {
+  let rets = ok_or_exit(vm.run_main(module, env::args()), PROMPT_VM);
+  // return the first integer value
+  if let Some(v) = rets.first() {
     if let Ok(v) = P::get_int_ptr(v) {
       process::exit(v as i32);
     }
@@ -209,5 +196,5 @@ where
 }
 
 // Prompts for printing error messages.
-const PROMPT_READER: &str = "Error reading bytecode";
+const PROMPT_LOADER: &str = "Error loading module";
 const PROMPT_VM: &str = "Sigma VM runtime error";
