@@ -339,6 +339,7 @@ impl<Bytes: ?Sized + Array<u8>> Unsized for Str<Bytes> {
 pub struct Object<Offsets: ?Sized + Array<u64>> {
   pub size: u64,
   pub align: u64,
+  pub destructor: u64,
   pub managed_ptr: ManagedPtr<Offsets>,
 }
 
@@ -354,13 +355,13 @@ impl<Offsets: ?Sized + Array<u64>> Object<Offsets> {
 }
 
 impl<Offsets: ?Sized + Array<u64>> Unsized for Object<Offsets> {
-  const SIZE: usize = mem::size_of::<u64>() * 2 + ManagedPtr::<Offsets>::SIZE;
+  const SIZE: usize = mem::size_of::<u64>() * 3 + ManagedPtr::<Offsets>::SIZE;
   const ALIGN: usize = mem::align_of::<u64>();
   type Metadata = <ManagedPtr<Offsets> as Unsized>::Metadata;
-  const METADATA_OFFSET: usize = mem::size_of::<u64>() * 2 + ManagedPtr::<Offsets>::METADATA_OFFSET;
+  const METADATA_OFFSET: usize = mem::size_of::<u64>() * 3 + ManagedPtr::<Offsets>::METADATA_OFFSET;
 
   fn size(metadata: Self::Metadata) -> usize {
-    mem::size_of::<u64>() * 2 + ManagedPtr::<Offsets>::size(metadata)
+    mem::size_of::<u64>() * 3 + ManagedPtr::<Offsets>::size(metadata)
   }
 }
 
