@@ -9,8 +9,8 @@ use crate::interpreter::policy::Policy;
 use crate::utils::{IntoU64, Unsized};
 use std::alloc::Layout;
 use std::collections::HashMap;
-use std::mem;
 use std::path::Path;
+use std::{mem, slice};
 
 /// Virtual machine for running bytecode.
 pub struct VM<P: Policy> {
@@ -217,8 +217,19 @@ where
           context.add_value(P::int_val(handle.into()));
           ris.push(ri.into_cont());
         }
-        ControlFlow::LoadModuleMem(ptr) => {
-          todo!();
+        ControlFlow::LoadModuleMem(ptr, len) => {
+          // get byte slice
+          P::check_access(&self.global_heap.heap, ptr, len as usize, 1)?;
+          let addr = self.global_heap.heap.addr(ptr);
+          let bytes = unsafe { slice::from_raw_parts(addr as *const u8, len as usize) };
+          // load module
+          let handle = Source::from(
+            self
+              .loader
+              .load_from_bytes(bytes, &mut self.global_heap.heap),
+          );
+          // push handle to value stack
+          context.add_value(P::int_val(handle.into()));
           ris.push(ri.into_cont());
         }
         ControlFlow::UnloadModule(handle) => {
@@ -456,8 +467,9 @@ pub enum ControlFlow {
   GC,
   /// Requests to load a external module, with a pointer to the module name.
   LoadModule(u64),
-  /// Requests to load a external module, with a pointer to the module data.
-  LoadModuleMem(u64),
+  /// Requests to load a external module, with a pointer to the module data
+  /// and the size of the data.
+  LoadModuleMem(u64, u64),
   /// Requests to unload a external module, with a module handle.
   UnloadModule(u64),
   /// Requests an external call, with a module handle and
