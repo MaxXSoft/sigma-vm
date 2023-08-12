@@ -183,7 +183,10 @@ where
     }
     context.set_pc(pc);
     // run the context
-    match context.run(module, &mut self.global_heap)? {
+    let cf = context.run(module, &mut self.global_heap)?;
+    let pc = context.pc();
+    // handle control flow
+    match cf {
       ControlFlow::Stop => {
         // clean up stacks
         let mut rets_rev = vec![];
