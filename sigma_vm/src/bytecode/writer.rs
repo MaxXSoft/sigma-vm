@@ -197,6 +197,7 @@ impl WriteData for Object<[u64]> {
   {
     unsigned(writer, self.size)?;
     unsigned(writer, self.align)?;
+    unsigned(writer, self.destructor)?;
     unsigned(writer, self.managed_ptr.len)?;
     for offset in &self.managed_ptr.offsets {
       unsigned(writer, *offset)?;

@@ -455,12 +455,14 @@ impl ReadConst for Object<[u64]> {
   {
     let size = reader.read_leb128()?;
     let align = reader.read_leb128()?;
+    let destructor = reader.read_leb128()?;
     let len = reader.read_leb128()?;
     let total_size = Self::size(len);
     let mut data: Box<Self> =
       unsafe { alloc_uninit(total_size, Self::ALIGN, len as usize) }.map_err(Error::Layout)?;
     data.size = size;
     data.align = align;
+    data.destructor = destructor;
     data.managed_ptr.len = len;
     for i in 0..len as usize {
       data.managed_ptr.offsets[i] = reader.read_leb128()?;
