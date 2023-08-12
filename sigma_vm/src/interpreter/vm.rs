@@ -381,6 +381,7 @@ struct CallInfo<P: Policy> {
 }
 
 impl<P: Policy> CallInfo<P> {
+  /// Creates a call information for initialization.
   fn init() -> Self {
     Self {
       args_rev: None,
@@ -388,6 +389,7 @@ impl<P: Policy> CallInfo<P> {
     }
   }
 
+  /// Creates a call information for function call.
   fn call(args_rev: Vec<P::Value>, num_rets: u64) -> Self {
     Self {
       args_rev: Some(args_rev),
@@ -395,6 +397,7 @@ impl<P: Policy> CallInfo<P> {
     }
   }
 
+  /// Creates a call information for continue.
   fn cont(num_rets: Option<u64>) -> Self {
     Self {
       args_rev: None,
