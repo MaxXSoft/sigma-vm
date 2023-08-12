@@ -15,6 +15,7 @@ pub struct Loader {
   search_paths: Vec<PathBuf>,
   resolved_paths: HashMap<PathBuf, u32>,
   loaded_mods: HashMap<Source, Module>,
+  next_file_id: u32,
   next_mem_id: u32,
 }
 
@@ -50,7 +51,6 @@ impl Loader {
     }
     .ok_or(Error::InvalidPath(path.into()))?;
     // update resolved path, return if the module has already been loaded
-    let id = self.resolved_paths.len() as u32;
     if let Some(id) = self.resolved_paths.get(&final_path) {
       return Ok(Source::File(*id));
     }
@@ -58,6 +58,8 @@ impl Loader {
     let mut reader = Reader::from_path(final_path.clone()).map_err(Error::IO)?;
     reader.read().map_err(Error::Reader)?;
     // add to loaded modules
+    let id = self.next_file_id;
+    self.next_file_id += 1;
     let source = Source::File(id);
     self.resolved_paths.insert(final_path, id);
     self.loaded_mods.insert(source, reader.into_module(heap));
