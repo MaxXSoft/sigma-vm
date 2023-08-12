@@ -117,9 +117,9 @@ mod test {
       vm! {
         modules: {
           main: {
-            insts: [StA(1), LdV(0), LdV(1), Add, Ret],
+            insts: [Ret, StA(1), LdV(0), LdV(1), Add, Ret],
             consts: [],
-            exports: ["main" => { pc: 0, num_args: 2, num_rets: 1 }],
+            exports: ["main" => { pc: 1, num_args: 2, num_rets: 1 }],
           },
         },
         main: main,
