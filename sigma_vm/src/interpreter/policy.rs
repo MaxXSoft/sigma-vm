@@ -69,6 +69,9 @@ pub trait Policy {
   /// Checks the given integer divisor, returns an error if necessary.
   fn check_div(divisor: u64) -> Result<(), Self::Error>;
 
+  /// Reports invalid arguments.
+  fn report_invalid_args() -> Result<(), Self::Error>;
+
   /// Creates a new heap.
   fn new_heap(&self) -> Self::Heap;
 
@@ -271,6 +274,10 @@ where
     }
   }
 
+  fn report_invalid_args() -> Result<(), Self::Error> {
+    Err(StrictError::InvalidArgs)
+  }
+
   fn new_heap(&self) -> Self::Heap {
     H::new()
   }
@@ -339,6 +346,8 @@ pub enum StrictError {
   ModuleNotFound,
   /// Divisor is zero.
   ZeroDivision,
+  /// Invalid arguments.
+  InvalidArgs,
   /// Memory access out of bounds.
   OutOfBounds,
   /// Out of heap memory.
@@ -347,8 +356,6 @@ pub enum StrictError {
   InvalidStr,
   /// Invalid object metadata.
   InvalidObject,
-  /// Invalid call information.
-  InvalidCallInfo,
   /// Invalid UTF-8 string.
   InvalidUtf8,
   /// Invalid allocation layout.
@@ -362,11 +369,11 @@ impl fmt::Display for StrictError {
       Self::ExpectedValue => write!(f, "expected a value, got nothing"),
       Self::ModuleNotFound => write!(f, "module not found"),
       Self::ZeroDivision => write!(f, "divisor is zero"),
+      Self::InvalidArgs => write!(f, "invalid arguments"),
       Self::OutOfBounds => write!(f, "memory access out of bounds"),
       Self::OutOfHeap => write!(f, "out of heap memory"),
       Self::InvalidStr => write!(f, "invalid string"),
       Self::InvalidObject => write!(f, "invalid object metadata"),
-      Self::InvalidCallInfo => write!(f, "invalid call information"),
       Self::InvalidUtf8 => write!(f, "invalid UTF-8 string"),
       Self::InvalidLayout => write!(f, "invalid allocation layout"),
     }
@@ -457,6 +464,10 @@ where
 
   fn check_div(divisor: u64) -> Result<(), Self::Error> {
     Strict::<H, GC>::check_div(divisor).map_err(StrictAlignError::Strict)
+  }
+
+  fn report_invalid_args() -> Result<(), Self::Error> {
+    Strict::<H, GC>::report_invalid_args().map_err(StrictAlignError::Strict)
   }
 
   fn new_heap(&self) -> Self::Heap {
@@ -620,6 +631,10 @@ where
   }
 
   fn check_div(_: u64) -> Result<(), Self::Error> {
+    Ok(())
+  }
+
+  fn report_invalid_args() -> Result<(), Self::Error> {
     Ok(())
   }
 
