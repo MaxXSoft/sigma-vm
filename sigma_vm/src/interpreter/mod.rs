@@ -303,6 +303,7 @@ mod test {
               Object {
                 size: 24,
                 align: 8,
+                destructor: 0,
                 managed_ptr: ManagedPtr { len: 2, offsets: [0, 1] },
               },
             ],

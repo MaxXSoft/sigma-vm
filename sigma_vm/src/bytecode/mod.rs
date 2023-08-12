@@ -37,20 +37,21 @@ mod test {
       Const::from(1.233f32),
       Const::from(-876.53f64),
       Const::from(Str {
-        len: 3,
-        bytes: [b'a', b'b', b'c'],
+        len: b"abc".len() as u64,
+        bytes: b"abc".clone(),
       }),
       Const::from(Object {
         size: 256,
         align: 8,
+        destructor: 114514,
         managed_ptr: ManagedPtr {
           len: 4,
           offsets: [1, 3, 5, 7],
         },
       }),
       Const::from(Raw {
-        len: 5,
-        bytes: [b'H', b'e', b'l', b'l', b'o'],
+        len: b"Hello".len() as u64,
+        bytes: b"Hello".clone(),
       }),
     ]
     .into_boxed_slice()
@@ -67,7 +68,7 @@ mod test {
       },
     );
     exports.insert(
-      "hello".into(),
+      "hi".into(),
       CallSite {
         pc: 0x998877665,
         num_args: 10.into(),
