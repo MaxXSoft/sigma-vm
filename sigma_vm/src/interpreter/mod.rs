@@ -7,7 +7,7 @@ pub mod vm;
 
 #[cfg(test)]
 mod test {
-  use crate::bytecode::consts::{Const, ManagedPtr, Object};
+  use crate::bytecode::consts::{Const, ManagedPtr, Object, Str};
   use crate::bytecode::export::{CallSite, ExportInfo, NumArgs};
   use crate::bytecode::insts::Inst;
   use crate::interpreter::gc::MarkSweep;
@@ -317,5 +317,104 @@ mod test {
 
     assert_eq!(sum_repeat(5, 1000), 10000);
     assert_eq!(sum_repeat(10, 10000), 450000);
+  }
+
+  #[test]
+  fn call_ext() {
+    fn even_odd(n: u64) -> (u64, u64) {
+      vm! {
+        modules: {
+          main: {
+            insts: [
+              PushU(1),
+              StG(0),
+              Ret,
+
+            // add1:
+              PushU(1),
+              Add,
+              Ret,
+
+            // main:
+              StA(2),
+              // pass handle to module `counter`
+              LdV(0),
+              LdV(1),
+              CallExtC(1), // counter.set_g1
+              LdV(2),
+            // loop_start:
+              Dup,
+              Bz(10), // loop_end
+              // set v3
+              LdV(1),
+              CallExtC(0), // counter.counter
+              StV(3),
+              // set v4
+              LdV(1),
+              CallExtC(0), // counter.counter
+              StV(4),
+              PushU(1),
+              Sub,
+              Jmp(-10), // loop_start
+            // loop_end:
+              LdV(3),
+              LdV(4),
+              Ret,
+            ],
+            consts: [
+              Str {
+                len: b"counter".len() as u64,
+                bytes: b"counter".clone(),
+              },
+              Str {
+                len: b"set_g1".len() as u64,
+                bytes: b"set_g1".clone(),
+              },
+            ],
+            exports: [
+              "main" => { pc: 6, num_args: 3, num_rets: 2 },
+              "add1" => { pc: 3, num_args: 1, num_rets: 1, },
+            ],
+          },
+          counter: {
+            insts: [
+              PushU(0),
+              StG(0),
+              Ret,
+
+            // counter:
+              LdG(0),
+              Dup,
+              LdG(1),
+              CallExtC(0), // main.add1
+              StG(0),
+              Ret,
+
+            // set_g1:
+              StG(1),
+              Ret,
+            ],
+            consts: [
+              Str {
+                len: b"add1".len() as u64,
+                bytes: b"add1".clone(),
+              },
+            ],
+            exports: [
+              "counter" => { pc: 3, num_args: 0, num_rets: 1 },
+              "set_g1" => { pc: 9, num_args: 1, num_rets: 0 },
+            ],
+          },
+        },
+        main: main,
+        args: [u64: main.into(), u64: counter.into(), u64: n],
+        results: (u64, u64),
+      }
+    }
+
+    assert_eq!(even_odd(1), (0, 1));
+    assert_eq!(even_odd(2), (2, 3));
+    assert_eq!(even_odd(3), (4, 5));
+    assert_eq!(even_odd(100000), (100000 * 2 - 2, 100000 * 2 - 1));
   }
 }
