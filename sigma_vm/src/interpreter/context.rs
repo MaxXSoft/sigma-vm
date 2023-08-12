@@ -488,8 +488,9 @@ where
         return ControlFlow::LoadModule(ptr).into();
       }
       Inst::LoadM => {
+        let size = self.pop_int_ptr()?;
         let ptr = self.pop_ptr()?;
-        return ControlFlow::LoadModuleMem(ptr).into();
+        return ControlFlow::LoadModuleMem(ptr, size).into();
       }
       Inst::Unload => {
         let handle = self.pop_int_ptr()?;
