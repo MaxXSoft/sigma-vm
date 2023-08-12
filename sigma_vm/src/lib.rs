@@ -4,4 +4,3 @@ pub mod bytecode;
 pub mod interpreter;
 
 mod utils;
-
