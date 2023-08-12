@@ -1,5 +1,7 @@
 use crate::bytecode::consts::{Array, Str};
+use crate::utils::Unsized;
 use std::collections::HashMap;
+use std::mem;
 use std::num::NonZeroU64;
 
 /// Exported call site information.
@@ -13,6 +15,17 @@ pub type ExportInfo = HashMap<String, CallSite>;
 pub struct Export<Bytes: ?Sized + Array<u8>> {
   pub call_site: CallSite,
   pub name: Str<Bytes>,
+}
+
+impl<Bytes: ?Sized + Array<u8>> Unsized for Export<Bytes> {
+  const SIZE: usize = mem::size_of::<CallSite>() + Str::<Bytes>::SIZE;
+  const ALIGN: usize = mem::align_of::<CallSite>();
+  type Metadata = <Str<Bytes> as Unsized>::Metadata;
+  const METADATA_OFFSET: usize = mem::size_of::<CallSite>() + Str::<Bytes>::METADATA_OFFSET;
+
+  fn size(metadata: Self::Metadata) -> usize {
+    mem::size_of::<CallSite>() + Str::<Bytes>::size(metadata)
+  }
 }
 
 /// Exported call site.

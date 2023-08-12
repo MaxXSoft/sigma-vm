@@ -1,7 +1,7 @@
 //! Definitions about constant pool.
 
 use crate::interpreter::heap::Heap;
-use crate::utils::{alloc_uninit, impl_try_from_int};
+use crate::utils::{alloc_uninit, impl_try_from_int, Unsized};
 use std::alloc::Layout;
 use std::ptr::{self, Pointee};
 use std::{mem, slice};
@@ -319,9 +319,21 @@ impl Str<[u8]> {
   }
 }
 
+impl<Bytes: ?Sized + Array<u8>> Unsized for Str<Bytes> {
+  const SIZE: usize = mem::size_of::<u64>();
+  const ALIGN: usize = mem::align_of::<u64>();
+  type Metadata = u64;
+  const METADATA_OFFSET: usize = 0;
+
+  fn size(metadata: Self::Metadata) -> usize {
+    Self::SIZE + metadata as usize * mem::size_of::<u8>()
+  }
+}
+
 /// Object metadata.
 ///
-/// With object size, align and managed pointer information.
+/// With object size, align, destructor's PC (zero means no destructor)
+/// and managed pointer information.
 #[repr(C)]
 #[derive(Debug)]
 pub struct Object<Offsets: ?Sized + Array<u64>> {
@@ -341,6 +353,17 @@ impl<Offsets: ?Sized + Array<u64>> Object<Offsets> {
   }
 }
 
+impl<Offsets: ?Sized + Array<u64>> Unsized for Object<Offsets> {
+  const SIZE: usize = mem::size_of::<u64>() * 2 + ManagedPtr::<Offsets>::SIZE;
+  const ALIGN: usize = mem::align_of::<u64>();
+  type Metadata = <ManagedPtr<Offsets> as Unsized>::Metadata;
+  const METADATA_OFFSET: usize = mem::size_of::<u64>() * 2 + ManagedPtr::<Offsets>::METADATA_OFFSET;
+
+  fn size(metadata: Self::Metadata) -> usize {
+    mem::size_of::<u64>() * 2 + ManagedPtr::<Offsets>::size(metadata)
+  }
+}
+
 /// Managed pointer information.
 ///
 /// A list of offsets in 64-bit double words of managed pointers in the object.
@@ -349,6 +372,17 @@ impl<Offsets: ?Sized + Array<u64>> Object<Offsets> {
 pub struct ManagedPtr<Offsets: ?Sized + Array<u64>> {
   pub len: u64,
   pub offsets: Offsets,
+}
+
+impl<Offsets: ?Sized + Array<u64>> Unsized for ManagedPtr<Offsets> {
+  const SIZE: usize = mem::size_of::<u64>();
+  const ALIGN: usize = mem::align_of::<u64>();
+  type Metadata = u64;
+  const METADATA_OFFSET: usize = 0;
+
+  fn size(metadata: Self::Metadata) -> usize {
+    Self::SIZE + metadata as usize * mem::size_of::<u64>()
+  }
 }
 
 /// Raw data.
@@ -360,6 +394,17 @@ pub struct ManagedPtr<Offsets: ?Sized + Array<u64>> {
 pub struct Raw<Bytes: ?Sized + Array<u8>> {
   pub len: u64,
   pub bytes: Bytes,
+}
+
+impl<Bytes: ?Sized + Array<u8>> Unsized for Raw<Bytes> {
+  const SIZE: usize = mem::size_of::<u64>();
+  const ALIGN: usize = mem::align_of::<u64>();
+  type Metadata = u64;
+  const METADATA_OFFSET: usize = 0;
+
+  fn size(metadata: Self::Metadata) -> usize {
+    Self::SIZE + metadata as usize * mem::size_of::<u8>()
+  }
 }
 
 /// Marker trait for arrays (`[T; N]` and `[T]`).
