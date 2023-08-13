@@ -202,6 +202,7 @@ where
             if let Some(last) = ris.last_mut() {
               last.values_rev = rets_rev;
             } else {
+              // TODO: destructors
               rets_rev.reverse();
               return Ok(rets_rev);
             }
