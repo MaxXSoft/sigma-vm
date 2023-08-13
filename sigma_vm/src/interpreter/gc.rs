@@ -11,7 +11,9 @@ pub trait GarbageCollector {
   fn new() -> Self;
 
   /// Collects garbage on the given heap.
-  fn collect<'gc, P, I>(&mut self, heap: &mut P::Heap, roots: I) -> Result<(), P::Error>
+  ///
+  /// Returns heap pointers that should be deallocated.
+  fn collect<'gc, P, I>(&mut self, heap: &P::Heap, roots: I) -> Result<Vec<u64>, P::Error>
   where
     P: 'gc + Policy,
     I: Iterator<Item = Roots<'gc, P>>;
@@ -61,12 +63,12 @@ impl GarbageCollector for Nothing {
     Self
   }
 
-  fn collect<'gc, P, I>(&mut self, _: &mut P::Heap, _: I) -> Result<(), P::Error>
+  fn collect<'gc, P, I>(&mut self, _: &P::Heap, _: I) -> Result<Vec<u64>, P::Error>
   where
     P: 'gc + Policy,
     I: Iterator<Item = Roots<'gc, P>>,
   {
-    Ok(())
+    Ok(vec![])
   }
 
   fn reset(&mut self) {}
@@ -101,7 +103,7 @@ impl GarbageCollector for MarkSweep {
     Self
   }
 
-  fn collect<'gc, P, I>(&mut self, heap: &mut P::Heap, roots: I) -> Result<(), P::Error>
+  fn collect<'gc, P, I>(&mut self, heap: &P::Heap, roots: I) -> Result<Vec<u64>, P::Error>
   where
     P: 'gc + Policy,
     I: Iterator<Item = Roots<'gc, P>>,
@@ -131,13 +133,10 @@ impl GarbageCollector for MarkSweep {
         };
       }
     }
-    // deallocate unreachable pointers
-    for ptr in heap.ptrs() {
-      if !reachable.contains(&ptr) {
-        heap.dealloc(ptr);
-      }
-    }
-    Ok(())
+    // return unreachable pointers
+    let mut ptrs = heap.ptrs();
+    ptrs.retain(|p| !reachable.contains(p));
+    Ok(ptrs)
   }
 
   fn reset(&mut self) {}
