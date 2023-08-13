@@ -152,157 +152,7 @@ where
     // call the target function
     args.reverse();
     let ri = RunInfo::call(module, call_site.pc, args, call_site.num_rets);
-    self.run(ri)
-  }
-
-  /// Runs the given module from the given PC. Returns return values.
-  fn run(&mut self, ri: RunInfo<P>) -> Result<Vec<P::Value>, P::Error> {
-    let mut ris = vec![ri];
-    while let Some(mut ri) = ris.pop() {
-      // check if the context is initialized
-      let context_info = self.contexts.entry(ri.source).or_default();
-      if !context_info.initialized {
-        // prevent from infinite loop
-        context_info.initialized = true;
-        let init = ri.to_init();
-        if ri.pc != 0 {
-          ris.push(ri);
-        }
-        ris.push(init);
-        continue;
-      }
-      // get module and context
-      let module = P::unwrap_module(self.loader.module(ri.source))?;
-      let context = &mut context_info.context;
-      // setup value stack, variable stack and PC
-      let obj_ptr = ri
-        .is_destructor
-        .then(|| P::unwrap_val(ri.values_rev.last()).and_then(|v| P::get_ptr(v)))
-        .transpose()?;
-      context.value_stack.extend(ri.take_values());
-      if ri.is_call {
-        context.var_stack.push(Default::default());
-      }
-      context.set_pc(ri.pc);
-      // run the context
-      let cf = context.run(ri.source, module, &mut self.global_heap)?;
-      ri.pc = context.pc();
-      // handle control flow
-      match cf {
-        ControlFlow::Stop => {
-          // handle function call
-          if let Some(num_rets) = ri.num_rets {
-            // clean up stacks
-            let mut rets_rev = vec![];
-            for _ in 0..num_rets {
-              rets_rev.push(context.pop()?);
-            }
-            context.var_stack.pop();
-            // update the last run info, or return
-            if let Some(last) = ris.last_mut() {
-              last.values_rev = rets_rev;
-            } else {
-              // TODO: destructors
-              rets_rev.reverse();
-              return Ok(rets_rev);
-            }
-          }
-          // handle destructor
-          if let Some(obj_ptr) = obj_ptr {
-            self.global_heap.heap.dealloc(obj_ptr);
-          }
-        }
-        ControlFlow::GC => {
-          let ptrs = self.collect()?;
-          self.global_heap.gc_success(&ptrs)?;
-          ris.push(ri.into_cur());
-          // schedule destructors to run
-          for ptr in ptrs {
-            if let Some(obj) = self.global_heap.heap.obj(ptr) {
-              // get object metadata
-              let object = P::object(&self.global_heap.heap, obj.ptr)?;
-              if object.destructor == 0 {
-                // no destructor, just deallocate
-                self.global_heap.heap.dealloc(ptr);
-              } else {
-                match obj.kind {
-                  ObjKind::Obj => ris.push(RunInfo::destructor(obj.source, object.destructor, ptr)),
-                  ObjKind::Array(len) => {
-                    // visit all objects
-                    let step = object.aligned_size();
-                    if len != 0 {
-                      ris.push(RunInfo::destructor(obj.source, object.destructor, ptr));
-                    }
-                    for i in 1..len as u64 {
-                      let ptr = P::ptr_val(ptr + i * step);
-                      ris.push(RunInfo::call(obj.source, object.destructor, vec![ptr], 0));
-                    }
-                  }
-                }
-              }
-            } else {
-              // not an object, just deallocate
-              self.global_heap.heap.dealloc(ptr);
-            };
-          }
-        }
-        ControlFlow::LoadModule(ptr) => {
-          // load module
-          let path = P::utf8_str(&self.global_heap.heap, ptr)?.to_string();
-          let handle = Source::from(self.loader.load_from_path(path, &mut self.global_heap.heap));
-          // push handle to value stack
-          context.add_value(P::int_val(handle.into()));
-          ris.push(ri.into_cont());
-        }
-        ControlFlow::LoadModuleMem(ptr, len) => {
-          // get byte slice
-          P::check_access(&self.global_heap.heap, ptr, len as usize, 1)?;
-          let addr = self.global_heap.heap.addr(ptr);
-          let bytes = unsafe { slice::from_raw_parts(addr as *const u8, len as usize) };
-          // load module
-          let handle = Source::from(
-            self
-              .loader
-              .load_from_bytes(bytes, &mut self.global_heap.heap),
-          );
-          // push handle to value stack
-          context.add_value(P::int_val(handle.into()));
-          ris.push(ri.into_cont());
-        }
-        ControlFlow::UnloadModule(handle) => {
-          let source = handle.into();
-          self.loader.unload(source);
-          self.contexts.remove(&source);
-          ris.push(ri.into_cont());
-        }
-        ControlFlow::CallExt(handle, ptr) => {
-          // get the target module
-          let target = Source::from(handle);
-          let module = P::unwrap_module(self.loader.module(target))?;
-          // get call site information
-          let name = P::utf8_str(&self.global_heap.heap, ptr)?;
-          let call_site = P::unwrap_module(module.call_site(name))?;
-          // collect arguments
-          let mut args_rev = vec![];
-          let num_args = match call_site.num_args {
-            NumArgs::Variadic => {
-              let n = context.pop_int_ptr()?;
-              args_rev.push(P::int_val(n));
-              n
-            }
-            NumArgs::PlusOne(np1) => np1.get() - 1,
-          };
-          for _ in 0..num_args {
-            args_rev.push(context.pop()?);
-          }
-          // perform call
-          let call = RunInfo::call(target, call_site.pc, args_rev, call_site.num_rets);
-          ris.push(ri.into_cont());
-          ris.push(call);
-        }
-      }
-    }
-    Ok(vec![])
+    Runner::new(self, ri).run()
   }
 }
 
@@ -465,6 +315,191 @@ impl<P: Policy> Default for ContextInfo<P> {
   }
 }
 
+/// Runner for running contexts.
+struct Runner<'vm, P: Policy> {
+  vm: &'vm mut VM<P>,
+  ris: Vec<RunInfo<P>>,
+}
+
+impl<'vm, P: Policy> Runner<'vm, P> {
+  /// Creates a new runner.
+  fn new(vm: &'vm mut VM<P>, ri: RunInfo<P>) -> Self {
+    Self { vm, ris: vec![ri] }
+  }
+
+  /// Runs contexts, returns return values.
+  fn run(mut self) -> Result<Vec<P::Value>, P::Error>
+  where
+    P::Value: Clone,
+  {
+    while let Some(mut ri) = self.ris.pop() {
+      // check if the context is initialized
+      let context_info = self.vm.contexts.entry(ri.source).or_default();
+      if !context_info.initialized {
+        // prevent from infinite loop
+        context_info.initialized = true;
+        self.init(ri);
+        continue;
+      }
+      // get module and context
+      let module = P::unwrap_module(self.vm.loader.module(ri.source))?;
+      let context = &mut context_info.context;
+      // setup value stack, variable stack and PC
+      let obj_ptr = ri.obj_ptr()?;
+      ri.setup(context);
+      // run the context
+      let cf = context.run(ri.source, module, &mut self.vm.global_heap)?;
+      ri.pc = context.pc();
+      // handle control flow
+      match cf {
+        ControlFlow::Stop => {
+          let rets_rev = ri.cleanup(context)?;
+          if let Some(rets) = self.stop(rets_rev, obj_ptr)? {
+            return Ok(rets);
+          }
+        }
+        ControlFlow::GC => self.gc(ri)?,
+        ControlFlow::LoadModule(ptr) => self.load_module(ri, ptr)?,
+        ControlFlow::LoadModuleMem(ptr, len) => self.load_module_mem(ri, ptr, len)?,
+        ControlFlow::UnloadModule(handle) => {
+          let source = handle.into();
+          self.vm.loader.unload(source);
+          self.vm.contexts.remove(&source);
+          self.ris.push(ri.into_cont());
+        }
+        ControlFlow::CallExt(handle, ptr) => {
+          // get the target module
+          let target = Source::from(handle);
+          let module = P::unwrap_module(self.vm.loader.module(target))?;
+          // get call site information
+          let name = P::utf8_str(&self.vm.global_heap.heap, ptr)?;
+          let call_site = P::unwrap_module(module.call_site(name))?;
+          // collect arguments
+          let args_rev = context.args_rev(call_site)?;
+          // perform call
+          let call = RunInfo::call(target, call_site.pc, args_rev, call_site.num_rets);
+          self.ris.push(ri.into_cont());
+          self.ris.push(call);
+        }
+      }
+    }
+    Ok(vec![])
+  }
+
+  /// Initializes the given context information.
+  fn init(&mut self, ri: RunInfo<P>) {
+    let init = ri.to_init();
+    if ri.pc != 0 {
+      self.ris.push(ri);
+    }
+    self.ris.push(init);
+  }
+
+  /// Stops the current run. Returns some return value if need to stop running.
+  fn stop(
+    &mut self,
+    rets_rev: Option<Vec<P::Value>>,
+    obj_ptr: Option<u64>,
+  ) -> Result<Option<Vec<P::Value>>, P::Error> {
+    // handle return
+    if let Some(mut rets_rev) = rets_rev {
+      // update the last run info, or return
+      if let Some(last) = self.ris.last_mut() {
+        last.values_rev = rets_rev;
+      } else {
+        // TODO: destructors
+        rets_rev.reverse();
+        return Ok(Some(rets_rev));
+      }
+    }
+    // handle destructor
+    if let Some(obj_ptr) = obj_ptr {
+      self.vm.global_heap.heap.dealloc(obj_ptr);
+    }
+    Ok(None)
+  }
+
+  /// Runs garbage collector.
+  fn gc(&mut self, ri: RunInfo<P>) -> Result<(), P::Error> {
+    let ptrs = self.vm.collect()?;
+    self.vm.global_heap.gc_success(&ptrs)?;
+    self.ris.push(ri.into_cur());
+    // schedule destructors to run
+    for ptr in ptrs {
+      if let Some(obj) = self.vm.global_heap.heap.obj(ptr) {
+        // get object metadata
+        let object = P::object(&self.vm.global_heap.heap, obj.ptr)?;
+        if object.destructor == 0 {
+          // no destructor, just deallocate
+          self.vm.global_heap.heap.dealloc(ptr);
+        } else {
+          match obj.kind {
+            ObjKind::Obj => self
+              .ris
+              .push(RunInfo::destructor(obj.source, object.destructor, ptr)),
+            ObjKind::Array(len) => {
+              // visit all objects
+              let step = object.aligned_size();
+              if len != 0 {
+                self
+                  .ris
+                  .push(RunInfo::destructor(obj.source, object.destructor, ptr));
+              }
+              for i in 1..len as u64 {
+                let ptr = P::ptr_val(ptr + i * step);
+                self
+                  .ris
+                  .push(RunInfo::call(obj.source, object.destructor, vec![ptr], 0));
+              }
+            }
+          }
+        }
+      } else {
+        // not an object, just deallocate
+        self.vm.global_heap.heap.dealloc(ptr);
+      };
+    }
+    Ok(())
+  }
+
+  /// Loads module from the given path pointer.
+  fn load_module(&mut self, ri: RunInfo<P>, ptr: u64) -> Result<(), P::Error> {
+    // load module
+    let path = P::utf8_str(&self.vm.global_heap.heap, ptr)?.to_string();
+    let handle = Source::from(
+      self
+        .vm
+        .loader
+        .load_from_path(path, &mut self.vm.global_heap.heap),
+    );
+    // push handle to value stack
+    let mut ri = ri.into_cont();
+    ri.values_rev.push(P::int_val(handle.into()));
+    self.ris.push(ri);
+    Ok(())
+  }
+
+  /// Loads module from the given memory.
+  fn load_module_mem(&mut self, ri: RunInfo<P>, ptr: u64, len: u64) -> Result<(), P::Error> {
+    // get byte slice
+    P::check_access(&self.vm.global_heap.heap, ptr, len as usize, 1)?;
+    let addr = self.vm.global_heap.heap.addr(ptr);
+    let bytes = unsafe { slice::from_raw_parts(addr as *const u8, len as usize) };
+    // load module
+    let handle = Source::from(
+      self
+        .vm
+        .loader
+        .load_from_bytes(bytes, &mut self.vm.global_heap.heap),
+    );
+    // push handle to value stack
+    let mut ri = ri.into_cont();
+    ri.values_rev.push(P::int_val(handle.into()));
+    self.ris.push(ri);
+    Ok(())
+  }
+}
+
 /// Run information.
 struct RunInfo<P: Policy> {
   source: Source,
@@ -539,6 +574,40 @@ impl<P: Policy> RunInfo<P> {
   /// Takes the values out of the current run information.
   fn take_values(&mut self) -> impl Iterator<Item = P::Value> {
     mem::take(&mut self.values_rev).into_iter().rev()
+  }
+
+  /// Returns the pointer of the object to be destructed
+  /// if the current run information is for destructor.
+  fn obj_ptr(&self) -> Result<Option<u64>, P::Error> {
+    self
+      .is_destructor
+      .then(|| P::unwrap_val(self.values_rev.last()).and_then(|v| P::get_ptr(v)))
+      .transpose()
+  }
+
+  /// Sets up the given context.
+  fn setup(&mut self, context: &mut Context<P>) {
+    context.value_stack.extend(self.take_values());
+    if self.is_call {
+      context.var_stack.push(Default::default());
+    }
+    context.set_pc(self.pc);
+  }
+
+  /// Cleans up the given context. Returns return values
+  /// if the current run information is for function return.
+  fn cleanup(&mut self, context: &mut Context<P>) -> Result<Option<Vec<P::Value>>, P::Error> {
+    self
+      .num_rets
+      .map(|num_rets| {
+        let mut rets_rev = vec![];
+        for _ in 0..num_rets {
+          rets_rev.push(context.pop()?);
+        }
+        context.var_stack.pop();
+        Ok(rets_rev)
+      })
+      .transpose()
   }
 }
 
