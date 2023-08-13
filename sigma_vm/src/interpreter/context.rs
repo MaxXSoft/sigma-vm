@@ -1,6 +1,7 @@
 use crate::bytecode::insts::Inst;
 use crate::bytecode::module::Module;
 use crate::interpreter::gc::PotentialRoots;
+use crate::interpreter::loader::Source;
 use crate::interpreter::policy::Policy;
 use crate::interpreter::vm::{ControlFlow, GlobalHeap};
 use std::iter::Flatten;
@@ -146,11 +147,12 @@ where
   /// Runs the virtual machine.
   pub fn run(
     &mut self,
+    source: Source,
     module: &Module,
     heap: &mut GlobalHeap<P>,
   ) -> Result<ControlFlow, P::Error> {
     loop {
-      match self.run_inst(module, heap, module.insts[self.pc as usize])? {
+      match self.run_inst(source, module, heap, module.insts[self.pc as usize])? {
         PcUpdate::Next => self.pc += 1,
         PcUpdate::Set(pc) => self.pc = pc,
         PcUpdate::ControlFlow(c) => return Ok(c),
@@ -163,6 +165,7 @@ where
   /// Returns `false` if the instruction requires to stop execution.
   fn run_inst(
     &mut self,
+    source: Source,
     module: &Module,
     heap: &mut GlobalHeap<P>,
     inst: Inst,
@@ -442,7 +445,7 @@ where
           return ControlFlow::GC.into();
         }
         let obj_ptr = self.pop_ptr()?;
-        self.push_ptr(heap.new_object(obj_ptr)?);
+        self.push_ptr(heap.new_object(obj_ptr, source)?);
         PcUpdate::Next
       }
       Inst::NewOC(opr) => {
@@ -451,7 +454,7 @@ where
         }
         let c = P::unwrap_val(module.consts.get(opr as usize))?;
         let obj_ptr = P::obj_ptr_from_const(c)?;
-        self.push_ptr(heap.new_object(obj_ptr)?);
+        self.push_ptr(heap.new_object(obj_ptr, source)?);
         PcUpdate::Next
       }
       Inst::NewA => {
@@ -460,7 +463,7 @@ where
         }
         let len = self.pop_int_ptr()?;
         let obj_ptr = self.pop_ptr()?;
-        self.push_ptr(heap.new_array(obj_ptr, len)?);
+        self.push_ptr(heap.new_array(obj_ptr, len, source)?);
         PcUpdate::Next
       }
       Inst::NewAC(opr) => {
@@ -470,7 +473,7 @@ where
         let len = self.pop_int_ptr()?;
         let c = P::unwrap_val(module.consts.get(opr as usize))?;
         let obj_ptr = P::obj_ptr_from_const(c)?;
-        self.push_ptr(heap.new_array(obj_ptr, len)?);
+        self.push_ptr(heap.new_array(obj_ptr, len, source)?);
         PcUpdate::Next
       }
       Inst::Del => {
