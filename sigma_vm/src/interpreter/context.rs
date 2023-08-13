@@ -33,6 +33,11 @@ impl<P: Policy> Context<P> {
     &self.value_stack
   }
 
+  /// Returns a reference to the global variables.
+  pub fn globals(&self) -> &Vars<P::Value> {
+    self.var_stack.first().unwrap()
+  }
+
   /// Adds the given value to the value stack.
   pub fn add_value(&mut self, value: P::Value) {
     self.value_stack.push(value)
