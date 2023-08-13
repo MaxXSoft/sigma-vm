@@ -1,3 +1,4 @@
+use crate::bytecode::export::{CallSite, NumArgs};
 use crate::bytecode::insts::Inst;
 use crate::bytecode::module::Module;
 use crate::interpreter::gc::PotentialRoots;
@@ -132,6 +133,23 @@ impl<P: Policy> Context<P> {
   /// Peeks the last mutable value in the value stack.
   fn peek_s0_mut(&mut self) -> Result<&mut P::Value, P::Error> {
     P::unwrap_val(self.value_stack.last_mut())
+  }
+
+  /// Returns arguments in reverse order by the given call site information.
+  pub(super) fn args_rev(&mut self, call_site: &CallSite) -> Result<Vec<P::Value>, P::Error> {
+    let mut args_rev = vec![];
+    let num_args = match call_site.num_args {
+      NumArgs::Variadic => {
+        let n = self.pop_int_ptr()?;
+        args_rev.push(P::int_val(n));
+        n
+      }
+      NumArgs::PlusOne(np1) => np1.get() - 1,
+    };
+    for _ in 0..num_args {
+      args_rev.push(self.pop()?);
+    }
+    Ok(args_rev)
   }
 }
 
