@@ -329,20 +329,31 @@ impl<P: Policy> GlobalHeap<P> {
   }
 
   /// Allocates heap memory for the given object metadata pointer.
-  pub(super) fn new_object(&mut self, obj_ptr: u64) -> Result<u64, P::Error> {
+  pub(super) fn new_object(&mut self, obj_ptr: u64, source: Source) -> Result<u64, P::Error> {
     let object = P::object(&self.heap, obj_ptr)?;
-    self.alloc_obj(object.size, object.align, ObjKind::Obj, obj_ptr)
+    self.alloc_obj(object.size, object.align, ObjKind::Obj, obj_ptr, source)
   }
 
   /// Allocates array for the given object metadata pointer.
-  pub(super) fn new_array(&mut self, obj_ptr: u64, len: u64) -> Result<u64, P::Error> {
+  pub(super) fn new_array(
+    &mut self,
+    obj_ptr: u64,
+    len: u64,
+    source: Source,
+  ) -> Result<u64, P::Error> {
     let object = P::object(&self.heap, obj_ptr)?;
     let size = if len != 0 {
       object.aligned_size() * (len - 1) + object.size
     } else {
       0
     };
-    self.alloc_obj(size, object.align, ObjKind::Array(len as usize), obj_ptr)
+    self.alloc_obj(
+      size,
+      object.align,
+      ObjKind::Array(len as usize),
+      obj_ptr,
+      source,
+    )
   }
 
   /// Deallocates the given pointer.
@@ -357,9 +368,17 @@ impl<P: Policy> GlobalHeap<P> {
     align: u64,
     kind: ObjKind,
     obj_ptr: u64,
+    source: Source,
   ) -> Result<u64, P::Error> {
     let layout = P::layout(size as usize, align as usize)?;
-    Ok(self.heap.alloc_obj(layout, Obj { kind, ptr: obj_ptr }))
+    Ok(self.heap.alloc_obj(
+      layout,
+      Obj {
+        kind,
+        ptr: obj_ptr,
+        source,
+      },
+    ))
   }
 
   /// Allocates a new string on heap, returns the heap pointer.
