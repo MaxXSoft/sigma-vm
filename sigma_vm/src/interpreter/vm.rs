@@ -93,8 +93,8 @@ impl<P: Policy> VM<P> {
     self.context(module).add_ptr(ptr);
   }
 
-  /// Runs garbage collector.
-  fn collect(&mut self) -> Result<(), P::Error> {
+  /// Runs garbage collector, returns pointers to be deallocated.
+  fn collect(&mut self) -> Result<Vec<u64>, P::Error> {
     let roots = self.contexts.iter().filter_map(|(s, c)| {
       if c.initialized {
         self.loader.module(*s).map(|m| Roots {
@@ -105,10 +105,7 @@ impl<P: Policy> VM<P> {
         None
       }
     });
-    self
-      .global_heap
-      .policy
-      .collect(&mut self.global_heap.gc, &mut self.global_heap.heap, roots)
+    self.global_heap.gc.collect(&self.global_heap.heap, roots)
   }
 }
 
