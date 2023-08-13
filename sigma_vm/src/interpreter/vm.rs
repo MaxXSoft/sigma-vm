@@ -371,7 +371,7 @@ impl<'vm, P: Policy> Runner<'vm, P> {
       // run the context
       ri.setup(context);
       let cf = context.run(ri.source, module, &mut self.vm.global_heap)?;
-      ri.pc = context.pc();
+      ri.pc = context.pc;
       // handle control flow
       match cf {
         ControlFlow::Stop => {
@@ -653,8 +653,9 @@ impl<P: Policy> RunInfo<P> {
       .extend(mem::take(&mut self.values_rev).into_iter().rev());
     if self.is_call {
       context.var_stack.push(Default::default());
+      context.ra_stack.push(vec![]);
     }
-    context.set_pc(self.pc);
+    context.pc = self.pc;
   }
 
   /// Cleans up the given context. Returns return values

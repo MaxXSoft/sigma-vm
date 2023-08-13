@@ -11,10 +11,12 @@ use std::slice::Iter;
 
 /// Execution context of virtual machine.
 pub struct Context<P: Policy> {
-  pc: u64,
+  pub(super) pc: u64,
   pub(super) value_stack: Vec<P::Value>,
   pub(super) var_stack: Vec<Vars<P::Value>>,
-  ra_stack: Vec<u64>,
+  /// Actually a stack of stack,
+  /// for supporting VM inserted temporary call.
+  pub(super) ra_stack: Vec<Vec<u64>>,
 }
 
 impl<P: Policy> Context<P> {
@@ -24,7 +26,7 @@ impl<P: Policy> Context<P> {
       pc: 0,
       value_stack: vec![],
       var_stack: vec![Vars::new()],
-      ra_stack: vec![],
+      ra_stack: vec![vec![]],
     }
   }
 
@@ -55,16 +57,6 @@ impl<P: Policy> Context<P> {
     self.var_stack.clear();
     self.var_stack.push(Vars::new());
     self.ra_stack.clear();
-  }
-
-  /// Returns the current PC.
-  pub fn pc(&self) -> u64 {
-    self.pc
-  }
-
-  /// Sets the PC to the given value.
-  pub fn set_pc(&mut self, pc: u64) {
-    self.pc = pc;
   }
 
   /// Returns potential garbage collection roots of the current context.
@@ -539,7 +531,7 @@ where
       Inst::Jmp(opr) => PcUpdate::Set((self.pc as i64 + opr) as u64),
       Inst::Call(opr) => {
         self.var_stack.push(Vars::new());
-        self.ra_stack.push(self.pc + 1);
+        P::unwrap_val(self.ra_stack.last_mut())?.push(self.pc + 1);
         PcUpdate::Set((self.pc as i64 + opr) as u64)
       }
       Inst::CallExt => {
@@ -554,9 +546,11 @@ where
         return ControlFlow::CallExt(handle, ptr).into();
       }
       Inst::Ret => {
-        let pcu = match self.ra_stack.pop() {
-          Some(pc) => PcUpdate::Set(pc),
-          None => return ControlFlow::Stop.into(),
+        let pcu = if let Some(pc) = P::unwrap_val(self.ra_stack.last_mut())?.pop() {
+          PcUpdate::Set(pc)
+        } else {
+          self.ra_stack.pop();
+          return ControlFlow::Stop.into();
         };
         self.var_stack.pop();
         pcu
