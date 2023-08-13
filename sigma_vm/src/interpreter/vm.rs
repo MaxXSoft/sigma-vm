@@ -398,6 +398,16 @@ impl<P: Policy> GlobalHeap<P> {
     }
     ptr
   }
+
+  /// Checks if the garbage collector succeeded in reducing the heap size.
+  /// Returns an error if necessary.
+  fn gc_success(&self, dealloc_ptrs: &[u64]) -> Result<(), P::Error> {
+    let dealloc_size: usize = dealloc_ptrs
+      .iter()
+      .filter_map(|p| self.heap.size_of(*p))
+      .sum();
+    self.policy.gc_success(self.heap.size() - dealloc_size)
+  }
 }
 
 /// Context information.
