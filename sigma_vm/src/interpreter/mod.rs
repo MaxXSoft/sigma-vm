@@ -88,7 +88,7 @@ mod test {
       },
       main: $main:ident,
       args: [$($aty:tt: $ae:expr),* $(,)?],
-      results: ($($rs:tt),*) $(,)?
+      results: $($rs:tt)*
     } => {{
       let mut vm = VM::new(Sap::new(1024));
       $(let $src = vm.new_module(
@@ -96,12 +96,13 @@ mod test {
         exports![$($exports)*],
         insts![$($insts)*],
       ).unwrap();)*
-      let rets = vm.call($main, "main", [$(value!($aty: $ae)),*]).unwrap();
-      let mut i = 0;
-      #[allow(unused_assignments)]
-      let results = ($(vm!(@result rets, i, $rs)),*);
-      vm.terminate().unwrap();
-      results
+      let _rets = vm.call($main, "main", [$(value!($aty: $ae)),*]).unwrap();
+      vm!(@results vm, $main, _rets, $($rs)+)
+    }};
+    (@results $vm:ident, $main:ident, $values:ident, vm_main $(,)?) => { ($vm, $main) };
+    (@results $vm:ident, $main:ident, $values:ident, ($($rs:tt),*) $(,)?) => {{
+      let mut _i = 0;
+      ($(vm!(@result $values, _i, $rs)),*)
     }};
     (@result $values:ident, $i:ident, $ty:tt) => {{
       let result = result!($ty: &$values[$i]);
@@ -419,5 +420,60 @@ mod test {
     assert_eq!(even_odd(2), (2, 3));
     assert_eq!(even_odd(3), (4, 5));
     assert_eq!(even_odd(100000), (100000 * 2 - 2, 100000 * 2 - 1));
+  }
+
+  #[test]
+  fn destructor() {
+    fn obj_counter(n: u64) -> u64 {
+      let (mut vm, main) = vm! {
+        modules: {
+          main: {
+            insts: [
+              PushU(0),
+              StG(0),
+              Ret,
+
+            // main:
+            // loop_start:
+              Dup,
+              Bz(6), // loop_end
+              NewOC(0),
+              Pop,
+              PushU(1),
+              Sub,
+              Jmp(-6), // loop_start
+            // loop_end:
+              Pop,
+              Ret,
+
+            // destructor:
+              Pop,
+              LdG(0),
+              PushU(1),
+              Add,
+              StG(0),
+              Ret,
+            ],
+            consts: [
+              Object {
+                size: 64,
+                align: 1,
+                destructor: 12,
+                managed_ptr: ManagedPtr { len: 0, offsets: [] },
+              },
+            ],
+            exports: ["main" => { pc: 3, num_args: 1, num_rets: 0 }],
+          },
+        },
+        main: main,
+        args: [u64: n],
+        results: vm_main,
+      };
+      Sap::get_int_ptr(vm.context(main).globals().get(0).unwrap()).unwrap()
+    }
+
+    // TODO: debug
+    assert_eq!(obj_counter(10), 10);
+    assert_eq!(obj_counter(100), 100);
   }
 }
