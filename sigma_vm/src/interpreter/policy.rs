@@ -1,5 +1,5 @@
 use crate::bytecode::consts::{ConstKind, HeapConst, Object, Str};
-use crate::interpreter::gc::{GarbageCollector, PotentialRoots, Roots};
+use crate::interpreter::gc::GarbageCollector;
 use crate::interpreter::heap::{CheckedHeap, Heap};
 use crate::utils::Unsized;
 use std::alloc::Layout;
@@ -145,18 +145,9 @@ pub trait Policy {
   /// Checks if the heap is large enough and it should be collected now.
   fn should_collect(&self, heap: &Self::Heap) -> bool;
 
-  /// Runs the garbage collector and checks if
-  /// the GC succeeded in reducing the heap size.
-  ///
+  /// Checks if the garbage collector succeeded in reducing the heap size.
   /// Returns an error if necessary.
-  fn collect<'gc, I>(
-    &'gc self,
-    gc: &mut Self::GarbageCollector,
-    heap: &mut Self::Heap,
-    roots: I,
-  ) -> Result<(), Self::Error>
-  where
-    I: Iterator<Item = Roots<'gc, Self>>;
+  fn gc_success(&self, heap_size: usize) -> Result<(), Self::Error>;
 }
 
 /// Strict policy.
@@ -314,17 +305,8 @@ where
     heap.size() > self.gc_threshold
   }
 
-  fn collect<'gc, I>(
-    &'gc self,
-    gc: &mut Self::GarbageCollector,
-    heap: &mut Self::Heap,
-    roots: I,
-  ) -> Result<(), Self::Error>
-  where
-    I: Iterator<Item = Roots<'gc, Self>>,
-  {
-    gc.collect(heap, roots)?;
-    if heap.size() > self.gc_threshold {
+  fn gc_success(&self, heap_size: usize) -> Result<(), Self::Error> {
+    if heap_size > self.gc_threshold {
       Err(StrictError::OutOfHeap)
     } else {
       Ok(())
@@ -505,25 +487,10 @@ where
     self.strict.should_collect(heap)
   }
 
-  fn collect<'gc, I>(
-    &'gc self,
-    gc: &mut Self::GarbageCollector,
-    heap: &mut Self::Heap,
-    roots: I,
-  ) -> Result<(), Self::Error>
-  where
-    I: Iterator<Item = Roots<'gc, Self>>,
-  {
-    let roots = roots.map(|r| Roots {
-      consts: r.consts,
-      proots: PotentialRoots {
-        values: r.proots.values,
-        vars: r.proots.vars,
-      },
-    });
+  fn gc_success(&self, heap_size: usize) -> Result<(), Self::Error> {
     self
       .strict
-      .collect(gc, heap, roots)
+      .gc_success(heap_size)
       .map_err(StrictAlignError::Strict)
   }
 }
@@ -668,23 +635,14 @@ where
     heap.size() > self.gc_threshold
   }
 
-  /// Runs the garbage collector and checks if
-  /// the GC succeeded in reducing the heap size.
+  /// Checks if the garbage collector succeeded in reducing the heap size.
+  /// Returns an error if necessary.
   ///
   /// # Panics
   ///
   /// Panics if unsuccess.
-  fn collect<'gc, I>(
-    &'gc self,
-    gc: &mut Self::GarbageCollector,
-    heap: &mut Self::Heap,
-    roots: I,
-  ) -> Result<(), Self::Error>
-  where
-    I: Iterator<Item = Roots<'gc, Self>>,
-  {
-    gc.collect(heap, roots)?;
-    if heap.size() > self.gc_threshold {
+  fn gc_success(&self, heap_size: usize) -> Result<(), Self::Error> {
+    if heap_size > self.gc_threshold {
       panic!("out of heap memory");
     }
     Ok(())
