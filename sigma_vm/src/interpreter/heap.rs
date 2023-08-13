@@ -1,3 +1,4 @@
+use crate::interpreter::loader::Source;
 use std::alloc::{self, Layout};
 use std::collections::{BTreeMap, HashMap};
 use std::slice;
@@ -46,7 +47,10 @@ pub trait Heap {
 #[derive(Debug, Clone, Copy)]
 pub struct Obj {
   pub kind: ObjKind,
+  /// Pointer to the real object metadata.
   pub ptr: u64,
+  /// Source of the module where the object was allocated.
+  pub source: Source,
 }
 
 /// Kind of object.
