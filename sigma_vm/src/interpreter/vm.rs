@@ -175,17 +175,22 @@ where
       let module = P::unwrap_module(self.loader.module(ri.source))?;
       let context = &mut context_info.context;
       // setup value stack, variable stack and PC
+      let obj_ptr = ri
+        .is_destructor
+        .then(|| P::unwrap_val(ri.values_rev.last()).and_then(|v| P::get_ptr(v)))
+        .transpose()?;
       context.value_stack.extend(ri.take_values());
       if ri.is_call {
         context.var_stack.push(Default::default());
       }
       context.set_pc(ri.pc);
       // run the context
-      let cf = context.run(module, &mut self.global_heap)?;
+      let cf = context.run(ri.source, module, &mut self.global_heap)?;
       ri.pc = context.pc();
       // handle control flow
       match cf {
         ControlFlow::Stop => {
+          // handle function call
           if let Some(num_rets) = ri.num_rets {
             // clean up stacks
             let mut rets_rev = vec![];
@@ -201,10 +206,44 @@ where
               return Ok(rets_rev);
             }
           }
+          // handle destructor
+          if let Some(obj_ptr) = obj_ptr {
+            self.global_heap.heap.dealloc(obj_ptr);
+          }
         }
         ControlFlow::GC => {
-          self.collect()?;
+          let ptrs = self.collect()?;
+          self.global_heap.gc_success(&ptrs)?;
           ris.push(ri.into_cur());
+          // schedule destructors to run
+          for ptr in ptrs {
+            if let Some(obj) = self.global_heap.heap.obj(ptr) {
+              // get object metadata
+              let object = P::object(&self.global_heap.heap, obj.ptr)?;
+              if object.destructor == 0 {
+                // no destructor, just deallocate
+                self.global_heap.heap.dealloc(ptr);
+              } else {
+                match obj.kind {
+                  ObjKind::Obj => ris.push(RunInfo::destructor(obj.source, object.destructor, ptr)),
+                  ObjKind::Array(len) => {
+                    // visit all objects
+                    let step = object.aligned_size();
+                    if len != 0 {
+                      ris.push(RunInfo::destructor(obj.source, object.destructor, ptr));
+                    }
+                    for i in 1..len as u64 {
+                      let ptr = P::ptr_val(ptr + i * step);
+                      ris.push(RunInfo::call(obj.source, object.destructor, vec![ptr], 0));
+                    }
+                  }
+                }
+              }
+            } else {
+              // not an object, just deallocate
+              self.global_heap.heap.dealloc(ptr);
+            };
+          }
         }
         ControlFlow::LoadModule(ptr) => {
           // load module
