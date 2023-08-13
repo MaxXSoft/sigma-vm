@@ -318,13 +318,23 @@ impl<P: Policy> Default for ContextInfo<P> {
 /// Runner for running contexts.
 struct Runner<'vm, P: Policy> {
   vm: &'vm mut VM<P>,
+  /// Run information stack.
   ris: Vec<RunInfo<P>>,
+  /// Pointers to be deallocated.
+  ///
+  /// GC is running if this vector is not empty. All pointers in this vector
+  /// should be deallocated when running run information for destructor.
+  pending_ptrs: Vec<u64>,
 }
 
 impl<'vm, P: Policy> Runner<'vm, P> {
   /// Creates a new runner.
   fn new(vm: &'vm mut VM<P>, ri: RunInfo<P>) -> Self {
-    Self { vm, ris: vec![ri] }
+    Self {
+      vm,
+      ris: vec![ri],
+      pending_ptrs: vec![],
+    }
   }
 
   /// Runs contexts, returns return values.
@@ -341,20 +351,24 @@ impl<'vm, P: Policy> Runner<'vm, P> {
         self.init(ri);
         continue;
       }
+      // handle pending pointers
+      if ri.is_destructor {
+        for ptr in mem::take(&mut self.pending_ptrs) {
+          self.vm.global_heap.heap.dealloc(ptr);
+        }
+      }
       // get module and context
       let module = P::unwrap_module(self.vm.loader.module(ri.source))?;
       let context = &mut context_info.context;
-      // setup value stack, variable stack and PC
-      let obj_ptr = ri.obj_ptr()?;
-      ri.setup(context);
       // run the context
+      ri.setup(context);
       let cf = context.run(ri.source, module, &mut self.vm.global_heap)?;
       ri.pc = context.pc();
       // handle control flow
       match cf {
         ControlFlow::Stop => {
           let rets_rev = ri.cleanup(context)?;
-          if let Some(rets) = self.stop(rets_rev, obj_ptr)? {
+          if let Some(rets) = self.stop(rets_rev)? {
             return Ok(rets);
           }
         }
@@ -396,11 +410,7 @@ impl<'vm, P: Policy> Runner<'vm, P> {
   }
 
   /// Stops the current run. Returns some return value if need to stop running.
-  fn stop(
-    &mut self,
-    rets_rev: Option<Vec<P::Value>>,
-    obj_ptr: Option<u64>,
-  ) -> Result<Option<Vec<P::Value>>, P::Error> {
+  fn stop(&mut self, rets_rev: Option<Vec<P::Value>>) -> Result<Option<Vec<P::Value>>, P::Error> {
     // handle return
     if let Some(mut rets_rev) = rets_rev {
       // update the last run info, or return
@@ -412,18 +422,20 @@ impl<'vm, P: Policy> Runner<'vm, P> {
         return Ok(Some(rets_rev));
       }
     }
-    // handle destructor
-    if let Some(obj_ptr) = obj_ptr {
-      self.vm.global_heap.heap.dealloc(obj_ptr);
-    }
     Ok(None)
   }
 
   /// Runs garbage collector.
   fn gc(&mut self, ri: RunInfo<P>) -> Result<(), P::Error> {
+    // skip if garbage collector is already running
+    // this means the module is trying to allocate memory in the destructor
+    if !self.pending_ptrs.is_empty() {
+      return Ok(());
+    }
+    // run garbage collector
     let ptrs = self.vm.collect()?;
     self.vm.global_heap.gc_success(&ptrs)?;
-    self.ris.push(ri.into_cur());
+    self.ris.push(ri.into_destructor());
     // schedule destructors to run
     for ptr in ptrs {
       if let Some(obj) = self.vm.global_heap.heap.obj(ptr) {
@@ -433,6 +445,9 @@ impl<'vm, P: Policy> Runner<'vm, P> {
           // no destructor, just deallocate
           self.vm.global_heap.heap.dealloc(ptr);
         } else {
+          // add to pending pointers
+          self.pending_ptrs.push(ptr);
+          // issue destructors to run
           match obj.kind {
             ObjKind::Obj => self
               .ris
@@ -440,16 +455,12 @@ impl<'vm, P: Policy> Runner<'vm, P> {
             ObjKind::Array(len) => {
               // visit all objects
               let step = object.aligned_size();
-              if len != 0 {
-                self
-                  .ris
-                  .push(RunInfo::destructor(obj.source, object.destructor, ptr));
-              }
-              for i in 1..len as u64 {
-                let ptr = P::ptr_val(ptr + i * step);
-                self
-                  .ris
-                  .push(RunInfo::call(obj.source, object.destructor, vec![ptr], 0));
+              for i in 0..len as u64 {
+                self.ris.push(RunInfo::destructor(
+                  obj.source,
+                  object.destructor,
+                  ptr + i * step,
+                ));
               }
             }
           }
@@ -523,13 +534,14 @@ impl<P: Policy> RunInfo<P> {
     }
   }
 
-  /// Creates a new run information for destructor.
+  /// Creates a new run information for calling destructor.
+  /// Note the `is_destructor` will not be set.
   fn destructor(source: Source, pc: u64, ptr: u64) -> Self {
     Self {
       source,
       pc,
       is_call: true,
-      is_destructor: true,
+      is_destructor: false,
       values_rev: vec![P::ptr_val(ptr)],
       num_rets: Some(0),
     }
@@ -547,13 +559,13 @@ impl<P: Policy> RunInfo<P> {
     }
   }
 
-  /// Converts the current run information into a new one for re-run.
-  fn into_cur(self) -> Self {
+  /// Converts the current run information into a new one for destructor.
+  fn into_destructor(self) -> Self {
     Self {
       source: self.source,
       pc: self.pc,
       is_call: false,
-      is_destructor: false,
+      is_destructor: true,
       values_rev: vec![],
       num_rets: self.num_rets,
     }
@@ -571,23 +583,11 @@ impl<P: Policy> RunInfo<P> {
     }
   }
 
-  /// Takes the values out of the current run information.
-  fn take_values(&mut self) -> impl Iterator<Item = P::Value> {
-    mem::take(&mut self.values_rev).into_iter().rev()
-  }
-
-  /// Returns the pointer of the object to be destructed
-  /// if the current run information is for destructor.
-  fn obj_ptr(&self) -> Result<Option<u64>, P::Error> {
-    self
-      .is_destructor
-      .then(|| P::unwrap_val(self.values_rev.last()).and_then(|v| P::get_ptr(v)))
-      .transpose()
-  }
-
   /// Sets up the given context.
   fn setup(&mut self, context: &mut Context<P>) {
-    context.value_stack.extend(self.take_values());
+    context
+      .value_stack
+      .extend(mem::take(&mut self.values_rev).into_iter().rev());
     if self.is_call {
       context.var_stack.push(Default::default());
     }
