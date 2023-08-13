@@ -99,7 +99,9 @@ mod test {
       let rets = vm.call($main, "main", [$(value!($aty: $ae)),*]).unwrap();
       let mut i = 0;
       #[allow(unused_assignments)]
-      ($(vm!(@result rets, i, $rs)),*)
+      let results = ($(vm!(@result rets, i, $rs)),*);
+      vm.terminate().unwrap();
+      results
     }};
     (@result $values:ident, $i:ident, $ty:tt) => {{
       let result = result!($ty: &$values[$i]);
