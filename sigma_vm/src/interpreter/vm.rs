@@ -404,6 +404,7 @@ struct RunInfo<P: Policy> {
   source: Source,
   pc: u64,
   is_call: bool,
+  is_destructor: bool,
   values_rev: Vec<P::Value>,
   num_rets: Option<u64>,
 }
@@ -415,8 +416,21 @@ impl<P: Policy> RunInfo<P> {
       source,
       pc,
       is_call: true,
+      is_destructor: false,
       values_rev: args_rev,
       num_rets: Some(num_rets),
+    }
+  }
+
+  /// Creates a new run information for destructor.
+  fn destructor(source: Source, pc: u64, ptr: u64) -> Self {
+    Self {
+      source,
+      pc,
+      is_call: true,
+      is_destructor: true,
+      values_rev: vec![P::ptr_val(ptr)],
+      num_rets: Some(0),
     }
   }
 
@@ -426,6 +440,7 @@ impl<P: Policy> RunInfo<P> {
       source: self.source,
       pc: 0,
       is_call: false,
+      is_destructor: false,
       values_rev: vec![],
       num_rets: None,
     }
@@ -437,6 +452,7 @@ impl<P: Policy> RunInfo<P> {
       source: self.source,
       pc: self.pc,
       is_call: false,
+      is_destructor: false,
       values_rev: vec![],
       num_rets: self.num_rets,
     }
@@ -448,6 +464,7 @@ impl<P: Policy> RunInfo<P> {
       source: self.source,
       pc: self.pc + 1,
       is_call: false,
+      is_destructor: false,
       values_rev: vec![],
       num_rets: self.num_rets,
     }
