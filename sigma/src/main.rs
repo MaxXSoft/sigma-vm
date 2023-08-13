@@ -178,6 +178,7 @@ where
   );
   // run VM
   let rets = ok_or_exit(vm.run_main(module, env::args()), PROMPT_VM);
+  ok_or_exit(vm.terminate(), PROMPT_VM);
   // return the first integer value
   if let Some(v) = rets.first() {
     if let Ok(v) = P::get_int_ptr(v) {
