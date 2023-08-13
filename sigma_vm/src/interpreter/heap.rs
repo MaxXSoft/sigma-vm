@@ -21,6 +21,10 @@ pub trait Heap {
   /// Returns the size of all allocated memory in bytes.
   fn size(&self) -> usize;
 
+  /// Returns the size of allocated memory of the given pointer, or [`None`]
+  /// if the pointer is invalid.
+  fn size_of(&self, ptr: u64) -> Option<usize>;
+
   /// Returns the immutable memory address of the given pointer.
   fn addr(&self, ptr: u64) -> *const ();
 
@@ -101,6 +105,10 @@ impl Heap for System {
 
   fn size(&self) -> usize {
     self.size
+  }
+
+  fn size_of(&self, ptr: u64) -> Option<usize> {
+    self.mems.get(&ptr).map(|m| m.data.len())
   }
 
   fn addr(&self, ptr: u64) -> *const () {
@@ -219,6 +227,10 @@ where
 
   fn size(&self) -> usize {
     self.heap.size()
+  }
+
+  fn size_of(&self, ptr: u64) -> Option<usize> {
+    self.heap.size_of(ptr)
   }
 
   fn addr(&self, ptr: u64) -> *const () {
