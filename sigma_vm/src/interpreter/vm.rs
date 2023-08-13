@@ -71,12 +71,6 @@ impl<P: Policy> VM<P> {
       .new_module(consts, exports, insts, &mut self.global_heap.heap)
   }
 
-  /// Resets the state of the VM. Loaded modules will not be unloaded.
-  pub fn reset(&mut self) {
-    self.global_heap.reset();
-    self.contexts.clear();
-  }
-
   /// Returns a mutable reference to the context of the given module.
   ///
   /// If the given context does not exists, it will be created first.
@@ -114,6 +108,9 @@ where
   P::Value: Clone,
 {
   /// Runs the given module's `main` function.
+  ///
+  /// This method will retain the state of all contexts,
+  /// call [`terminate`](VM#method.terminate) to stop the VM completely.
   pub fn run_main<I, S>(&mut self, module: Source, args: I) -> Result<Vec<P::Value>, P::Error>
   where
     I: IntoIterator<Item = S>,
@@ -130,6 +127,9 @@ where
   }
 
   /// Calls a function in the given module, returns the return values.
+  ///
+  /// This method will retain the state of all contexts,
+  /// call [`terminate`](VM#method.terminate) to stop the VM completely.
   pub fn call<I>(&mut self, module: Source, func: &str, args: I) -> Result<Vec<P::Value>, P::Error>
   where
     I: IntoIterator<Item = P::Value>,
@@ -153,6 +153,15 @@ where
     args.reverse();
     let ri = RunInfo::call(module, call_site.pc, args, call_site.num_rets);
     Runner::new(self, ri).run()
+  }
+
+  /// Terminates all VM contexts and unload all loaded modules.
+  pub fn terminate(&mut self) -> Result<(), P::Error> {
+    Runner::new(self, RunInfo::terminator()).run()?;
+    self.global_heap.reset();
+    self.loader.unload_all();
+    self.contexts.clear();
+    Ok(())
   }
 }
 
@@ -345,9 +354,8 @@ impl<'vm, P: Policy> Runner<'vm, P> {
     while let Some(ri) = self.ris.pop() {
       // handle destructor and terminator
       let mut ri = match self.handle_destructors(ri)? {
-        DestructorAction::Continue => continue,
-        DestructorAction::Return(rets) => return Ok(rets),
-        DestructorAction::None(ri) => ri,
+        Some(ri) => ri,
+        None => continue,
       };
       // check if the context is initialized
       let context_info = self.vm.contexts.entry(ri.source).or_default();
@@ -368,7 +376,9 @@ impl<'vm, P: Policy> Runner<'vm, P> {
       match cf {
         ControlFlow::Stop => {
           let rets_rev = ri.cleanup(context)?;
-          self.stop(ri, rets_rev)?;
+          if let Some(rets) = self.stop(rets_rev)? {
+            return Ok(rets);
+          }
         }
         ControlFlow::GC => self.gc(ri)?,
         ControlFlow::LoadModule(ptr) => self.load_module(ri, ptr)?,
@@ -399,8 +409,8 @@ impl<'vm, P: Policy> Runner<'vm, P> {
   }
 
   /// Handles destructors and terminators.
-  fn handle_destructors(&mut self, mut ri: RunInfo<P>) -> Result<DestructorAction<P>, P::Error> {
-    // deallocate pending pointers if is destructor
+  fn handle_destructors(&mut self, ri: RunInfo<P>) -> Result<Option<RunInfo<P>>, P::Error> {
+    // deallocate all pending pointers
     if ri.destructor_kind.is_some() {
       for ptr in mem::take(&mut self.pending_ptrs) {
         self.vm.global_heap.heap.dealloc(ptr);
@@ -408,18 +418,20 @@ impl<'vm, P: Policy> Runner<'vm, P> {
     }
     // handle terminator
     if ri.destructor_kind == Some(DestructorKind::Terminator) {
+      self.ris.push(ri);
       // call destructors for all heap objects
-      if self.vm.global_heap.heap.size() != 0 {
-        self.ris.push(ri.into_terminator_inplace());
-        self.schedule_destructors(self.vm.global_heap.heap.ptrs())?;
-        Ok(DestructorAction::Continue)
-      } else {
-        // just return
-        ri.values_rev.reverse();
-        Ok(DestructorAction::Return(ri.values_rev))
+      for ptr in self.vm.global_heap.heap.ptrs() {
+        if self.schedule_destructor(ptr)? {
+          self.pending_ptrs.push(ptr);
+        }
       }
+      // stop if no scheduled destructors
+      if self.ris.len() == 1 {
+        self.ris.pop();
+      }
+      Ok(None)
     } else {
-      Ok(DestructorAction::None(ri))
+      Ok(Some(ri))
     }
   }
 
@@ -433,16 +445,17 @@ impl<'vm, P: Policy> Runner<'vm, P> {
   }
 
   /// Stops the current run. Returns some return value if need to stop running.
-  fn stop(&mut self, ri: RunInfo<P>, rets_rev: Option<Vec<P::Value>>) -> Result<(), P::Error> {
-    if let Some(rets_rev) = rets_rev {
+  fn stop(&mut self, rets_rev: Option<Vec<P::Value>>) -> Result<Option<Vec<P::Value>>, P::Error> {
+    if let Some(mut rets_rev) = rets_rev {
       // update the last run info, or return
       if let Some(last) = self.ris.last_mut() {
         last.values_rev = rets_rev;
       } else {
-        self.ris.push(ri.into_terminator(rets_rev));
+        rets_rev.reverse();
+        return Ok(Some(rets_rev));
       }
     }
-    Ok(())
+    Ok(None)
   }
 
   /// Runs garbage collector.
@@ -486,14 +499,16 @@ impl<'vm, P: Policy> Runner<'vm, P> {
       } else {
         // issue destructors to run
         match obj.kind {
-          ObjKind::Obj => self
-            .ris
-            .push(RunInfo::destructor(obj.source, object.destructor, ptr)),
+          ObjKind::Obj => {
+            self
+              .ris
+              .push(RunInfo::call_destructor(obj.source, object.destructor, ptr))
+          }
           ObjKind::Array(len) => {
             // visit all objects
             let step = object.aligned_size();
             for i in 0..len as u64 {
-              self.ris.push(RunInfo::destructor(
+              self.ris.push(RunInfo::call_destructor(
                 obj.source,
                 object.destructor,
                 ptr + i * step,
@@ -572,7 +587,7 @@ impl<P: Policy> RunInfo<P> {
 
   /// Creates a new run information for calling destructor.
   /// Note the `is_destructor` will not be set.
-  fn destructor(source: Source, pc: u64, ptr: u64) -> Self {
+  fn call_destructor(source: Source, pc: u64, ptr: u64) -> Self {
     Self {
       source,
       pc,
@@ -580,6 +595,18 @@ impl<P: Policy> RunInfo<P> {
       destructor_kind: None,
       values_rev: vec![P::ptr_val(ptr)],
       num_rets: Some(0),
+    }
+  }
+
+  /// Creates a new run information for terminator.
+  fn terminator() -> Self {
+    Self {
+      source: Source::Invalid,
+      pc: 0,
+      is_call: false,
+      destructor_kind: Some(DestructorKind::Terminator),
+      values_rev: vec![],
+      num_rets: None,
     }
   }
 
@@ -604,32 +631,6 @@ impl<P: Policy> RunInfo<P> {
       destructor_kind: Some(DestructorKind::Destructor),
       values_rev: vec![],
       num_rets: self.num_rets,
-    }
-  }
-
-  /// Converts the current run information into a new one for terminator,
-  /// i.e. the destructor that runs before program exit.
-  fn into_terminator(self, rets_rev: Vec<P::Value>) -> Self {
-    Self {
-      source: self.source,
-      pc: self.pc,
-      is_call: false,
-      destructor_kind: Some(DestructorKind::Terminator),
-      values_rev: rets_rev,
-      num_rets: None,
-    }
-  }
-
-  /// Converts the current run information
-  /// into a new one for terminator in-place.
-  fn into_terminator_inplace(self) -> Self {
-    Self {
-      source: self.source,
-      pc: self.pc,
-      is_call: false,
-      destructor_kind: Some(DestructorKind::Terminator),
-      values_rev: self.values_rev,
-      num_rets: None,
     }
   }
 
@@ -678,13 +679,6 @@ impl<P: Policy> RunInfo<P> {
 enum DestructorKind {
   Destructor,
   Terminator,
-}
-
-/// Destructor action.
-enum DestructorAction<P: Policy> {
-  Continue,
-  Return(Vec<P::Value>),
-  None(RunInfo<P>),
 }
 
 /// Control flow actions.
