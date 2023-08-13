@@ -342,7 +342,13 @@ impl<'vm, P: Policy> Runner<'vm, P> {
   where
     P::Value: Clone,
   {
-    while let Some(mut ri) = self.ris.pop() {
+    while let Some(ri) = self.ris.pop() {
+      // handle destructor and terminator
+      let mut ri = match self.handle_destructors(ri)? {
+        DestructorAction::Continue => continue,
+        DestructorAction::Return(rets) => return Ok(rets),
+        DestructorAction::None(ri) => ri,
+      };
       // check if the context is initialized
       let context_info = self.vm.contexts.entry(ri.source).or_default();
       if !context_info.initialized {
@@ -350,12 +356,6 @@ impl<'vm, P: Policy> Runner<'vm, P> {
         context_info.initialized = true;
         self.init(ri);
         continue;
-      }
-      // handle pending pointers
-      if ri.is_destructor {
-        for ptr in mem::take(&mut self.pending_ptrs) {
-          self.vm.global_heap.heap.dealloc(ptr);
-        }
       }
       // get module and context
       let module = P::unwrap_module(self.vm.loader.module(ri.source))?;
@@ -368,9 +368,7 @@ impl<'vm, P: Policy> Runner<'vm, P> {
       match cf {
         ControlFlow::Stop => {
           let rets_rev = ri.cleanup(context)?;
-          if let Some(rets) = self.stop(rets_rev)? {
-            return Ok(rets);
-          }
+          self.stop(ri, rets_rev)?;
         }
         ControlFlow::GC => self.gc(ri)?,
         ControlFlow::LoadModule(ptr) => self.load_module(ri, ptr)?,
@@ -400,6 +398,31 @@ impl<'vm, P: Policy> Runner<'vm, P> {
     Ok(vec![])
   }
 
+  /// Handles destructors and terminators.
+  fn handle_destructors(&mut self, mut ri: RunInfo<P>) -> Result<DestructorAction<P>, P::Error> {
+    // deallocate pending pointers if is destructor
+    if ri.destructor_kind.is_some() {
+      for ptr in mem::take(&mut self.pending_ptrs) {
+        self.vm.global_heap.heap.dealloc(ptr);
+      }
+    }
+    // handle terminator
+    if ri.destructor_kind == Some(DestructorKind::Terminator) {
+      // call destructors for all heap objects
+      if self.vm.global_heap.heap.size() != 0 {
+        self.ris.push(ri.into_terminator_inplace());
+        self.schedule_destructors(self.vm.global_heap.heap.ptrs())?;
+        Ok(DestructorAction::Continue)
+      } else {
+        // just return
+        ri.values_rev.reverse();
+        Ok(DestructorAction::Return(ri.values_rev))
+      }
+    } else {
+      Ok(DestructorAction::None(ri))
+    }
+  }
+
   /// Initializes the given context information.
   fn init(&mut self, ri: RunInfo<P>) {
     let init = ri.to_init();
@@ -410,19 +433,16 @@ impl<'vm, P: Policy> Runner<'vm, P> {
   }
 
   /// Stops the current run. Returns some return value if need to stop running.
-  fn stop(&mut self, rets_rev: Option<Vec<P::Value>>) -> Result<Option<Vec<P::Value>>, P::Error> {
-    // handle return
-    if let Some(mut rets_rev) = rets_rev {
+  fn stop(&mut self, ri: RunInfo<P>, rets_rev: Option<Vec<P::Value>>) -> Result<(), P::Error> {
+    if let Some(rets_rev) = rets_rev {
       // update the last run info, or return
       if let Some(last) = self.ris.last_mut() {
         last.values_rev = rets_rev;
       } else {
-        // TODO: destructors
-        rets_rev.reverse();
-        return Ok(Some(rets_rev));
+        self.ris.push(ri.into_terminator(rets_rev));
       }
     }
-    Ok(None)
+    Ok(())
   }
 
   /// Runs garbage collector.
@@ -437,40 +457,56 @@ impl<'vm, P: Policy> Runner<'vm, P> {
     self.vm.global_heap.gc_success(&ptrs)?;
     self.ris.push(ri.into_destructor());
     // schedule destructors to run
+    self.schedule_destructors(ptrs)
+  }
+
+  /// Schedules destructors of the given pointers to run and updates
+  /// pending pointers. Deallocates the pointer if it has no destructor.
+  fn schedule_destructors(&mut self, ptrs: Vec<u64>) -> Result<(), P::Error> {
     for ptr in ptrs {
-      if let Some(obj) = self.vm.global_heap.heap.obj(ptr) {
-        // get object metadata
-        let object = P::object(&self.vm.global_heap.heap, obj.ptr)?;
-        if object.destructor == 0 {
-          // no destructor, just deallocate
-          self.vm.global_heap.heap.dealloc(ptr);
-        } else {
-          // add to pending pointers
-          self.pending_ptrs.push(ptr);
-          // issue destructors to run
-          match obj.kind {
-            ObjKind::Obj => self
-              .ris
-              .push(RunInfo::destructor(obj.source, object.destructor, ptr)),
-            ObjKind::Array(len) => {
-              // visit all objects
-              let step = object.aligned_size();
-              for i in 0..len as u64 {
-                self.ris.push(RunInfo::destructor(
-                  obj.source,
-                  object.destructor,
-                  ptr + i * step,
-                ));
-              }
+      if self.schedule_destructor(ptr)? {
+        self.pending_ptrs.push(ptr);
+      } else {
+        // no destructor, just deallocate
+        self.vm.global_heap.heap.dealloc(ptr);
+      }
+    }
+    Ok(())
+  }
+
+  /// Schedules the destructor of the given pointer to run.
+  /// Returns `true` if the pointer has a destructor.
+  fn schedule_destructor(&mut self, ptr: u64) -> Result<bool, P::Error> {
+    if let Some(obj) = self.vm.global_heap.heap.obj(ptr) {
+      // get object metadata
+      let object = P::object(&self.vm.global_heap.heap, obj.ptr)?;
+      if object.destructor == 0 {
+        // object has no destructor
+        Ok(false)
+      } else {
+        // issue destructors to run
+        match obj.kind {
+          ObjKind::Obj => self
+            .ris
+            .push(RunInfo::destructor(obj.source, object.destructor, ptr)),
+          ObjKind::Array(len) => {
+            // visit all objects
+            let step = object.aligned_size();
+            for i in 0..len as u64 {
+              self.ris.push(RunInfo::destructor(
+                obj.source,
+                object.destructor,
+                ptr + i * step,
+              ));
             }
           }
         }
-      } else {
-        // not an object, just deallocate
-        self.vm.global_heap.heap.dealloc(ptr);
-      };
+        Ok(true)
+      }
+    } else {
+      // not an object
+      Ok(false)
     }
-    Ok(())
   }
 
   /// Loads module from the given path pointer.
@@ -516,7 +552,7 @@ struct RunInfo<P: Policy> {
   source: Source,
   pc: u64,
   is_call: bool,
-  is_destructor: bool,
+  destructor_kind: Option<DestructorKind>,
   values_rev: Vec<P::Value>,
   num_rets: Option<u64>,
 }
@@ -528,7 +564,7 @@ impl<P: Policy> RunInfo<P> {
       source,
       pc,
       is_call: true,
-      is_destructor: false,
+      destructor_kind: None,
       values_rev: args_rev,
       num_rets: Some(num_rets),
     }
@@ -541,7 +577,7 @@ impl<P: Policy> RunInfo<P> {
       source,
       pc,
       is_call: true,
-      is_destructor: false,
+      destructor_kind: None,
       values_rev: vec![P::ptr_val(ptr)],
       num_rets: Some(0),
     }
@@ -553,7 +589,7 @@ impl<P: Policy> RunInfo<P> {
       source: self.source,
       pc: 0,
       is_call: false,
-      is_destructor: false,
+      destructor_kind: None,
       values_rev: vec![],
       num_rets: None,
     }
@@ -565,9 +601,35 @@ impl<P: Policy> RunInfo<P> {
       source: self.source,
       pc: self.pc,
       is_call: false,
-      is_destructor: true,
+      destructor_kind: Some(DestructorKind::Destructor),
       values_rev: vec![],
       num_rets: self.num_rets,
+    }
+  }
+
+  /// Converts the current run information into a new one for terminator,
+  /// i.e. the destructor that runs before program exit.
+  fn into_terminator(self, rets_rev: Vec<P::Value>) -> Self {
+    Self {
+      source: self.source,
+      pc: self.pc,
+      is_call: false,
+      destructor_kind: Some(DestructorKind::Terminator),
+      values_rev: rets_rev,
+      num_rets: None,
+    }
+  }
+
+  /// Converts the current run information
+  /// into a new one for terminator in-place.
+  fn into_terminator_inplace(self) -> Self {
+    Self {
+      source: self.source,
+      pc: self.pc,
+      is_call: false,
+      destructor_kind: Some(DestructorKind::Terminator),
+      values_rev: self.values_rev,
+      num_rets: None,
     }
   }
 
@@ -577,7 +639,7 @@ impl<P: Policy> RunInfo<P> {
       source: self.source,
       pc: self.pc + 1,
       is_call: false,
-      is_destructor: false,
+      destructor_kind: None,
       values_rev: vec![],
       num_rets: self.num_rets,
     }
@@ -609,6 +671,20 @@ impl<P: Policy> RunInfo<P> {
       })
       .transpose()
   }
+}
+
+/// Kind of destructor.
+#[derive(PartialEq, Eq)]
+enum DestructorKind {
+  Destructor,
+  Terminator,
+}
+
+/// Destructor action.
+enum DestructorAction<P: Policy> {
+  Continue,
+  Return(Vec<P::Value>),
+  None(RunInfo<P>),
 }
 
 /// Control flow actions.
