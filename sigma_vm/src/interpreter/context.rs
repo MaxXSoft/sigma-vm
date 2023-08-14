@@ -4,10 +4,8 @@ use crate::bytecode::module::Module;
 use crate::interpreter::gc::PotentialRoots;
 use crate::interpreter::loader::Source;
 use crate::interpreter::policy::Policy;
-use crate::interpreter::vm::{ControlFlow, GlobalHeap};
-use std::iter::Flatten;
+use crate::interpreter::vm::{ControlFlow, GlobalHeap, Vars};
 use std::mem;
-use std::slice::Iter;
 
 /// Execution context of virtual machine.
 pub struct Context<P: Policy> {
@@ -659,68 +657,6 @@ where
 impl<P: Policy> Default for Context<P> {
   fn default() -> Self {
     Self::new()
-  }
-}
-
-/// Variable storage.
-#[derive(Debug)]
-pub struct Vars<V> {
-  vars: Vec<Option<V>>,
-}
-
-impl<V> Vars<V> {
-  /// Creates a new variable storage.
-  fn new() -> Self {
-    Self { vars: vec![] }
-  }
-
-  /// Returns a reference of the variable at the given index,
-  /// or [`None`] if no such variable.
-  pub fn get(&self, index: usize) -> Option<&V> {
-    match self.vars.get(index) {
-      Some(v) => v.as_ref(),
-      None => None,
-    }
-  }
-
-  /// Returns a mutable reference of the variable at the given index,
-  /// or [`None`] if no such variable.
-  pub fn get_mut(&mut self, index: usize) -> Option<&mut V> {
-    match self.vars.get_mut(index) {
-      Some(v) => v.as_mut(),
-      None => None,
-    }
-  }
-
-  /// Sets the variable at the given index to the given value.
-  /// Creates a new variable with the value if no such variable.
-  pub fn set_or_create(&mut self, index: usize, v: V) {
-    if let Some(var) = self.vars.get_mut(index) {
-      *var = Some(v);
-    } else {
-      self.vars.resize_with(index + 1, || None);
-      self.vars[index] = Some(v);
-    }
-  }
-
-  /// Returns an iterator of all variables.
-  pub fn iter(&self) -> Flatten<Iter<Option<V>>> {
-    self.vars.iter().flatten()
-  }
-}
-
-impl<V> Default for Vars<V> {
-  fn default() -> Self {
-    Self::new()
-  }
-}
-
-impl<'a, V> IntoIterator for &'a Vars<V> {
-  type Item = &'a V;
-  type IntoIter = Flatten<Iter<'a, Option<V>>>;
-
-  fn into_iter(self) -> Self::IntoIter {
-    self.iter()
   }
 }
 

@@ -9,7 +9,9 @@ use crate::interpreter::policy::Policy;
 use crate::utils::{IntoU64, Unsized};
 use std::alloc::Layout;
 use std::collections::HashMap;
+use std::iter::Flatten;
 use std::path::Path;
+use std::slice::Iter;
 use std::{mem, slice};
 
 /// Virtual machine for running bytecode.
@@ -680,6 +682,68 @@ impl<P: Policy> RunInfo<P> {
 enum DestructorKind {
   Destructor,
   Terminator,
+}
+
+/// Variable storage.
+#[derive(Debug)]
+pub struct Vars<V> {
+  vars: Vec<Option<V>>,
+}
+
+impl<V> Vars<V> {
+  /// Creates a new variable storage.
+  pub fn new() -> Self {
+    Self { vars: vec![] }
+  }
+
+  /// Returns a reference of the variable at the given index,
+  /// or [`None`] if no such variable.
+  pub fn get(&self, index: usize) -> Option<&V> {
+    match self.vars.get(index) {
+      Some(v) => v.as_ref(),
+      None => None,
+    }
+  }
+
+  /// Returns a mutable reference of the variable at the given index,
+  /// or [`None`] if no such variable.
+  pub fn get_mut(&mut self, index: usize) -> Option<&mut V> {
+    match self.vars.get_mut(index) {
+      Some(v) => v.as_mut(),
+      None => None,
+    }
+  }
+
+  /// Sets the variable at the given index to the given value.
+  /// Creates a new variable with the value if no such variable.
+  pub fn set_or_create(&mut self, index: usize, v: V) {
+    if let Some(var) = self.vars.get_mut(index) {
+      *var = Some(v);
+    } else {
+      self.vars.resize_with(index + 1, || None);
+      self.vars[index] = Some(v);
+    }
+  }
+
+  /// Returns an iterator of all variables.
+  pub fn iter(&self) -> Flatten<Iter<Option<V>>> {
+    self.vars.iter().flatten()
+  }
+}
+
+impl<V> Default for Vars<V> {
+  fn default() -> Self {
+    Self::new()
+  }
+}
+
+impl<'a, V> IntoIterator for &'a Vars<V> {
+  type Item = &'a V;
+  type IntoIter = Flatten<Iter<'a, Option<V>>>;
+
+  fn into_iter(self) -> Self::IntoIter {
+    self.iter()
+  }
 }
 
 /// Control flow actions.

@@ -1,7 +1,7 @@
 use crate::bytecode::consts::{HeapConst, Object};
-use crate::interpreter::context::Vars;
 use crate::interpreter::heap::{Heap, ObjKind};
 use crate::interpreter::policy::Policy;
+use crate::interpreter::vm::Vars;
 use std::collections::HashSet;
 use std::mem;
 
