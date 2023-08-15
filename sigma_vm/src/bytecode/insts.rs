@@ -201,8 +201,6 @@ def_opc_inst! {
   NewA,
   /// Allocate array with length s0, and object metadata's constant pool index opr.
   NewAC(u64),
-  /// Delete the allocated heap memory s0.
-  Del,
   /// Load an external module with a string pointer s0 as it's path.
   /// Returns an integer for module handle, or 0 if failed.
   Load,
