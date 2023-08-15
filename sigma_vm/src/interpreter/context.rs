@@ -104,9 +104,6 @@ where
       (pop($v:ident: u64)) => {
         let $v = gctx.pop_int_ptr()?;
       };
-      (pop($v:ident: _)) => {
-        let $v = gctx.pop_any()?;
-      };
       (push($v:expr, u64)) => {
         gctx.push_int($v);
       };
@@ -121,6 +118,12 @@ where
       };
       (push($v:expr, f64)) => {
         gctx.push_f64($v);
+      };
+      (pop($v:ident: _)) => {
+        let $v = gctx.pop_any()?;
+      };
+      (push($v:expr, ptr)) => {
+        gctx.push_ptr($v);
       };
     }
 
@@ -575,6 +578,7 @@ where
       Inst::D2F => unary!(s0: f64, f32: s0 as f32),
       Inst::ITF => unary!(s0: u64, f32: unsafe { *(&s0 as *const _ as *const f32) }),
       Inst::ITD => unary!(s0: u64, f64: unsafe { *(&s0 as *const _ as *const f64) }),
+      Inst::ITP => unary!(s0: u64, ptr: s0),
     })
   }
 }

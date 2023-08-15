@@ -342,4 +342,6 @@ def_opc_inst! {
   ITF,
   /// Transmutes (reinterprets) integer to double.
   ITD,
+  /// Transmutes (reinterprets) integer to pointer.
+  ITP,
 }
