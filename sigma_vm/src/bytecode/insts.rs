@@ -212,8 +212,6 @@ def_opc_inst! {
   /// Load an module from s1 pointed heap memory which size is s0 bytes.
   /// Returns an integer for module handle, or 0 if failed.
   LoadM,
-  /// Unload module with handle s0.
-  Unload,
   /// Branch to pc + opr if s0 is zero.
   Bz(i64),
   /// Branch to pc + opr if s0 is not zero.
