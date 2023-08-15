@@ -215,7 +215,7 @@ mod ffi {
   }
 
   /// Allocates a new memory with the given size and align.
-  /// Returns the pointer of the allocated memory.
+  /// Returns the heap pointer of the allocated memory.
   ///
   /// # Panics
   ///
