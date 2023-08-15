@@ -474,8 +474,8 @@ mod test {
       Sap::get_int_ptr(vm.globals(main).unwrap().get(0).unwrap()).unwrap()
     }
 
-    // TODO: debug
     assert_eq!(obj_counter(10), 10);
     assert_eq!(obj_counter(100), 100);
+    assert_eq!(obj_counter(100000), 100000);
   }
 }
