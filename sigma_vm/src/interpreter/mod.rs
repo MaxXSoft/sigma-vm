@@ -1,9 +1,10 @@
-pub mod context;
 pub mod gc;
 pub mod heap;
 pub mod loader;
 pub mod policy;
 pub mod vm;
+
+mod context;
 
 #[cfg(test)]
 mod test {
