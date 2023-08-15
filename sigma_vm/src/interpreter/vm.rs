@@ -75,6 +75,11 @@ impl<P: Policy> VM<P> {
       .new_module(consts, exports, insts, &mut self.global_heap.heap)
   }
 
+  /// Returns a reference to the heap.
+  pub fn heap(&self) -> &P::Heap {
+    &self.global_heap.heap
+  }
+
   /// Returns global variables of the given module,
   /// or [`None`] if the module does not exist, not loaded or not initialized.
   pub fn globals(&self, module: Source) -> Option<&Vars<P::Value>> {
