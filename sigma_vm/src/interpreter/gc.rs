@@ -13,46 +13,83 @@ pub trait GarbageCollector {
   /// Collects garbage on the given heap.
   ///
   /// Returns heap pointers that should be deallocated.
-  fn collect<'gc, P, I>(&mut self, heap: &P::Heap, roots: I) -> Result<Vec<u64>, P::Error>
+  fn collect<'gc, P, M, C>(
+    &mut self,
+    heap: &P::Heap,
+    roots: Roots<'gc, P, M, C>,
+  ) -> Result<Vec<u64>, P::Error>
   where
     P: 'gc + Policy,
-    I: Iterator<Item = Roots<'gc, P>>;
+    M: 'gc + Iterator<Item = ModuleRoots<'gc, P>>,
+    C: 'gc + Iterator<Item = ContextRoots<'gc, P>>;
 
   /// Resets the internal state.
   fn reset(&mut self);
 }
 
 /// Garbage collection roots.
-pub struct Roots<'gc, P: ?Sized + Policy> {
-  pub consts: &'gc [HeapConst],
-  pub proots: PotentialRoots<'gc, P>,
+pub struct Roots<'gc, P, M, C>
+where
+  P: ?Sized + Policy,
+  M: Iterator<Item = ModuleRoots<'gc, P>>,
+  C: Iterator<Item = ContextRoots<'gc, P>>,
+{
+  pub values: &'gc [P::Value],
+  pub mroots: M,
+  pub croots: C,
 }
 
-impl<'gc, P> Roots<'gc, P>
+impl<'gc, P, M, C> Roots<'gc, P, M, C>
+where
+  P: 'gc + ?Sized + Policy,
+  M: 'gc + Iterator<Item = ModuleRoots<'gc, P>>,
+  C: 'gc + Iterator<Item = ContextRoots<'gc, P>>,
+{
+  /// Returns an iterator of all garbage collection roots (pointers).
+  fn roots(self) -> impl 'gc + Iterator<Item = u64> {
+    self
+      .values
+      .iter()
+      .filter_map(P::ptr_or_none)
+      .chain(self.mroots.flat_map(|mr| mr.roots()))
+      .chain(self.croots.flat_map(|cr| cr.roots()))
+  }
+}
+
+/// Garbage collection roots of modules.
+pub struct ModuleRoots<'gc, P: ?Sized + Policy> {
+  pub consts: &'gc [HeapConst],
+  pub globals: &'gc Vars<P::Value>,
+}
+
+impl<'gc, P> ModuleRoots<'gc, P>
 where
   P: 'gc + ?Sized + Policy,
 {
-  /// Returns an iterator of all garbage collection roots (pointers).
-  pub fn roots(&self) -> impl 'gc + Iterator<Item = u64> {
+  fn roots(self) -> impl 'gc + Iterator<Item = u64> {
     self
       .consts
       .iter()
       .map(|c| c.ptr())
-      .chain(self.proots.values.iter().filter_map(P::ptr_or_none))
-      .chain(
-        self
-          .proots
-          .vars
-          .iter()
-          .flat_map(|vs| vs.iter().filter_map(P::ptr_or_none)),
-      )
+      .chain(self.globals.iter().filter_map(P::ptr_or_none))
   }
 }
 
-/// Potential garbage collection roots.
-pub struct PotentialRoots<'gc, P: ?Sized + Policy> {
-  pub values: &'gc [P::Value],
+/// Garbage collection roots of contexts.
+pub struct ContextRoots<'gc, P: ?Sized + Policy> {
   pub vars: &'gc [Vars<P::Value>],
+}
+
+impl<'gc, P> ContextRoots<'gc, P>
+where
+  P: 'gc + ?Sized + Policy,
+{
+  fn roots(self) -> impl 'gc + Iterator<Item = u64> {
+    self
+      .vars
+      .iter()
+      .flat_map(|vs| vs.iter().filter_map(P::ptr_or_none))
+  }
 }
 
 /// Garbage collector that does nothing.
@@ -63,10 +100,15 @@ impl GarbageCollector for Nothing {
     Self
   }
 
-  fn collect<'gc, P, I>(&mut self, _: &P::Heap, _: I) -> Result<Vec<u64>, P::Error>
+  fn collect<'gc, P, M, C>(
+    &mut self,
+    _: &P::Heap,
+    _: Roots<'gc, P, M, C>,
+  ) -> Result<Vec<u64>, P::Error>
   where
     P: 'gc + Policy,
-    I: Iterator<Item = Roots<'gc, P>>,
+    M: 'gc + Iterator<Item = ModuleRoots<'gc, P>>,
+    C: 'gc + Iterator<Item = ContextRoots<'gc, P>>,
   {
     Ok(vec![])
   }
@@ -103,14 +145,19 @@ impl GarbageCollector for MarkSweep {
     Self
   }
 
-  fn collect<'gc, P, I>(&mut self, heap: &P::Heap, roots: I) -> Result<Vec<u64>, P::Error>
+  fn collect<'gc, P, M, C>(
+    &mut self,
+    heap: &P::Heap,
+    roots: Roots<'gc, P, M, C>,
+  ) -> Result<Vec<u64>, P::Error>
   where
     P: 'gc + Policy,
-    I: Iterator<Item = Roots<'gc, P>>,
+    M: 'gc + Iterator<Item = ModuleRoots<'gc, P>>,
+    C: 'gc + Iterator<Item = ContextRoots<'gc, P>>,
   {
     // mark reachable pointers
     let mut reachable = HashSet::new();
-    let mut worklist: Vec<_> = roots.flat_map(|r| r.roots()).collect();
+    let mut worklist: Vec<_> = roots.roots().collect();
     while let Some(ptr) = worklist.pop() {
       if !reachable.insert(ptr) {
         continue;
