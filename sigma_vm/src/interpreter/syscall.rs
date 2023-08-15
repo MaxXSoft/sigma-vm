@@ -11,7 +11,7 @@ where
   H: Heap,
 {
   /// Handles the system call request with the given state of virtual machine.
-  fn handle<'vm>(&mut self, state: VmState<'vm, P, H>) -> Result<ControlFlow, P::Error>;
+  fn handle(&mut self, state: VmState<P, H>) -> Result<ControlFlow, P::Error>;
 }
 
 /// Virtual machine state.
@@ -62,10 +62,10 @@ where
   }
 
   /// Calls the given system call.
-  pub(super) fn call<'vm>(
+  pub(super) fn call(
     &mut self,
     syscall: i64,
-    state: VmState<'vm, P, H>,
+    state: VmState<P, H>,
   ) -> Result<ControlFlow, P::Error> {
     match syscall {
       0 => Self::native_call(state),
@@ -96,12 +96,12 @@ where
   }
 
   /// Performs a native function call.
-  fn native_call<'vm>(_: VmState<'vm, P, H>) -> Result<ControlFlow, P::Error> {
+  fn native_call(_: VmState<P, H>) -> Result<ControlFlow, P::Error> {
     unimplemented!("native function call")
   }
 
   /// Returns size of stack.
-  fn stack_size<'vm>(state: VmState<'vm, P, H>) -> Result<ControlFlow, P::Error> {
+  fn stack_size(state: VmState<P, H>) -> Result<ControlFlow, P::Error> {
     state
       .value_stack
       .push(P::int_val(state.value_stack.len() as u64));
@@ -109,7 +109,7 @@ where
   }
 
   /// Deletes pointer s0.
-  fn del<'vm>(state: VmState<'vm, P, H>) -> Result<ControlFlow, P::Error> {
+  fn del(state: VmState<P, H>) -> Result<ControlFlow, P::Error> {
     let s0 = P::unwrap_val(state.value_stack.pop())?;
     let ptr = P::get_ptr(&s0)?;
     state.heap.dealloc(ptr);
@@ -117,7 +117,7 @@ where
   }
 
   /// Unloads module handle s0.
-  fn unload<'vm>(state: VmState<'vm, P, H>) -> Result<ControlFlow, P::Error> {
+  fn unload(state: VmState<P, H>) -> Result<ControlFlow, P::Error> {
     let s0 = P::unwrap_val(state.value_stack.pop())?;
     let source = Source::from(P::get_int_ptr(&s0)?);
     state.loader.unload(source);
