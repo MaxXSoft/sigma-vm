@@ -465,22 +465,21 @@ impl<'vm, P: Policy> Scheduler<'vm, P> {
       } else {
         // issue destructors to run
         match obj.kind {
-          ObjKind::Obj => self.contexts.push(Context::call_destructor(
-            obj.source,
-            object.destructor,
-            &mut self.vm.value_stack,
-            ptr,
-          )),
+          ObjKind::Obj => {
+            self.vm.value_stack.push(P::ptr_val(ptr));
+            self
+              .contexts
+              .push(Context::call(obj.source, object.destructor))
+          }
           ObjKind::Array(len) => {
             // visit all objects
             let step = object.aligned_size();
             for i in 0..len as u64 {
-              self.contexts.push(Context::call_destructor(
-                obj.source,
-                object.destructor,
-                &mut self.vm.value_stack,
-                ptr + i * step,
-              ));
+              let ptr = ptr + i * step;
+              self.vm.value_stack.push(P::ptr_val(ptr));
+              self
+                .contexts
+                .push(Context::call(obj.source, object.destructor));
             }
           }
         }
