@@ -100,12 +100,13 @@ mod test {
       ).unwrap();)*
       let _rets = vm.call($main, "main", [$(value!($aty: $ae)),*]).unwrap();
       vm.terminate().unwrap();
-      vm!(@results vm, $main, _rets, $($rs)+)
+      vm!(@results vm, $main, _rets, $($rs)*)
     }};
     (@results $vm:ident, $main:ident, $values:ident, vm_main $(,)?) => { ($vm, $main) };
-    (@results $vm:ident, $main:ident, $values:ident, ($($rs:tt),*) $(,)?) => {{
+    (@results $vm:ident, $main:ident, $values:ident, () $(,)?) => {{}};
+    (@results $vm:ident, $main:ident, $values:ident, ($($rs:tt),+) $(,)?) => {{
       let mut _i = 0;
-      ($(vm!(@result $values, _i, $rs)),*)
+      ($(vm!(@result $values, _i, $rs)),+)
     }};
     (@result $values:ident, $i:ident, $ty:tt) => {{
       let result = result!($ty: &$values[$i]);
