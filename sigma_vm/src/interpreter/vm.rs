@@ -19,7 +19,7 @@ pub struct VM<P: Policy> {
   loader: Loader,
   global_heap: GlobalHeap<P>,
   value_stack: Vec<P::Value>,
-  modules: HashMap<Source, Vars<P::Value>>,
+  module_globals: HashMap<Source, Vars<P::Value>>,
 }
 
 impl<P: Policy> VM<P> {
@@ -29,7 +29,7 @@ impl<P: Policy> VM<P> {
       loader: Loader::new(),
       global_heap: GlobalHeap::new(policy),
       value_stack: vec![],
-      modules: HashMap::new(),
+      module_globals: HashMap::new(),
     }
   }
 
@@ -78,7 +78,7 @@ impl<P: Policy> VM<P> {
   /// Returns global variables of the given module,
   /// or [`None`] if the module does not exist, not loaded or not initialized.
   pub fn globals(&self, module: Source) -> Option<&Vars<P::Value>> {
-    self.modules.get(&module)
+    self.module_globals.get(&module)
   }
 
   /// Runs garbage collector, returns pointers to be deallocated.
@@ -87,7 +87,7 @@ impl<P: Policy> VM<P> {
     contexts: &[Context<P>],
     context: &Context<P>,
   ) -> Result<Vec<u64>, P::Error> {
-    let mroots = self.modules.iter().flat_map(|(s, g)| {
+    let mroots = self.module_globals.iter().flat_map(|(s, g)| {
       self.loader.module(*s).map(|m| ModuleRoots::<P> {
         consts: &m.consts,
         globals: g,
@@ -177,7 +177,7 @@ where
     self.loader.unload_all();
     self.global_heap.reset();
     self.value_stack.clear();
-    self.modules.clear();
+    self.module_globals.clear();
   }
 }
 
@@ -359,10 +359,10 @@ impl<'vm, P: Policy> Scheduler<'vm, P> {
         None => continue,
       };
       // check if the module is initialized
-      let globals = if let Some(globals) = self.vm.modules.get_mut(&context.source) {
+      let globals = if let Some(globals) = self.vm.module_globals.get_mut(&context.source) {
         globals
       } else {
-        self.vm.modules.insert(context.source, Vars::new());
+        self.vm.module_globals.insert(context.source, Vars::new());
         self.init(context);
         continue;
       };
@@ -528,7 +528,7 @@ impl<'vm, P: Policy> Scheduler<'vm, P> {
   fn unload(&mut self, context: Context<P>, handle: u64) {
     let source = handle.into();
     self.vm.loader.unload(source);
-    self.vm.modules.remove(&source);
+    self.vm.module_globals.remove(&source);
     self.contexts.push(context.into_cont());
   }
 
