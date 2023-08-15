@@ -490,7 +490,7 @@ mod test {
       modules: {
         main: {
           insts: [
-            Unload,
+            Sys(5),
             Ret,
 
           // main:
