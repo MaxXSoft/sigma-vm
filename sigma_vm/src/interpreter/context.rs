@@ -38,7 +38,7 @@ impl<P: Policy> Context<P> {
     }
   }
 
-  /// Creates a new context for function call.
+  /// Creates a new context for terminator.
   pub(super) fn terminator() -> Self {
     Self {
       source: Source::Invalid,
