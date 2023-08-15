@@ -46,6 +46,11 @@ impl<P: Policy> VM<P> {
     &mut self.loader
   }
 
+  /// Returns a mutable reference to the system call resolver.
+  pub fn resolver_mut(&mut self) -> &mut Resolver<P, P::Heap> {
+    &mut self.resolver
+  }
+
   /// Loads a module from the given path.
   pub fn load_from_path<T>(&mut self, path: T) -> Result<Source, Error>
   where
