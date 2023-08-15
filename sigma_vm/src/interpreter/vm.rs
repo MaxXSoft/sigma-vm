@@ -1,33 +1,35 @@
 use crate::bytecode::consts::{Const, HeapConst, Str};
 use crate::bytecode::export::{ExportInfo, NumArgs};
 use crate::bytecode::insts::Inst;
-use crate::interpreter::context::Context;
-use crate::interpreter::gc::{GarbageCollector, Roots};
+use crate::interpreter::context::{Context, DestructorKind, GlobalContext};
+use crate::interpreter::gc::{ContextRoots, GarbageCollector, ModuleRoots, Roots};
 use crate::interpreter::heap::{Heap, Obj, ObjKind};
 use crate::interpreter::loader::{Error, Loader, Source};
 use crate::interpreter::policy::Policy;
 use crate::utils::{IntoU64, Unsized};
 use std::alloc::Layout;
 use std::collections::HashMap;
-use std::iter::Flatten;
+use std::iter::{self, Flatten};
 use std::path::Path;
 use std::slice::Iter;
 use std::{mem, slice};
 
 /// Virtual machine for running bytecode.
 pub struct VM<P: Policy> {
-  global_heap: GlobalHeap<P>,
   loader: Loader,
-  contexts: HashMap<Source, ContextInfo<P>>,
+  global_heap: GlobalHeap<P>,
+  value_stack: Vec<P::Value>,
+  modules: HashMap<Source, Vars<P::Value>>,
 }
 
 impl<P: Policy> VM<P> {
   /// Creates a new virtual machine.
   pub fn new(policy: P) -> Self {
     Self {
-      global_heap: GlobalHeap::new(policy),
       loader: Loader::new(),
-      contexts: HashMap::new(),
+      global_heap: GlobalHeap::new(policy),
+      value_stack: vec![],
+      modules: HashMap::new(),
     }
   }
 
@@ -73,35 +75,36 @@ impl<P: Policy> VM<P> {
       .new_module(consts, exports, insts, &mut self.global_heap.heap)
   }
 
-  /// Returns a mutable reference to the context of the given module.
-  ///
-  /// If the given context does not exists, it will be created first.
-  pub fn context(&mut self, module: Source) -> &mut Context<P> {
-    &mut self.contexts.entry(module).or_default().context
-  }
-
-  /// Adds the given string to the value stack of the given module.
-  ///
-  /// This method will allocates a heap memory to store the given string,
-  /// and push its address to the value stack.
-  pub fn add_str(&mut self, module: Source, s: &str) {
-    let ptr = self.global_heap.alloc_str(s);
-    self.context(module).add_ptr(ptr);
+  /// Returns global variables of the given module,
+  /// or [`None`] if the module does not exist, not loaded or not initialized.
+  pub fn globals(&self, module: Source) -> Option<&Vars<P::Value>> {
+    self.modules.get(&module)
   }
 
   /// Runs garbage collector, returns pointers to be deallocated.
-  fn collect(&mut self) -> Result<Vec<u64>, P::Error> {
-    let roots = self.contexts.iter().filter_map(|(s, c)| {
-      if c.initialized {
-        self.loader.module(*s).map(|m| Roots {
-          consts: &m.consts,
-          proots: c.context.proots(),
-        })
-      } else {
-        None
-      }
+  fn collect(
+    &mut self,
+    contexts: &[Context<P>],
+    context: &Context<P>,
+  ) -> Result<Vec<u64>, P::Error> {
+    let mroots = self.modules.iter().flat_map(|(s, g)| {
+      self.loader.module(*s).map(|m| ModuleRoots::<P> {
+        consts: &m.consts,
+        globals: g,
+      })
     });
-    self.global_heap.gc.collect(&self.global_heap.heap, roots)
+    let croots = contexts
+      .iter()
+      .chain(iter::once(context))
+      .map(|c| ContextRoots { vars: &c.var_stack });
+    self.global_heap.gc.collect(
+      &self.global_heap.heap,
+      Roots {
+        values: &self.value_stack,
+        mroots,
+        croots,
+      },
+    )
   }
 }
 
@@ -140,7 +143,7 @@ where
     let m = P::unwrap_module(self.loader.module(module))?;
     let call_site = P::unwrap_module(m.call_site(func))?;
     // check arguments
-    let mut args: Vec<_> = args.into_iter().collect();
+    let args: Vec<_> = args.into_iter().collect();
     let is_valid = match call_site.num_args {
       NumArgs::Variadic => match args.last() {
         Some(v) => P::get_int_ptr(v)? + 1 == args.len() as u64,
@@ -152,21 +155,32 @@ where
       P::report_invalid_args()?;
     }
     // call the target function
-    args.reverse();
-    let ri = RunInfo::call(module, call_site.pc, args, call_site.num_rets);
-    Runner::new(self, ri).run()
+    self.value_stack.extend(args);
+    let num_rets = call_site.num_rets;
+    Runner::new(self, Context::call(module, call_site.pc)).run()?;
+    // get return values
+    let mut rets = vec![];
+    for _ in 0..num_rets {
+      rets.push(P::unwrap_val(self.value_stack.pop())?);
+    }
+    Ok(rets)
   }
 
-  /// Terminates all VM contexts and unload all loaded modules.
+  /// Terminates all VM contexts.
   pub fn terminate(&mut self) -> Result<(), P::Error> {
-    Runner::new(self, RunInfo::terminator()).run()?;
-    self.global_heap.reset();
+    Runner::new(self, Context::terminator()).run()
+  }
+
+  /// Resets the internal state.
+  pub fn reset(&mut self) {
     self.loader.unload_all();
-    self.contexts.clear();
-    Ok(())
+    self.global_heap.reset();
+    self.value_stack.clear();
+    self.modules.clear();
   }
 }
 
+// TODO: private
 /// Global heap for all contexts, containing a heap and a garbage collector.
 pub struct GlobalHeap<P: Policy> {
   policy: P,
@@ -311,26 +325,12 @@ impl<P: Policy> GlobalHeap<P> {
   }
 }
 
-/// Context information.
-struct ContextInfo<P: Policy> {
-  context: Context<P>,
-  initialized: bool,
-}
-
-impl<P: Policy> Default for ContextInfo<P> {
-  fn default() -> Self {
-    Self {
-      context: Default::default(),
-      initialized: false,
-    }
-  }
-}
-
+// TODO: move to new module
 /// Runner for running contexts.
 struct Runner<'vm, P: Policy> {
   vm: &'vm mut VM<P>,
-  /// Run information stack.
-  ris: Vec<RunInfo<P>>,
+  /// Context stack.
+  contexts: Vec<Context<P>>,
   /// Pointers to be deallocated.
   ///
   /// GC is running if this vector is not empty. All pointers in this vector
@@ -340,87 +340,71 @@ struct Runner<'vm, P: Policy> {
 
 impl<'vm, P: Policy> Runner<'vm, P> {
   /// Creates a new runner.
-  fn new(vm: &'vm mut VM<P>, ri: RunInfo<P>) -> Self {
+  fn new(vm: &'vm mut VM<P>, context: Context<P>) -> Self {
     Self {
       vm,
-      ris: vec![ri],
+      contexts: vec![context],
       pending_ptrs: vec![],
     }
   }
 
+  // TODO: return `Ok(())`.
   /// Runs contexts, returns return values.
-  fn run(mut self) -> Result<Vec<P::Value>, P::Error>
+  fn run(mut self) -> Result<(), P::Error>
   where
     P::Value: Clone,
   {
-    while let Some(ri) = self.ris.pop() {
+    while let Some(context) = self.contexts.pop() {
       // handle destructor and terminator
-      let mut ri = match self.handle_destructors(ri)? {
-        Some(ri) => ri,
+      let mut context = match self.handle_destructors(context)? {
+        Some(context) => context,
         None => continue,
       };
-      // check if the context is initialized
-      let context_info = self.vm.contexts.entry(ri.source).or_default();
-      if !context_info.initialized {
-        // prevent from infinite loop
-        context_info.initialized = true;
-        self.init(ri);
+      // check if the module is initialized
+      let globals = if let Some(globals) = self.vm.modules.get_mut(&context.source) {
+        globals
+      } else {
+        self.vm.modules.insert(context.source, Vars::new());
+        self.init(context);
         continue;
-      }
-      // get module and context
-      let module = P::unwrap_module(self.vm.loader.module(ri.source))?;
-      let context = &mut context_info.context;
+      };
       // run the context
-      ri.setup(context);
-      let cf = context.run(ri.source, module, &mut self.vm.global_heap)?;
-      ri.pc = context.pc;
+      let module = P::unwrap_module(self.vm.loader.module(context.source))?;
+      let cf = context.run(GlobalContext {
+        module,
+        global_heap: &mut self.vm.global_heap,
+        global_vars: globals,
+        value_stack: &mut self.vm.value_stack,
+      })?;
       // handle control flow
       match cf {
-        ControlFlow::Stop => {
-          let rets_rev = ri.cleanup(context)?;
-          if let Some(rets) = self.stop(rets_rev)? {
-            return Ok(rets);
-          }
-        }
-        ControlFlow::GC => self.gc(ri)?,
-        ControlFlow::LoadModule(ptr) => self.load_module(ri, ptr)?,
-        ControlFlow::LoadModuleMem(ptr, len) => self.load_module_mem(ri, ptr, len)?,
+        ControlFlow::Stop => continue,
+        ControlFlow::GC => self.gc(context)?,
+        ControlFlow::LoadModule(ptr) => self.load_module(context, ptr)?,
+        ControlFlow::LoadModuleMem(ptr, len) => self.load_module_mem(context, ptr, len)?,
         ControlFlow::UnloadModule(handle) => {
           let source = handle.into();
           self.vm.loader.unload(source);
-          self.vm.contexts.remove(&source);
-          self.ris.push(ri.into_cont());
+          self.vm.modules.remove(&source);
+          self.contexts.push(context.into_cont());
         }
-        ControlFlow::CallExt(handle, ptr) => {
-          // get the target module
-          let target = Source::from(handle);
-          let module = P::unwrap_module(self.vm.loader.module(target))?;
-          // get call site information
-          let name = P::utf8_str(&self.vm.global_heap.heap, ptr)?;
-          let call_site = P::unwrap_module(module.call_site(name))?;
-          // collect arguments
-          let args_rev = context.args_rev(call_site)?;
-          // perform call
-          let call = RunInfo::call(target, call_site.pc, args_rev, call_site.num_rets);
-          self.ris.push(ri.into_cont());
-          self.ris.push(call);
-        }
+        ControlFlow::CallExt(handle, ptr) => self.call_ext(context, handle, ptr)?,
       }
     }
-    Ok(vec![])
+    Ok(())
   }
 
   /// Handles destructors and terminators.
-  fn handle_destructors(&mut self, ri: RunInfo<P>) -> Result<Option<RunInfo<P>>, P::Error> {
+  fn handle_destructors(&mut self, context: Context<P>) -> Result<Option<Context<P>>, P::Error> {
     // deallocate all pending pointers
-    if ri.destructor_kind.is_some() {
+    if context.destructor_kind.is_some() {
       for ptr in mem::take(&mut self.pending_ptrs) {
         self.vm.global_heap.heap.dealloc(ptr);
       }
     }
     // handle terminator
-    if ri.destructor_kind == Some(DestructorKind::Terminator) {
-      self.ris.push(ri);
+    if context.destructor_kind == Some(DestructorKind::Terminator) {
+      self.contexts.push(context);
       // call destructors for all heap objects
       for ptr in self.vm.global_heap.heap.ptrs() {
         if self.schedule_destructor(ptr)? {
@@ -428,56 +412,36 @@ impl<'vm, P: Policy> Runner<'vm, P> {
         }
       }
       // stop if no scheduled destructors
-      if self.ris.len() == 1 {
-        self.ris.pop();
+      if self.contexts.len() == 1 {
+        self.contexts.pop();
       }
       Ok(None)
     } else {
-      Ok(Some(ri))
+      Ok(Some(context))
     }
   }
 
   /// Initializes the given context information.
-  fn init(&mut self, ri: RunInfo<P>) {
-    let init = ri.to_init();
-    if ri.pc != 0 {
-      self.ris.push(ri);
+  fn init(&mut self, context: Context<P>) {
+    let init = Context::init(context.source);
+    if context.pc != 0 {
+      self.contexts.push(context);
     }
-    self.ris.push(init);
-  }
-
-  /// Stops the current run. Returns some return value if need to stop running.
-  fn stop(&mut self, rets_rev: Option<Vec<P::Value>>) -> Result<Option<Vec<P::Value>>, P::Error> {
-    if let Some(mut rets_rev) = rets_rev {
-      // update the last run info, or return
-      if let Some(last) = self.ris.last_mut() {
-        last.values_rev = rets_rev;
-      } else {
-        rets_rev.reverse();
-        return Ok(Some(rets_rev));
-      }
-    }
-    Ok(None)
+    self.contexts.push(init);
   }
 
   /// Runs garbage collector.
-  fn gc(&mut self, ri: RunInfo<P>) -> Result<(), P::Error> {
+  fn gc(&mut self, context: Context<P>) -> Result<(), P::Error> {
     // skip if garbage collector is already running
     // this means the module is trying to allocate memory in the destructor
     if !self.pending_ptrs.is_empty() {
       return Ok(());
     }
     // run garbage collector
-    let ptrs = self.vm.collect()?;
+    let ptrs = self.vm.collect(&self.contexts, &context)?;
     self.vm.global_heap.gc_success(&ptrs)?;
-    self.ris.push(ri.into_destructor());
+    self.contexts.push(context.into_destructor());
     // schedule destructors to run
-    self.schedule_destructors(ptrs)
-  }
-
-  /// Schedules destructors of the given pointers to run and updates
-  /// pending pointers. Deallocates the pointer if it has no destructor.
-  fn schedule_destructors(&mut self, ptrs: Vec<u64>) -> Result<(), P::Error> {
     for ptr in ptrs {
       if self.schedule_destructor(ptr)? {
         self.pending_ptrs.push(ptr);
@@ -501,18 +465,20 @@ impl<'vm, P: Policy> Runner<'vm, P> {
       } else {
         // issue destructors to run
         match obj.kind {
-          ObjKind::Obj => {
-            self
-              .ris
-              .push(RunInfo::call_destructor(obj.source, object.destructor, ptr))
-          }
+          ObjKind::Obj => self.contexts.push(Context::call_destructor(
+            obj.source,
+            object.destructor,
+            &mut self.vm.value_stack,
+            ptr,
+          )),
           ObjKind::Array(len) => {
             // visit all objects
             let step = object.aligned_size();
             for i in 0..len as u64 {
-              self.ris.push(RunInfo::call_destructor(
+              self.contexts.push(Context::call_destructor(
                 obj.source,
                 object.destructor,
+                &mut self.vm.value_stack,
                 ptr + i * step,
               ));
             }
@@ -527,7 +493,7 @@ impl<'vm, P: Policy> Runner<'vm, P> {
   }
 
   /// Loads module from the given path pointer.
-  fn load_module(&mut self, ri: RunInfo<P>, ptr: u64) -> Result<(), P::Error> {
+  fn load_module(&mut self, context: Context<P>, ptr: u64) -> Result<(), P::Error> {
     // load module
     let path = P::utf8_str(&self.vm.global_heap.heap, ptr)?.to_string();
     let handle = Source::from(
@@ -537,14 +503,13 @@ impl<'vm, P: Policy> Runner<'vm, P> {
         .load_from_path(path, &mut self.vm.global_heap.heap),
     );
     // push handle to value stack
-    let mut ri = ri.into_cont();
-    ri.values_rev.push(P::int_val(handle.into()));
-    self.ris.push(ri);
+    self.vm.value_stack.push(P::int_val(handle.into()));
+    self.contexts.push(context.into_cont());
     Ok(())
   }
 
   /// Loads module from the given memory.
-  fn load_module_mem(&mut self, ri: RunInfo<P>, ptr: u64, len: u64) -> Result<(), P::Error> {
+  fn load_module_mem(&mut self, context: Context<P>, ptr: u64, len: u64) -> Result<(), P::Error> {
     // get byte slice
     P::check_access(&self.vm.global_heap.heap, ptr, len as usize, 1)?;
     let addr = self.vm.global_heap.heap.addr(ptr);
@@ -557,131 +522,24 @@ impl<'vm, P: Policy> Runner<'vm, P> {
         .load_from_bytes(bytes, &mut self.vm.global_heap.heap),
     );
     // push handle to value stack
-    let mut ri = ri.into_cont();
-    ri.values_rev.push(P::int_val(handle.into()));
-    self.ris.push(ri);
+    self.vm.value_stack.push(P::int_val(handle.into()));
+    self.contexts.push(context.into_cont());
     Ok(())
   }
-}
 
-/// Run information.
-struct RunInfo<P: Policy> {
-  source: Source,
-  pc: u64,
-  is_call: bool,
-  destructor_kind: Option<DestructorKind>,
-  values_rev: Vec<P::Value>,
-  num_rets: Option<u64>,
-}
-
-impl<P: Policy> RunInfo<P> {
-  /// Creates a new run information for function call.
-  fn call(source: Source, pc: u64, args_rev: Vec<P::Value>, num_rets: u64) -> Self {
-    Self {
-      source,
-      pc,
-      is_call: true,
-      destructor_kind: None,
-      values_rev: args_rev,
-      num_rets: Some(num_rets),
-    }
+  /// Calls an external function by the given handle and name pointer.
+  fn call_ext(&mut self, context: Context<P>, handle: u64, ptr: u64) -> Result<(), P::Error> {
+    // get the target module
+    let target = Source::from(handle);
+    let module = P::unwrap_module(self.vm.loader.module(target))?;
+    // get call site information
+    let name = P::utf8_str(&self.vm.global_heap.heap, ptr)?;
+    let call_site = P::unwrap_module(module.call_site(name))?;
+    // perform call
+    self.contexts.push(context.into_cont());
+    self.contexts.push(Context::call(target, call_site.pc));
+    Ok(())
   }
-
-  /// Creates a new run information for calling destructor.
-  /// Note the `is_destructor` will not be set.
-  fn call_destructor(source: Source, pc: u64, ptr: u64) -> Self {
-    Self {
-      source,
-      pc,
-      is_call: true,
-      destructor_kind: None,
-      values_rev: vec![P::ptr_val(ptr)],
-      num_rets: Some(0),
-    }
-  }
-
-  /// Creates a new run information for terminator.
-  fn terminator() -> Self {
-    Self {
-      source: Source::Invalid,
-      pc: 0,
-      is_call: false,
-      destructor_kind: Some(DestructorKind::Terminator),
-      values_rev: vec![],
-      num_rets: None,
-    }
-  }
-
-  /// Converts the current run information to a new one for initialization.
-  fn to_init(&self) -> Self {
-    Self {
-      source: self.source,
-      pc: 0,
-      is_call: false,
-      destructor_kind: None,
-      values_rev: vec![],
-      num_rets: None,
-    }
-  }
-
-  /// Converts the current run information into a new one for destructor.
-  fn into_destructor(self) -> Self {
-    Self {
-      source: self.source,
-      pc: self.pc,
-      is_call: false,
-      destructor_kind: Some(DestructorKind::Destructor),
-      values_rev: vec![],
-      num_rets: self.num_rets,
-    }
-  }
-
-  /// Converts the current run information into a new one for continute.
-  fn into_cont(self) -> Self {
-    Self {
-      source: self.source,
-      pc: self.pc + 1,
-      is_call: false,
-      destructor_kind: None,
-      values_rev: vec![],
-      num_rets: self.num_rets,
-    }
-  }
-
-  /// Sets up the given context.
-  fn setup(&mut self, context: &mut Context<P>) {
-    context
-      .value_stack
-      .extend(mem::take(&mut self.values_rev).into_iter().rev());
-    if self.is_call {
-      context.var_stack.push(Default::default());
-      context.ra_stack.push(vec![]);
-    }
-    context.pc = self.pc;
-  }
-
-  /// Cleans up the given context. Returns return values
-  /// if the current run information is for function return.
-  fn cleanup(&mut self, context: &mut Context<P>) -> Result<Option<Vec<P::Value>>, P::Error> {
-    self
-      .num_rets
-      .map(|num_rets| {
-        let mut rets_rev = vec![];
-        for _ in 0..num_rets {
-          rets_rev.push(context.pop()?);
-        }
-        context.var_stack.pop();
-        Ok(rets_rev)
-      })
-      .transpose()
-  }
-}
-
-/// Kind of destructor.
-#[derive(PartialEq, Eq)]
-enum DestructorKind {
-  Destructor,
-  Terminator,
 }
 
 /// Variable storage.
@@ -746,6 +604,7 @@ impl<'a, V> IntoIterator for &'a Vars<V> {
   }
 }
 
+// TODO: private
 /// Control flow actions.
 pub enum ControlFlow {
   /// Stop execution.
