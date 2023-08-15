@@ -537,14 +537,6 @@ impl<'vm, P: Policy> Scheduler<'vm, P> {
     Ok(())
   }
 
-  /// Unloads the given module.
-  fn unload(&mut self, context: Context<P>, handle: u64) {
-    let source = handle.into();
-    self.vm.loader.unload(source);
-    self.vm.module_globals.remove(&source);
-    self.contexts.push(context.into_cont());
-  }
-
   /// Calls an external function by the given handle and name pointer.
   fn call_ext(&mut self, context: Context<P>, handle: u64, ptr: u64) -> Result<(), P::Error> {
     // get the target module
