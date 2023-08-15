@@ -393,7 +393,6 @@ impl<'vm, P: Policy> Scheduler<'vm, P> {
         ControlFlow::GC => self.gc(context)?,
         ControlFlow::LoadModule(ptr) => self.load_module(context, ptr)?,
         ControlFlow::LoadModuleMem(ptr, len) => self.load_module_mem(context, ptr, len)?,
-        ControlFlow::UnloadModule(handle) => self.unload(context, handle),
         ControlFlow::CallExt(handle, ptr) => self.call_ext(context, handle, ptr)?,
         ControlFlow::Syscall(syscall) => self.syscall(context, syscall)?,
       }
@@ -657,8 +656,6 @@ pub(super) enum ControlFlow {
   /// Requests to load a external module, with a pointer to the module data
   /// and the size of the data.
   LoadModuleMem(u64, u64),
-  /// Requests to unload a external module, with a module handle.
-  UnloadModule(u64),
   /// Requests an external call, with a module handle and
   /// a pointer to the function name.
   CallExt(u64, u64),
