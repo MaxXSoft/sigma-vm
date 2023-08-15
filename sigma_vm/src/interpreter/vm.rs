@@ -157,7 +157,7 @@ where
     // call the target function
     self.value_stack.extend(args);
     let num_rets = call_site.num_rets;
-    Runner::new(self, Context::call(module, call_site.pc)).run()?;
+    Scheduler::new(self, Context::call(module, call_site.pc)).run()?;
     // get return values
     let mut rets = vec![];
     for _ in 0..num_rets {
@@ -169,7 +169,7 @@ where
 
   /// Terminates all VM contexts.
   pub fn terminate(&mut self) -> Result<(), P::Error> {
-    Runner::new(self, Context::terminator()).run()
+    Scheduler::new(self, Context::terminator()).run()
   }
 
   /// Resets the internal state.
@@ -327,8 +327,8 @@ impl<P: Policy> GlobalHeap<P> {
 }
 
 // TODO: move to new module
-/// Runner for running contexts.
-struct Runner<'vm, P: Policy> {
+/// Scheduler for running contexts.
+struct Scheduler<'vm, P: Policy> {
   vm: &'vm mut VM<P>,
   /// Context stack.
   contexts: Vec<Context<P>>,
@@ -339,7 +339,7 @@ struct Runner<'vm, P: Policy> {
   pending_ptrs: Vec<u64>,
 }
 
-impl<'vm, P: Policy> Runner<'vm, P> {
+impl<'vm, P: Policy> Scheduler<'vm, P> {
   /// Creates a new runner.
   fn new(vm: &'vm mut VM<P>, context: Context<P>) -> Self {
     Self {
@@ -349,7 +349,6 @@ impl<'vm, P: Policy> Runner<'vm, P> {
     }
   }
 
-  // TODO: return `Ok(())`.
   /// Runs contexts, returns return values.
   fn run(mut self) -> Result<(), P::Error>
   where
