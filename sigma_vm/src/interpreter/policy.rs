@@ -73,6 +73,9 @@ pub trait Policy {
   /// Reports invalid arguments.
   fn report_invalid_args() -> Result<(), Self::Error>;
 
+  /// Reports invalid system call.
+  fn report_invalid_syscall() -> Result<(), Self::Error>;
+
   /// Creates a new heap.
   fn new_heap(&self) -> Self::Heap;
 
@@ -275,6 +278,10 @@ where
     Err(StrictError::InvalidArgs)
   }
 
+  fn report_invalid_syscall() -> Result<(), Self::Error> {
+    Err(StrictError::InvalidSyscall)
+  }
+
   fn new_heap(&self) -> Self::Heap {
     H::new()
   }
@@ -336,6 +343,8 @@ pub enum StrictError {
   ZeroDivision,
   /// Invalid arguments.
   InvalidArgs,
+  /// Invalid system call.
+  InvalidSyscall,
   /// Memory access out of bounds.
   OutOfBounds,
   /// Out of heap memory.
@@ -358,6 +367,7 @@ impl fmt::Display for StrictError {
       Self::ModuleNotFound => write!(f, "module not found"),
       Self::ZeroDivision => write!(f, "divisor is zero"),
       Self::InvalidArgs => write!(f, "invalid arguments"),
+      Self::InvalidSyscall => write!(f, "invalid system call"),
       Self::OutOfBounds => write!(f, "memory access out of bounds"),
       Self::OutOfHeap => write!(f, "out of heap memory"),
       Self::InvalidStr => write!(f, "invalid string"),
@@ -456,6 +466,10 @@ where
 
   fn report_invalid_args() -> Result<(), Self::Error> {
     Strict::<H, GC>::report_invalid_args().map_err(StrictAlignError::Strict)
+  }
+
+  fn report_invalid_syscall() -> Result<(), Self::Error> {
+    Strict::<H, GC>::report_invalid_syscall().map_err(StrictAlignError::Strict)
   }
 
   fn new_heap(&self) -> Self::Heap {
@@ -608,6 +622,10 @@ where
   }
 
   fn report_invalid_args() -> Result<(), Self::Error> {
+    Ok(())
+  }
+
+  fn report_invalid_syscall() -> Result<(), Self::Error> {
     Ok(())
   }
 
