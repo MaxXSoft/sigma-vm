@@ -181,9 +181,8 @@ where
   }
 }
 
-// TODO: private
 /// Global heap for all contexts, containing a heap and a garbage collector.
-pub struct GlobalHeap<P: Policy> {
+pub(super) struct GlobalHeap<P: Policy> {
   policy: P,
   heap: P::Heap,
   gc: P::GarbageCollector,
@@ -602,9 +601,8 @@ impl<'a, V> IntoIterator for &'a Vars<V> {
   }
 }
 
-// TODO: private
 /// Control flow actions.
-pub enum ControlFlow {
+pub(super) enum ControlFlow {
   /// Stop execution.
   Stop,
   /// Requests a garbage collection.
