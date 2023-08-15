@@ -281,11 +281,6 @@ impl<P: Policy> GlobalHeap<P> {
     )
   }
 
-  /// Deallocates the given pointer.
-  pub(super) fn dealloc(&mut self, ptr: u64) {
-    self.heap.dealloc(ptr)
-  }
-
   /// Allocates a new memory with object metadata.
   fn alloc_obj(
     &mut self,
