@@ -6,6 +6,7 @@ use crate::interpreter::gc::{GarbageCollector, ModuleRoots, Roots};
 use crate::interpreter::heap::{Heap, Obj, ObjKind};
 use crate::interpreter::loader::{Error, Loader, Source};
 use crate::interpreter::policy::Policy;
+use crate::interpreter::syscall::{Resolver, VmState};
 use crate::utils::{IntoU64, Unsized};
 use std::alloc::Layout;
 use std::collections::HashMap;
@@ -17,6 +18,7 @@ use std::{mem, slice};
 /// Virtual machine for running bytecode.
 pub struct VM<P: Policy> {
   loader: Loader,
+  resolver: Resolver<P, P::Heap>,
   global_heap: GlobalHeap<P>,
   value_stack: Vec<P::Value>,
   module_globals: HashMap<Source, Vars<P::Value>>,
@@ -27,6 +29,7 @@ impl<P: Policy> VM<P> {
   pub fn new(policy: P) -> Self {
     Self {
       loader: Loader::new(),
+      resolver: Resolver::new(),
       global_heap: GlobalHeap::new(policy),
       value_stack: vec![],
       module_globals: HashMap::new(),
@@ -387,6 +390,7 @@ impl<'vm, P: Policy> Scheduler<'vm, P> {
         ControlFlow::LoadModuleMem(ptr, len) => self.load_module_mem(context, ptr, len)?,
         ControlFlow::UnloadModule(handle) => self.unload(context, handle),
         ControlFlow::CallExt(handle, ptr) => self.call_ext(context, handle, ptr)?,
+        ControlFlow::Syscall(syscall) => self.syscall(context, syscall)?,
       }
     }
     Ok(())
@@ -550,6 +554,29 @@ impl<'vm, P: Policy> Scheduler<'vm, P> {
     self.contexts.push(Context::call(target, call_site.pc));
     Ok(())
   }
+
+  /// Calls a system call with the given system call number.
+  fn syscall(&mut self, context: Context<P>, syscall: i64) -> Result<(), P::Error> {
+    use crate::interpreter::syscall::ControlFlow;
+    let scf = self.vm.resolver.call(
+      syscall,
+      VmState {
+        loader: &mut self.vm.loader,
+        heap: &mut self.vm.global_heap.heap,
+        value_stack: &mut self.vm.value_stack,
+        module_globals: &mut self.vm.module_globals,
+      },
+    )?;
+    match scf {
+      ControlFlow::Continue => self.contexts.push(context.into_cont()),
+      ControlFlow::Terminate => {
+        self.contexts.clear();
+        self.contexts.push(Context::terminator());
+      }
+      ControlFlow::GC => self.gc(context.into_cont())?,
+    }
+    Ok(())
+  }
 }
 
 /// Variable storage.
@@ -630,4 +657,6 @@ pub(super) enum ControlFlow {
   /// Requests an external call, with a module handle and
   /// a pointer to the function name.
   CallExt(u64, u64),
+  /// Requests a system call, with a system call number.
+  Syscall(i64),
 }
