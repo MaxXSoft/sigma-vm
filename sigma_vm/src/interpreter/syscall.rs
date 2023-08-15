@@ -5,11 +5,21 @@ use crate::interpreter::vm::Vars;
 use std::collections::HashMap;
 
 /// System call handler.
-pub type Handler<'vm, P, H> =
-  Box<dyn FnMut(VmState<'vm, P, H>) -> Result<ControlFlow, <P as Policy>::Error>>;
+pub trait Handler<P, H>
+where
+  P: Policy<Heap = H>,
+  H: Heap,
+{
+  /// Handles the system call request.
+  fn handle<'vm>(&mut self, state: VmState<'vm, P, H>) -> Result<ControlFlow, P::Error>;
+}
 
 /// Virtual machine state.
-pub struct VmState<'vm, P: Policy, H: Heap> {
+pub struct VmState<'vm, P, H>
+where
+  P: Policy<Heap = H>,
+  H: Heap,
+{
   pub loader: &'vm mut Loader,
   pub heap: &'vm mut H,
   pub value_stack: &'vm mut Vec<P::Value>,
@@ -27,24 +37,28 @@ pub enum ControlFlow {
 }
 
 /// System call resolver.
-pub struct Resolver<'vm, P: Policy, H: Heap> {
-  handlers: HashMap<i64, Handler<'vm, P, H>>,
+pub struct Resolver<P, H>
+where
+  P: Policy<Heap = H>,
+  H: Heap,
+{
+  handlers: HashMap<i64, Box<dyn Handler<P, H>>>,
 }
 
-impl<'vm, P, H> Resolver<'vm, P, H>
+impl<P, H> Resolver<P, H>
 where
-  P: Policy,
+  P: Policy<Heap = H>,
   H: Heap,
 {
   /// Creates a new system resolver.
-  pub fn new() -> Self {
+  pub(super) fn new() -> Self {
     Self {
       handlers: HashMap::new(),
     }
   }
 
   /// Calls the given system call.
-  pub(super) fn call(
+  pub(super) fn call<'vm>(
     &mut self,
     syscall: i64,
     state: VmState<'vm, P, H>,
@@ -57,7 +71,7 @@ where
       4 => Self::del(state),
       5 => Self::unload(state),
       _ => match self.handlers.get_mut(&syscall) {
-        Some(handler) => handler(state),
+        Some(handler) => handler.handle(state),
         None => P::report_invalid_syscall().map(|_| ControlFlow::Continue),
       },
     }
@@ -70,7 +84,7 @@ where
   /// # Panics
   ///
   /// Panics if `syscall` is not positive.
-  pub fn register(&mut self, syscall: i64, handler: Handler<'vm, P, H>) {
+  pub fn register(&mut self, syscall: i64, handler: Box<dyn Handler<P, H>>) {
     if syscall >= 0 {
       panic!("`syscall` must be negative");
     }
@@ -78,13 +92,13 @@ where
   }
 
   /// Performs a native function call.
-  fn native_call(state: VmState<'vm, P, H>) -> Result<ControlFlow, P::Error> {
+  fn native_call<'vm>(state: VmState<'vm, P, H>) -> Result<ControlFlow, P::Error> {
     todo!();
     Ok(ControlFlow::Continue)
   }
 
   /// Returns size of stack.
-  fn stack_size(state: VmState<'vm, P, H>) -> Result<ControlFlow, P::Error> {
+  fn stack_size<'vm>(state: VmState<'vm, P, H>) -> Result<ControlFlow, P::Error> {
     state
       .value_stack
       .push(P::int_val(state.value_stack.len() as u64));
@@ -92,7 +106,7 @@ where
   }
 
   /// Deletes pointer s0.
-  fn del(state: VmState<'vm, P, H>) -> Result<ControlFlow, P::Error> {
+  fn del<'vm>(state: VmState<'vm, P, H>) -> Result<ControlFlow, P::Error> {
     let s0 = P::unwrap_val(state.value_stack.pop())?;
     let ptr = P::get_ptr(&s0)?;
     state.heap.dealloc(ptr);
@@ -100,7 +114,7 @@ where
   }
 
   /// Unloads module handle s0.
-  fn unload(state: VmState<'vm, P, H>) -> Result<ControlFlow, P::Error> {
+  fn unload<'vm>(state: VmState<'vm, P, H>) -> Result<ControlFlow, P::Error> {
     let s0 = P::unwrap_val(state.value_stack.pop())?;
     let source = Source::from(P::get_int_ptr(&s0)?);
     state.loader.unload(source);
