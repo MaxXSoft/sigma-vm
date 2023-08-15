@@ -443,10 +443,6 @@ where
         let ptr = gctx.pop_ptr()?;
         return ControlFlow::LoadModuleMem(ptr, size).into();
       }
-      Inst::Unload => {
-        let handle = gctx.pop_int_ptr()?;
-        return ControlFlow::UnloadModule(handle).into();
-      }
       Inst::Bz(opr) => {
         if gctx.pop_any()? == 0 {
           PcUpdate::Set((self.pc as i64 + opr) as u64)
