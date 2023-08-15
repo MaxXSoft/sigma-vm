@@ -2,6 +2,7 @@ pub mod gc;
 pub mod heap;
 pub mod loader;
 pub mod policy;
+pub mod syscall;
 pub mod vm;
 
 mod context;
