@@ -424,11 +424,6 @@ where
         gctx.push_ptr(ptr);
         PcUpdate::Next
       }
-      Inst::Del => {
-        let ptr = gctx.pop_ptr()?;
-        gctx.global_heap.dealloc(ptr);
-        PcUpdate::Next
-      }
       Inst::Load => {
         let ptr = gctx.pop_ptr()?;
         return ControlFlow::LoadModule(ptr).into();
