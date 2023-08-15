@@ -163,6 +163,7 @@ where
     for _ in 0..num_rets {
       rets.push(P::unwrap_val(self.value_stack.pop())?);
     }
+    rets.reverse();
     Ok(rets)
   }
 
