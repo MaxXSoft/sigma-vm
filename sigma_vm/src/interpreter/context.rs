@@ -487,7 +487,7 @@ where
         self.var_stack.pop();
         pcu
       }
-      Inst::Sys(_) => unimplemented!("system call"),
+      Inst::Sys(opr) => return ControlFlow::Syscall(opr).into(),
       Inst::Break => unimplemented!("breakpoint"),
       Inst::Not => unary!(s0: u64, !s0),
       Inst::LNot => unary!(s0: u64, (s0 == 0) as u64),
