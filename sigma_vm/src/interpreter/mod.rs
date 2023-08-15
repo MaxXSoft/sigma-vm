@@ -372,11 +372,11 @@ mod test {
             consts: [
               Str {
                 len: b"counter".len() as u64,
-                bytes: b"counter".clone(),
+                bytes: *b"counter",
               },
               Str {
                 len: b"set_g1".len() as u64,
-                bytes: b"set_g1".clone(),
+                bytes: *b"set_g1",
               },
             ],
             exports: [
@@ -406,7 +406,7 @@ mod test {
             consts: [
               Str {
                 len: b"add1".len() as u64,
-                bytes: b"add1".clone(),
+                bytes: *b"add1",
               },
             ],
             exports: [

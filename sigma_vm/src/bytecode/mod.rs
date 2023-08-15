@@ -38,7 +38,7 @@ mod test {
       Const::from(-876.53f64),
       Const::from(Str {
         len: b"abc".len() as u64,
-        bytes: b"abc".clone(),
+        bytes: *b"abc",
       }),
       Const::from(Object {
         size: 256,
@@ -51,7 +51,7 @@ mod test {
       }),
       Const::from(Raw {
         len: b"Hello".len() as u64,
-        bytes: b"Hello".clone(),
+        bytes: *b"Hello",
       }),
     ]
     .into_boxed_slice()
