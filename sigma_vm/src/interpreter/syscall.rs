@@ -10,7 +10,7 @@ where
   P: Policy<Heap = H>,
   H: Heap,
 {
-  /// Handles the system call request.
+  /// Handles the system call request with the given state of virtual machine.
   fn handle<'vm>(&mut self, state: VmState<'vm, P, H>) -> Result<ControlFlow, P::Error>;
 }
 
@@ -20,9 +20,13 @@ where
   P: Policy<Heap = H>,
   H: Heap,
 {
+  /// Module loader.
   pub loader: &'vm mut Loader,
+  /// Heap.
   pub heap: &'vm mut H,
+  /// Value stack.
   pub value_stack: &'vm mut Vec<P::Value>,
+  /// Handle of all initialized modules, and their global variables.
   pub module_globals: &'vm mut HashMap<Source, Vars<P::Value>>,
 }
 
