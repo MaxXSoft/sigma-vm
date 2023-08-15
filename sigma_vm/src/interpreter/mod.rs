@@ -481,4 +481,27 @@ mod test {
     assert_eq!(obj_counter(100), 100);
     assert_eq!(obj_counter(100000), 100000);
   }
+
+  #[test]
+  #[should_panic(expected = "called `Result::unwrap()` on an `Err` value: Strict(ModuleNotFound)")]
+  fn unload_self() {
+    vm! {
+      modules: {
+        main: {
+          insts: [
+            Unload,
+            Ret,
+
+          // main:
+            Ret,
+          ],
+          consts: [],
+          exports: ["main" => { pc: 2, num_args: 0, num_rets: 0 }],
+        },
+      },
+      main: main,
+      args: [],
+      results: (),
+    }
+  }
 }
