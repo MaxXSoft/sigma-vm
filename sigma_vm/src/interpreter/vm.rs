@@ -380,12 +380,7 @@ impl<'vm, P: Policy> Scheduler<'vm, P> {
         ControlFlow::GC => self.gc(context)?,
         ControlFlow::LoadModule(ptr) => self.load_module(context, ptr)?,
         ControlFlow::LoadModuleMem(ptr, len) => self.load_module_mem(context, ptr, len)?,
-        ControlFlow::UnloadModule(handle) => {
-          let source = handle.into();
-          self.vm.loader.unload(source);
-          self.vm.modules.remove(&source);
-          self.contexts.push(context.into_cont());
-        }
+        ControlFlow::UnloadModule(handle) => self.unload(context, handle),
         ControlFlow::CallExt(handle, ptr) => self.call_ext(context, handle, ptr)?,
       }
     }
@@ -522,6 +517,14 @@ impl<'vm, P: Policy> Scheduler<'vm, P> {
     self.vm.value_stack.push(P::int_val(handle.into()));
     self.contexts.push(context.into_cont());
     Ok(())
+  }
+
+  /// Unloads the given module.
+  fn unload(&mut self, context: Context<P>, handle: u64) {
+    let source = handle.into();
+    self.vm.loader.unload(source);
+    self.vm.modules.remove(&source);
+    self.contexts.push(context.into_cont());
   }
 
   /// Calls an external function by the given handle and name pointer.
