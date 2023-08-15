@@ -75,7 +75,7 @@ impl<P: Policy> Context<P> {
   pub fn into_cont(self) -> Self {
     Self {
       source: self.source,
-      pc: self.pc,
+      pc: self.pc + 1,
       destructor_kind: None,
       var_stack: self.var_stack,
       ra_stack: self.ra_stack,
