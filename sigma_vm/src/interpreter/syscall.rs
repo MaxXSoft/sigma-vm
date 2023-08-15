@@ -109,9 +109,9 @@ where
   fn native_call(state: VmState<P, H>) -> Result<ControlFlow, P::Error> {
     // get name and path
     let name_ptr = P::get_ptr(&P::unwrap_val(state.value_stack.pop())?)?;
-    let name = P::utf8_str(&state.heap, name_ptr)?;
+    let name = P::utf8_str(state.heap, name_ptr)?;
     let path_ptr = P::get_ptr(&P::unwrap_val(state.value_stack.pop())?)?;
-    let path = P::utf8_str(&state.heap, path_ptr)?;
+    let path = P::utf8_str(state.heap, path_ptr)?;
     // get arguments
     let num_args = P::get_int_ptr(&P::unwrap_val(state.value_stack.pop())?)?;
     let mut args = vec![];
