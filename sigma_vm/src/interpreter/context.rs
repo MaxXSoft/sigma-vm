@@ -7,17 +7,17 @@ use crate::interpreter::vm::{ControlFlow, GlobalHeap, Vars};
 use std::mem;
 
 /// Execution context of virtual machine.
-pub struct Context<P: Policy> {
-  pub source: Source,
-  pub pc: u64,
-  pub destructor_kind: Option<DestructorKind>,
-  pub var_stack: Vec<Vars<P::Value>>,
-  pub ra_stack: Vec<u64>,
+pub(super) struct Context<P: Policy> {
+  pub(super) source: Source,
+  pub(super) pc: u64,
+  pub(super) destructor_kind: Option<DestructorKind>,
+  var_stack: Vec<Vars<P::Value>>,
+  ra_stack: Vec<u64>,
 }
 
 impl<P: Policy> Context<P> {
   /// Creates a new context for initialization.
-  pub fn init(source: Source) -> Self {
+  pub(super) fn init(source: Source) -> Self {
     Self {
       source,
       pc: 0,
@@ -28,19 +28,7 @@ impl<P: Policy> Context<P> {
   }
 
   /// Creates a new context for function call.
-  pub fn call(source: Source, pc: u64) -> Self {
-    Self {
-      source,
-      pc,
-      destructor_kind: None,
-      var_stack: vec![Vars::new()],
-      ra_stack: vec![],
-    }
-  }
-
-  /// Creates a new context for calling destructor.
-  pub fn call_destructor(source: Source, pc: u64, values: &mut Vec<P::Value>, ptr: u64) -> Self {
-    values.push(P::ptr_val(ptr));
+  pub(super) fn call(source: Source, pc: u64) -> Self {
     Self {
       source,
       pc,
@@ -51,7 +39,7 @@ impl<P: Policy> Context<P> {
   }
 
   /// Creates a new context for function call.
-  pub fn terminator() -> Self {
+  pub(super) fn terminator() -> Self {
     Self {
       source: Source::Invalid,
       pc: 0,
@@ -62,7 +50,7 @@ impl<P: Policy> Context<P> {
   }
 
   /// Converts the current context into a new one for destructor.
-  pub fn into_destructor(self) -> Self {
+  pub(super) fn into_destructor(self) -> Self {
     Self {
       source: self.source,
       pc: self.pc,
@@ -73,7 +61,7 @@ impl<P: Policy> Context<P> {
   }
 
   /// Converts the current context into a new one for continue.
-  pub fn into_cont(self) -> Self {
+  pub(super) fn into_cont(self) -> Self {
     Self {
       source: self.source,
       pc: self.pc + 1,
@@ -96,7 +84,7 @@ where
   P::Value: Clone,
 {
   /// Runs and consumes the current context.
-  pub fn run(&mut self, mut gctx: GlobalContext<P>) -> Result<ControlFlow, P::Error> {
+  pub(super) fn run(&mut self, mut gctx: GlobalContext<P>) -> Result<ControlFlow, P::Error> {
     loop {
       let inst = gctx.inst(self.pc);
       match self.run_inst(&mut gctx, inst)? {
@@ -602,7 +590,7 @@ where
 
 /// Kind of destructor.
 #[derive(PartialEq, Eq)]
-pub enum DestructorKind {
+pub(super) enum DestructorKind {
   /// Destructor.
   Destructor,
   /// Terminator, for destructing all heap objects.
@@ -610,11 +598,11 @@ pub enum DestructorKind {
 }
 
 /// Global context, shared by multiple contexts.
-pub struct GlobalContext<'vm, P: Policy> {
-  pub module: &'vm Module,
-  pub global_heap: &'vm mut GlobalHeap<P>,
-  pub global_vars: &'vm mut Vars<P::Value>,
-  pub value_stack: &'vm mut Vec<P::Value>,
+pub(super) struct GlobalContext<'vm, P: Policy> {
+  pub(super) module: &'vm Module,
+  pub(super) global_heap: &'vm mut GlobalHeap<P>,
+  pub(super) global_vars: &'vm mut Vars<P::Value>,
+  pub(super) value_stack: &'vm mut Vec<P::Value>,
 }
 
 impl<'vm, P: Policy> GlobalContext<'vm, P> {
