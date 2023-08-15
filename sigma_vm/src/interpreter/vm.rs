@@ -417,7 +417,12 @@ impl<'vm, P: Policy> Scheduler<'vm, P> {
   /// Initializes the given context information.
   fn init(&mut self, context: Context<P>) {
     let init = Context::init(context.source);
+    // check if some one is calling initializer
     if context.pc != 0 {
+      // Push argument only when the initializer is called implicitly.
+      // In other words, if it's called explicitly, the argument should
+      // be pushed by the caller.
+      self.vm.value_stack.push(P::int_val(context.source.into()));
       self.contexts.push(context);
     }
     self.contexts.push(init);
