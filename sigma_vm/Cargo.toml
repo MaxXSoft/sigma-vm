@@ -5,3 +5,4 @@ edition = "2021"
 
 [dependencies]
 leb128 = "0.2.5"
+libloading = "0.8.0"
