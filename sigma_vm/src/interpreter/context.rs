@@ -1,7 +1,5 @@
-use crate::bytecode::export::{CallSite, NumArgs};
 use crate::bytecode::insts::Inst;
 use crate::bytecode::module::Module;
-use crate::interpreter::gc::PotentialRoots;
 use crate::interpreter::loader::Source;
 use crate::interpreter::policy::Policy;
 use crate::interpreter::vm::{ControlFlow, GlobalHeap, Vars};
@@ -9,142 +7,79 @@ use std::mem;
 
 /// Execution context of virtual machine.
 pub struct Context<P: Policy> {
-  pub(super) pc: u64,
-  pub(super) value_stack: Vec<P::Value>,
-  pub(super) var_stack: Vec<Vars<P::Value>>,
-  /// Actually a stack of stack,
-  /// for supporting VM inserted temporary call.
-  pub(super) ra_stack: Vec<Vec<u64>>,
+  pub source: Source,
+  pub pc: u64,
+  pub destructor_kind: Option<DestructorKind>,
+  pub var_stack: Vec<Vars<P::Value>>,
+  pub ra_stack: Vec<u64>,
 }
 
 impl<P: Policy> Context<P> {
-  /// Creates a new context.
-  pub fn new() -> Self {
+  /// Creates a new context for initialization.
+  pub fn init(source: Source) -> Self {
     Self {
+      source,
       pc: 0,
-      value_stack: vec![],
+      destructor_kind: None,
       var_stack: vec![Vars::new()],
-      ra_stack: vec![vec![]],
+      ra_stack: vec![],
     }
   }
 
-  /// Returns a reference to the value stack.
-  pub fn value_stack(&self) -> &[P::Value] {
-    &self.value_stack
-  }
-
-  /// Returns a reference to the global variables.
-  pub fn globals(&self) -> &Vars<P::Value> {
-    self.var_stack.first().unwrap()
-  }
-
-  /// Adds the given value to the value stack.
-  pub fn add_value(&mut self, value: P::Value) {
-    self.value_stack.push(value)
-  }
-
-  /// Adds the given pointer to the value stack.
-  pub fn add_ptr(&mut self, ptr: u64) {
-    self.value_stack.push(P::ptr_val(ptr))
-  }
-
-  /// Resets the state of the current context.
-  pub fn reset(&mut self) {
-    self.pc = 0;
-    self.value_stack.clear();
-    self.var_stack.clear();
-    self.var_stack.push(Vars::new());
-    self.ra_stack.clear();
-  }
-
-  /// Returns potential garbage collection roots of the current context.
-  pub fn proots(&self) -> PotentialRoots<P> {
-    PotentialRoots {
-      values: &self.value_stack,
-      vars: &self.var_stack,
+  /// Creates a new context for function call.
+  pub fn call(source: Source, pc: u64) -> Self {
+    Self {
+      source,
+      pc,
+      destructor_kind: None,
+      var_stack: vec![Vars::new()],
+      ra_stack: vec![],
     }
   }
 
-  /// Pushes a value to the value stack.
-  fn push(&mut self, v: P::Value) {
-    self.value_stack.push(v)
-  }
-
-  /// Pushes an integer to the value stack.
-  fn push_int(&mut self, i: u64) {
-    self.push(P::int_val(i))
-  }
-
-  /// Pushes a 32-bit floating point to the value stack.
-  fn push_f32(&mut self, f: f32) {
-    self.push(P::f32_val(f))
-  }
-
-  /// Pushes a 64-bit floating point to the value stack.
-  fn push_f64(&mut self, f: f64) {
-    self.push(P::f64_val(f))
-  }
-
-  /// Pushes a pointer to the value stack.
-  fn push_ptr(&mut self, p: u64) {
-    self.push(P::ptr_val(p))
-  }
-
-  /// Pops a value from the value stack.
-  pub(super) fn pop(&mut self) -> Result<P::Value, P::Error> {
-    P::unwrap_val(self.value_stack.pop())
-  }
-
-  /// Pops an integer/pointer from the value stack.
-  pub(super) fn pop_int_ptr(&mut self) -> Result<u64, P::Error> {
-    P::get_int_ptr(&self.pop()?)
-  }
-
-  /// Pops a 32-bit floating point from the value stack.
-  fn pop_f32(&mut self) -> Result<f32, P::Error> {
-    P::get_f32(&self.pop()?)
-  }
-
-  /// Pops a 64-bit floating point from the value stack.
-  fn pop_f64(&mut self) -> Result<f64, P::Error> {
-    P::get_f64(&self.pop()?)
-  }
-
-  /// Pops a pointer from the value stack.
-  fn pop_ptr(&mut self) -> Result<u64, P::Error> {
-    P::get_ptr(&self.pop()?)
-  }
-
-  /// Pops a untyped value from the value stack.
-  fn pop_any(&mut self) -> Result<u64, P::Error> {
-    Ok(P::get_any(&self.pop()?))
-  }
-
-  /// Peeks the last value in the value stack.
-  fn peek_s0(&self) -> Result<&P::Value, P::Error> {
-    P::unwrap_val(self.value_stack.last())
-  }
-
-  /// Peeks the last mutable value in the value stack.
-  fn peek_s0_mut(&mut self) -> Result<&mut P::Value, P::Error> {
-    P::unwrap_val(self.value_stack.last_mut())
-  }
-
-  /// Returns arguments in reverse order by the given call site information.
-  pub(super) fn args_rev(&mut self, call_site: &CallSite) -> Result<Vec<P::Value>, P::Error> {
-    let mut args_rev = vec![];
-    let num_args = match call_site.num_args {
-      NumArgs::Variadic => {
-        let n = self.pop_int_ptr()?;
-        args_rev.push(P::int_val(n));
-        n
-      }
-      NumArgs::PlusOne(np1) => np1.get() - 1,
-    };
-    for _ in 0..num_args {
-      args_rev.push(self.pop()?);
+  /// Creates a new context for calling destructor.
+  pub fn call_destructor(source: Source, pc: u64, values: &mut Vec<P::Value>, ptr: u64) -> Self {
+    values.push(P::ptr_val(ptr));
+    Self {
+      source,
+      pc,
+      destructor_kind: None,
+      var_stack: vec![Vars::new()],
+      ra_stack: vec![],
     }
-    Ok(args_rev)
+  }
+
+  /// Creates a new context for function call.
+  pub fn terminator() -> Self {
+    Self {
+      source: Source::Invalid,
+      pc: 0,
+      destructor_kind: Some(DestructorKind::Terminator),
+      var_stack: vec![],
+      ra_stack: vec![],
+    }
+  }
+
+  /// Converts the current context into a new one for destructor.
+  pub fn into_destructor(self) -> Self {
+    Self {
+      source: self.source,
+      pc: self.pc,
+      destructor_kind: Some(DestructorKind::Destructor),
+      var_stack: self.var_stack,
+      ra_stack: self.ra_stack,
+    }
+  }
+
+  /// Converts the current context into a new one for continue.
+  pub fn into_cont(self) -> Self {
+    Self {
+      source: self.source,
+      pc: self.pc,
+      destructor_kind: None,
+      var_stack: self.var_stack,
+      ra_stack: self.ra_stack,
+    }
   }
 }
 
@@ -152,20 +87,11 @@ impl<P: Policy> Context<P>
 where
   P::Value: Clone,
 {
-  /// Adds the given values to the value stack.
-  pub fn add_values(&mut self, values: &[P::Value]) {
-    self.value_stack.extend(values.iter().cloned())
-  }
-
-  /// Runs the virtual machine.
-  pub fn run(
-    &mut self,
-    source: Source,
-    module: &Module,
-    heap: &mut GlobalHeap<P>,
-  ) -> Result<ControlFlow, P::Error> {
+  /// Runs and consumes the current context.
+  pub fn run(&mut self, mut gctx: GlobalContext<P>) -> Result<ControlFlow, P::Error> {
     loop {
-      match self.run_inst(source, module, heap, module.insts[self.pc as usize])? {
+      let inst = gctx.inst(self.pc);
+      match self.run_inst(&mut gctx, inst)? {
         PcUpdate::Next => self.pc += 1,
         PcUpdate::Set(pc) => self.pc = pc,
         PcUpdate::ControlFlow(c) => return Ok(c),
@@ -176,35 +102,29 @@ where
   /// Runs the current instruction.
   ///
   /// Returns `false` if the instruction requires to stop execution.
-  fn run_inst(
-    &mut self,
-    source: Source,
-    module: &Module,
-    heap: &mut GlobalHeap<P>,
-    inst: Inst,
-  ) -> Result<PcUpdate, P::Error> {
+  fn run_inst(&mut self, gctx: &mut GlobalContext<P>, inst: Inst) -> Result<PcUpdate, P::Error> {
     /// Helper macro for manipulating stack.
     macro_rules! stack {
       (pop($v:ident: u64)) => {
-        let $v = self.pop_int_ptr()?;
+        let $v = gctx.pop_int_ptr()?;
       };
       (pop($v:ident: _)) => {
-        let $v = self.pop_any()?;
+        let $v = gctx.pop_any()?;
       };
       (push($v:expr, u64)) => {
-        self.push_int($v);
+        gctx.push_int($v);
       };
       (pop($v:ident: f32)) => {
-        let $v = self.pop_f32()?;
+        let $v = gctx.pop_f32()?;
       };
       (push($v:expr, f32)) => {
-        self.push_f32($v);
+        gctx.push_f32($v);
       };
       (pop($v:ident: f64)) => {
-        let $v = self.pop_f64()?;
+        let $v = gctx.pop_f64()?;
       };
       (push($v:expr, f64)) => {
-        self.push_f64($v);
+        gctx.push_f64($v);
       };
     }
 
@@ -241,286 +161,305 @@ where
     Ok(match inst {
       Inst::Nop => PcUpdate::Next,
       Inst::PushI(opr) => {
-        self.push_int(opr as u64);
+        gctx.push_int(opr as u64);
         PcUpdate::Next
       }
       Inst::PushU(opr) => {
-        self.push_int(opr);
+        gctx.push_int(opr);
         PcUpdate::Next
       }
       Inst::Pop => {
-        self.pop()?;
+        gctx.pop()?;
         PcUpdate::Next
       }
       Inst::Dup => {
-        self.push(self.peek_s0()?.clone());
+        gctx.push(gctx.peek_s0()?.clone());
         PcUpdate::Next
       }
       Inst::Swap => {
-        let mut s0 = self.pop()?;
-        let s1 = self.peek_s0_mut()?;
+        let mut s0 = gctx.pop()?;
+        let s1 = gctx.peek_s0_mut()?;
         mem::swap(&mut s0, s1);
-        self.push(s0);
+        gctx.push(s0);
         PcUpdate::Next
       }
       Inst::LdB => {
-        let ptr = self.pop_ptr()?;
-        self.push_int(heap.load::<i8>(ptr)?);
+        let ptr = gctx.pop_ptr()?;
+        let data = gctx.global_heap.load::<i8>(ptr)?;
+        gctx.push_int(data);
         PcUpdate::Next
       }
       Inst::LdBU => {
-        let ptr = self.pop_ptr()?;
-        self.push_int(heap.load::<u8>(ptr)?);
+        let ptr = gctx.pop_ptr()?;
+        let data = gctx.global_heap.load::<u8>(ptr)?;
+        gctx.push_int(data);
         PcUpdate::Next
       }
       Inst::LdH => {
-        let ptr = self.pop_ptr()?;
-        self.push_int(heap.load::<i16>(ptr)?);
+        let ptr = gctx.pop_ptr()?;
+        let data = gctx.global_heap.load::<i16>(ptr)?;
+        gctx.push_int(data);
         PcUpdate::Next
       }
       Inst::LdHU => {
-        let ptr = self.pop_ptr()?;
-        self.push_int(heap.load::<u16>(ptr)?);
+        let ptr = gctx.pop_ptr()?;
+        let data = gctx.global_heap.load::<u16>(ptr)?;
+        gctx.push_int(data);
         PcUpdate::Next
       }
       Inst::LdW => {
-        let ptr = self.pop_ptr()?;
-        self.push_int(heap.load::<i32>(ptr)?);
+        let ptr = gctx.pop_ptr()?;
+        let data = gctx.global_heap.load::<i32>(ptr)?;
+        gctx.push_int(data);
         PcUpdate::Next
       }
       Inst::LdWU => {
-        let ptr = self.pop_ptr()?;
-        self.push_int(heap.load::<u32>(ptr)?);
+        let ptr = gctx.pop_ptr()?;
+        let data = gctx.global_heap.load::<u32>(ptr)?;
+        gctx.push_int(data);
         PcUpdate::Next
       }
       Inst::LdD => {
-        let ptr = self.pop_ptr()?;
-        self.push_int(heap.load::<u64>(ptr)?);
+        let ptr = gctx.pop_ptr()?;
+        let data = gctx.global_heap.load::<u64>(ptr)?;
+        gctx.push_int(data);
         PcUpdate::Next
       }
       Inst::LdP => {
-        let ptr = self.pop_ptr()?;
-        self.push_ptr(heap.load::<u64>(ptr)?);
+        let ptr = gctx.pop_ptr()?;
+        let data = gctx.global_heap.load::<u64>(ptr)?;
+        gctx.push_ptr(data);
         PcUpdate::Next
       }
       Inst::LdBO(opr) => {
         let offset = opr * mem::size_of::<i8>() as i64;
-        let ptr = (self.pop_ptr()? as i64 + offset) as u64;
-        self.push_int(heap.load::<i8>(ptr)?);
+        let ptr = (gctx.pop_ptr()? as i64 + offset) as u64;
+        let data = gctx.global_heap.load::<i8>(ptr)?;
+        gctx.push_int(data);
         PcUpdate::Next
       }
       Inst::LdBUO(opr) => {
         let offset = opr * mem::size_of::<u8>() as i64;
-        let ptr = (self.pop_ptr()? as i64 + offset) as u64;
-        self.push_int(heap.load::<u8>(ptr)?);
+        let ptr = (gctx.pop_ptr()? as i64 + offset) as u64;
+        let data = gctx.global_heap.load::<u8>(ptr)?;
+        gctx.push_int(data);
         PcUpdate::Next
       }
       Inst::LdHO(opr) => {
         let offset = opr * mem::size_of::<i16>() as i64;
-        let ptr = (self.pop_ptr()? as i64 + offset) as u64;
-        self.push_int(heap.load::<i16>(ptr)?);
+        let ptr = (gctx.pop_ptr()? as i64 + offset) as u64;
+        let data = gctx.global_heap.load::<i16>(ptr)?;
+        gctx.push_int(data);
         PcUpdate::Next
       }
       Inst::LdHUO(opr) => {
         let offset = opr * mem::size_of::<u16>() as i64;
-        let ptr = (self.pop_ptr()? as i64 + offset) as u64;
-        self.push_int(heap.load::<u16>(ptr)?);
+        let ptr = (gctx.pop_ptr()? as i64 + offset) as u64;
+        let data = gctx.global_heap.load::<u16>(ptr)?;
+        gctx.push_int(data);
         PcUpdate::Next
       }
       Inst::LdWO(opr) => {
         let offset = opr * mem::size_of::<i32>() as i64;
-        let ptr = (self.pop_ptr()? as i64 + offset) as u64;
-        self.push_int(heap.load::<i32>(ptr)?);
+        let ptr = (gctx.pop_ptr()? as i64 + offset) as u64;
+        let data = gctx.global_heap.load::<i32>(ptr)?;
+        gctx.push_int(data);
         PcUpdate::Next
       }
       Inst::LdWUO(opr) => {
         let offset = opr * mem::size_of::<u32>() as i64;
-        let ptr = (self.pop_ptr()? as i64 + offset) as u64;
-        self.push_int(heap.load::<u32>(ptr)?);
+        let ptr = (gctx.pop_ptr()? as i64 + offset) as u64;
+        let data = gctx.global_heap.load::<u32>(ptr)?;
+        gctx.push_int(data);
         PcUpdate::Next
       }
       Inst::LdDO(opr) => {
         let offset = opr * mem::size_of::<u64>() as i64;
-        let ptr = (self.pop_ptr()? as i64 + offset) as u64;
-        self.push_int(heap.load::<u64>(ptr)?);
+        let ptr = (gctx.pop_ptr()? as i64 + offset) as u64;
+        let data = gctx.global_heap.load::<u64>(ptr)?;
+        gctx.push_int(data);
         PcUpdate::Next
       }
       Inst::LdPO(opr) => {
         let offset = opr * mem::size_of::<u64>() as i64;
-        let ptr = (self.pop_ptr()? as i64 + offset) as u64;
-        self.push_ptr(heap.load::<u64>(ptr)?);
+        let ptr = (gctx.pop_ptr()? as i64 + offset) as u64;
+        let data = gctx.global_heap.load::<u64>(ptr)?;
+        gctx.push_ptr(data);
         PcUpdate::Next
       }
       Inst::LdV(opr) => {
         let locals = P::unwrap_val(self.var_stack.last())?;
         let var = P::unwrap_val(locals.get(opr as usize))?;
-        self.push(var.clone());
+        gctx.push(var.clone());
         PcUpdate::Next
       }
       Inst::LdG(opr) => {
-        let globals = P::unwrap_val(self.var_stack.first())?;
-        let var = P::unwrap_val(globals.get(opr as usize))?;
-        self.push(var.clone());
+        let var = P::unwrap_val(gctx.global_vars.get(opr as usize))?;
+        gctx.push(var.clone());
         PcUpdate::Next
       }
       Inst::LdC(opr) => {
-        let c = P::unwrap_val(module.consts.get(opr as usize))?;
-        self.push(heap.val_from_const(c));
+        let c = P::unwrap_val(gctx.module.consts.get(opr as usize))?;
+        gctx.push(gctx.global_heap.val_from_const(c));
         PcUpdate::Next
       }
       Inst::LaC(opr) => {
-        let c = P::unwrap_val(module.consts.get(opr as usize))?;
-        self.push_ptr(c.ptr());
+        let c = P::unwrap_val(gctx.module.consts.get(opr as usize))?;
+        gctx.push_ptr(c.ptr());
         PcUpdate::Next
       }
       Inst::StB => {
-        let v = self.pop()?;
-        let ptr = self.pop_ptr()?;
-        heap.store::<u8>(v, ptr)?;
+        let v = gctx.pop()?;
+        let ptr = gctx.pop_ptr()?;
+        gctx.global_heap.store::<u8>(v, ptr)?;
         PcUpdate::Next
       }
       Inst::StH => {
-        let v = self.pop()?;
-        let ptr = self.pop_ptr()?;
-        heap.store::<u16>(v, ptr)?;
+        let v = gctx.pop()?;
+        let ptr = gctx.pop_ptr()?;
+        gctx.global_heap.store::<u16>(v, ptr)?;
         PcUpdate::Next
       }
       Inst::StW => {
-        let v = self.pop()?;
-        let ptr = self.pop_ptr()?;
-        heap.store::<u32>(v, ptr)?;
+        let v = gctx.pop()?;
+        let ptr = gctx.pop_ptr()?;
+        gctx.global_heap.store::<u32>(v, ptr)?;
         PcUpdate::Next
       }
       Inst::StD => {
-        let v = self.pop()?;
-        let ptr = self.pop_ptr()?;
-        heap.store::<u64>(v, ptr)?;
+        let v = gctx.pop()?;
+        let ptr = gctx.pop_ptr()?;
+        gctx.global_heap.store::<u64>(v, ptr)?;
         PcUpdate::Next
       }
       Inst::StBO(opr) => {
-        let v = self.pop()?;
+        let v = gctx.pop()?;
         let offset = opr * mem::size_of::<u8>() as i64;
-        let ptr = (self.pop_ptr()? as i64 + offset) as u64;
-        heap.store::<u8>(v, ptr)?;
+        let ptr = (gctx.pop_ptr()? as i64 + offset) as u64;
+        gctx.global_heap.store::<u8>(v, ptr)?;
         PcUpdate::Next
       }
       Inst::StHO(opr) => {
-        let v = self.pop()?;
+        let v = gctx.pop()?;
         let offset = opr * mem::size_of::<u16>() as i64;
-        let ptr = (self.pop_ptr()? as i64 + offset) as u64;
-        heap.store::<u16>(v, ptr)?;
+        let ptr = (gctx.pop_ptr()? as i64 + offset) as u64;
+        gctx.global_heap.store::<u16>(v, ptr)?;
         PcUpdate::Next
       }
       Inst::StWO(opr) => {
-        let v = self.pop()?;
+        let v = gctx.pop()?;
         let offset = opr * mem::size_of::<u32>() as i64;
-        let ptr = (self.pop_ptr()? as i64 + offset) as u64;
-        heap.store::<u32>(v, ptr)?;
+        let ptr = (gctx.pop_ptr()? as i64 + offset) as u64;
+        gctx.global_heap.store::<u32>(v, ptr)?;
         PcUpdate::Next
       }
       Inst::StDO(opr) => {
-        let v = self.pop()?;
+        let v = gctx.pop()?;
         let offset = opr * mem::size_of::<u64>() as i64;
-        let ptr = (self.pop_ptr()? as i64 + offset) as u64;
-        heap.store::<u64>(v, ptr)?;
+        let ptr = (gctx.pop_ptr()? as i64 + offset) as u64;
+        gctx.global_heap.store::<u64>(v, ptr)?;
         PcUpdate::Next
       }
       Inst::StV(opr) => {
-        let v = self.pop()?;
+        let v = gctx.pop()?;
         let locals = P::unwrap_val(self.var_stack.last_mut())?;
         locals.set_or_create(opr as usize, v);
         PcUpdate::Next
       }
       Inst::StG(opr) => {
-        let v = self.pop()?;
-        let globals = P::unwrap_val(self.var_stack.first_mut())?;
-        globals.set_or_create(opr as usize, v);
+        let v = gctx.pop()?;
+        gctx.global_vars.set_or_create(opr as usize, v);
         PcUpdate::Next
       }
       Inst::StA(opr) => {
         for index in (0..=opr as usize).rev() {
-          let v = self.pop()?;
+          let v = gctx.pop()?;
           P::unwrap_val(self.var_stack.last_mut())?.set_or_create(index, v);
         }
         PcUpdate::Next
       }
       Inst::New => {
-        if heap.should_collect() {
+        if gctx.global_heap.should_collect() {
           return ControlFlow::GC.into();
         }
-        let align = self.pop_int_ptr()?;
-        let size = self.pop_int_ptr()?;
-        self.push_ptr(heap.alloc(size, align)?);
+        let align = gctx.pop_int_ptr()?;
+        let size = gctx.pop_int_ptr()?;
+        let ptr = gctx.global_heap.alloc(size, align)?;
+        gctx.push_ptr(ptr);
         PcUpdate::Next
       }
       Inst::NewO => {
-        if heap.should_collect() {
+        if gctx.global_heap.should_collect() {
           return ControlFlow::GC.into();
         }
-        let obj_ptr = self.pop_ptr()?;
-        self.push_ptr(heap.new_object(obj_ptr, source)?);
+        let obj_ptr = gctx.pop_ptr()?;
+        let ptr = gctx.global_heap.new_object(obj_ptr, self.source)?;
+        gctx.push_ptr(ptr);
         PcUpdate::Next
       }
       Inst::NewOC(opr) => {
-        if heap.should_collect() {
+        if gctx.global_heap.should_collect() {
           return ControlFlow::GC.into();
         }
-        let c = P::unwrap_val(module.consts.get(opr as usize))?;
+        let c = P::unwrap_val(gctx.module.consts.get(opr as usize))?;
         let obj_ptr = P::obj_ptr_from_const(c)?;
-        self.push_ptr(heap.new_object(obj_ptr, source)?);
+        let ptr = gctx.global_heap.new_object(obj_ptr, self.source)?;
+        gctx.push_ptr(ptr);
         PcUpdate::Next
       }
       Inst::NewA => {
-        if heap.should_collect() {
+        if gctx.global_heap.should_collect() {
           return ControlFlow::GC.into();
         }
-        let len = self.pop_int_ptr()?;
-        let obj_ptr = self.pop_ptr()?;
-        self.push_ptr(heap.new_array(obj_ptr, len, source)?);
+        let len = gctx.pop_int_ptr()?;
+        let obj_ptr = gctx.pop_ptr()?;
+        let ptr = gctx.global_heap.new_array(obj_ptr, len, self.source)?;
+        gctx.push_ptr(ptr);
         PcUpdate::Next
       }
       Inst::NewAC(opr) => {
-        if heap.should_collect() {
+        if gctx.global_heap.should_collect() {
           return ControlFlow::GC.into();
         }
-        let len = self.pop_int_ptr()?;
-        let c = P::unwrap_val(module.consts.get(opr as usize))?;
+        let len = gctx.pop_int_ptr()?;
+        let c = P::unwrap_val(gctx.module.consts.get(opr as usize))?;
         let obj_ptr = P::obj_ptr_from_const(c)?;
-        self.push_ptr(heap.new_array(obj_ptr, len, source)?);
+        let ptr = gctx.global_heap.new_array(obj_ptr, len, self.source)?;
+        gctx.push_ptr(ptr);
         PcUpdate::Next
       }
       Inst::Del => {
-        let ptr = self.pop_ptr()?;
-        heap.dealloc(ptr);
+        let ptr = gctx.pop_ptr()?;
+        gctx.global_heap.dealloc(ptr);
         PcUpdate::Next
       }
       Inst::Load => {
-        let ptr = self.pop_ptr()?;
+        let ptr = gctx.pop_ptr()?;
         return ControlFlow::LoadModule(ptr).into();
       }
       Inst::LoadC(opr) => {
-        let c = P::unwrap_val(module.consts.get(opr as usize))?;
+        let c = P::unwrap_val(gctx.module.consts.get(opr as usize))?;
         let ptr = P::str_ptr_from_const(c)?;
         return ControlFlow::LoadModule(ptr).into();
       }
       Inst::LoadM => {
-        let size = self.pop_int_ptr()?;
-        let ptr = self.pop_ptr()?;
+        let size = gctx.pop_int_ptr()?;
+        let ptr = gctx.pop_ptr()?;
         return ControlFlow::LoadModuleMem(ptr, size).into();
       }
       Inst::Unload => {
-        let handle = self.pop_int_ptr()?;
+        let handle = gctx.pop_int_ptr()?;
         return ControlFlow::UnloadModule(handle).into();
       }
       Inst::Bz(opr) => {
-        if self.pop_any()? == 0 {
+        if gctx.pop_any()? == 0 {
           PcUpdate::Set((self.pc as i64 + opr) as u64)
         } else {
           PcUpdate::Next
         }
       }
       Inst::Bnz(opr) => {
-        if self.pop_any()? != 0 {
+        if gctx.pop_any()? != 0 {
           PcUpdate::Set((self.pc as i64 + opr) as u64)
         } else {
           PcUpdate::Next
@@ -529,25 +468,24 @@ where
       Inst::Jmp(opr) => PcUpdate::Set((self.pc as i64 + opr) as u64),
       Inst::Call(opr) => {
         self.var_stack.push(Vars::new());
-        P::unwrap_val(self.ra_stack.last_mut())?.push(self.pc + 1);
+        self.ra_stack.push(self.pc + 1);
         PcUpdate::Set((self.pc as i64 + opr) as u64)
       }
       Inst::CallExt => {
-        let ptr = self.pop_ptr()?;
-        let handle = self.pop_int_ptr()?;
+        let ptr = gctx.pop_ptr()?;
+        let handle = gctx.pop_int_ptr()?;
         return ControlFlow::CallExt(handle, ptr).into();
       }
       Inst::CallExtC(opr) => {
-        let handle = self.pop_int_ptr()?;
-        let c = P::unwrap_val(module.consts.get(opr as usize))?;
+        let handle = gctx.pop_int_ptr()?;
+        let c = P::unwrap_val(gctx.module.consts.get(opr as usize))?;
         let ptr = P::str_ptr_from_const(c)?;
         return ControlFlow::CallExt(handle, ptr).into();
       }
       Inst::Ret => {
-        let pcu = if let Some(pc) = P::unwrap_val(self.ra_stack.last_mut())?.pop() {
+        let pcu = if let Some(pc) = self.ra_stack.pop() {
           PcUpdate::Set(pc)
         } else {
-          self.ra_stack.pop();
           return ControlFlow::Stop.into();
         };
         self.var_stack.pop();
@@ -584,24 +522,24 @@ where
       Inst::GeU => binary!((lhs, rhs): u64, (lhs >= rhs) as u64),
       Inst::Neg => unary!(s0: u64, !s0 + 1),
       Inst::Add => {
-        let rhs = self.pop()?;
-        let lhs = self.pop()?;
+        let rhs = gctx.pop()?;
+        let lhs = gctx.pop()?;
         let sum = P::get_int_ptr(&lhs)?.wrapping_add(P::get_int_ptr(&rhs)?);
         if P::ptr_or_none(&lhs).is_some() ^ P::ptr_or_none(&rhs).is_some() {
-          self.push_ptr(sum);
+          gctx.push_ptr(sum);
         } else {
-          self.push_int(sum);
+          gctx.push_int(sum);
         }
         PcUpdate::Next
       }
       Inst::Sub => {
-        let rhs = self.pop()?;
-        let lhs = self.pop()?;
+        let rhs = gctx.pop()?;
+        let lhs = gctx.pop()?;
         let sub = P::get_int_ptr(&lhs)?.wrapping_sub(P::get_int_ptr(&rhs)?);
         if P::ptr_or_none(&lhs).is_some() {
-          self.push_ptr(sub);
+          gctx.push_ptr(sub);
         } else {
-          self.push_int(sub);
+          gctx.push_int(sub);
         }
         PcUpdate::Next
       }
@@ -654,9 +592,92 @@ where
   }
 }
 
-impl<P: Policy> Default for Context<P> {
-  fn default() -> Self {
-    Self::new()
+/// Kind of destructor.
+#[derive(PartialEq, Eq)]
+pub enum DestructorKind {
+  /// Destructor.
+  Destructor,
+  /// Terminator, for destructing all heap objects.
+  Terminator,
+}
+
+/// Global context, shared by multiple contexts.
+pub struct GlobalContext<'vm, P: Policy> {
+  pub module: &'vm Module,
+  pub global_heap: &'vm mut GlobalHeap<P>,
+  pub global_vars: &'vm mut Vars<P::Value>,
+  pub value_stack: &'vm mut Vec<P::Value>,
+}
+
+impl<'vm, P: Policy> GlobalContext<'vm, P> {
+  /// Returns the instruction at the given PC.
+  fn inst(&self, pc: u64) -> Inst {
+    self.module.insts[pc as usize]
+  }
+
+  /// Pushes a value to the value stack.
+  fn push(&mut self, v: P::Value) {
+    self.value_stack.push(v)
+  }
+
+  /// Pushes an integer to the value stack.
+  fn push_int(&mut self, i: u64) {
+    self.push(P::int_val(i))
+  }
+
+  /// Pushes a 32-bit floating point to the value stack.
+  fn push_f32(&mut self, f: f32) {
+    self.push(P::f32_val(f))
+  }
+
+  /// Pushes a 64-bit floating point to the value stack.
+  fn push_f64(&mut self, f: f64) {
+    self.push(P::f64_val(f))
+  }
+
+  /// Pushes a pointer to the value stack.
+  fn push_ptr(&mut self, p: u64) {
+    self.push(P::ptr_val(p))
+  }
+
+  /// Pops a value from the value stack.
+  fn pop(&mut self) -> Result<P::Value, P::Error> {
+    P::unwrap_val(self.value_stack.pop())
+  }
+
+  /// Pops an integer/pointer from the value stack.
+  fn pop_int_ptr(&mut self) -> Result<u64, P::Error> {
+    P::get_int_ptr(&self.pop()?)
+  }
+
+  /// Pops a 32-bit floating point from the value stack.
+  fn pop_f32(&mut self) -> Result<f32, P::Error> {
+    P::get_f32(&self.pop()?)
+  }
+
+  /// Pops a 64-bit floating point from the value stack.
+  fn pop_f64(&mut self) -> Result<f64, P::Error> {
+    P::get_f64(&self.pop()?)
+  }
+
+  /// Pops a pointer from the value stack.
+  fn pop_ptr(&mut self) -> Result<u64, P::Error> {
+    P::get_ptr(&self.pop()?)
+  }
+
+  /// Pops a untyped value from the value stack.
+  fn pop_any(&mut self) -> Result<u64, P::Error> {
+    Ok(P::get_any(&self.pop()?))
+  }
+
+  /// Peeks the last value in the value stack.
+  fn peek_s0(&self) -> Result<&P::Value, P::Error> {
+    P::unwrap_val(self.value_stack.last())
+  }
+
+  /// Peeks the last mutable value in the value stack.
+  fn peek_s0_mut(&mut self) -> Result<&mut P::Value, P::Error> {
+    P::unwrap_val(self.value_stack.last_mut())
   }
 }
 
