@@ -122,9 +122,9 @@ mod test {
       vm! {
         modules: {
           main: {
-            insts: [Ret, StA(1), LdV(0), LdV(1), Add, Ret],
+            insts: [Pop, Ret, StA(1), LdV(0), LdV(1), Add, Ret],
             consts: [],
-            exports: ["main" => { pc: 1, num_args: 2, num_rets: 1 }],
+            exports: ["main" => { pc: 2, num_args: 2, num_rets: 1 }],
           },
         },
         main: main,
@@ -145,6 +145,7 @@ mod test {
         modules: {
           main: {
             insts: [
+              Pop,
               Ret,
             // fib:
               StA(0),
@@ -170,7 +171,7 @@ mod test {
               Ret,
             ],
             consts: [],
-            exports: ["main" => { pc: 18, num_args: 1, num_rets: 1 }],
+            exports: ["main" => { pc: 19, num_args: 1, num_rets: 1 }],
           },
         },
         main: main,
@@ -196,6 +197,7 @@ mod test {
         modules: {
           main: {
             insts: [
+              Pop,
               Ret,
 
             // main:
@@ -312,7 +314,7 @@ mod test {
                 managed_ptr: ManagedPtr { len: 2, offsets: [0, 1] },
               },
             ],
-            exports: ["main" => { pc: 1, num_args: 2, num_rets: 1 }],
+            exports: ["main" => { pc: 2, num_args: 2, num_rets: 1 }],
           },
         },
         main: main,
@@ -332,7 +334,6 @@ mod test {
         modules: {
           main: {
             insts: [
-              PushU(1),
               StG(0),
               Ret,
 
@@ -342,29 +343,29 @@ mod test {
               Ret,
 
             // main:
-              StA(2),
+              StA(1),
               // pass handle to module `counter`
+              LdG(0),
               LdV(0),
-              LdV(1),
               CallExtC(1), // counter.set_g1
-              LdV(2),
+              LdV(1),
             // loop_start:
               Dup,
               Bz(10), // loop_end
               // set v3
-              LdV(1),
+              LdV(0),
+              CallExtC(0), // counter.counter
+              StV(2),
+              // set v4
+              LdV(0),
               CallExtC(0), // counter.counter
               StV(3),
-              // set v4
-              LdV(1),
-              CallExtC(0), // counter.counter
-              StV(4),
               PushU(1),
               Sub,
               Jmp(-10), // loop_start
             // loop_end:
+              LdV(2),
               LdV(3),
-              LdV(4),
               Ret,
             ],
             consts: [
@@ -378,12 +379,13 @@ mod test {
               },
             ],
             exports: [
-              "main" => { pc: 6, num_args: 3, num_rets: 2 },
-              "add1" => { pc: 3, num_args: 1, num_rets: 1, },
+              "main" => { pc: 5, num_args: 2, num_rets: 2 },
+              "add1" => { pc: 2, num_args: 1, num_rets: 1, },
             ],
           },
           counter: {
             insts: [
+              Pop,
               PushU(0),
               StG(0),
               Ret,
@@ -407,13 +409,13 @@ mod test {
               },
             ],
             exports: [
-              "counter" => { pc: 3, num_args: 0, num_rets: 1 },
-              "set_g1" => { pc: 9, num_args: 1, num_rets: 0 },
+              "counter" => { pc: 4, num_args: 0, num_rets: 1 },
+              "set_g1" => { pc: 10, num_args: 1, num_rets: 0 },
             ],
           },
         },
         main: main,
-        args: [u64: main.into(), u64: counter.into(), u64: n],
+        args: [u64: counter.into(), u64: n],
         results: (u64, u64),
       }
     }
@@ -431,6 +433,7 @@ mod test {
         modules: {
           main: {
             insts: [
+              Pop,
               PushU(0),
               StG(0),
               Ret,
@@ -460,11 +463,11 @@ mod test {
               Object {
                 size: 64,
                 align: 1,
-                destructor: 12,
+                destructor: 13,
                 managed_ptr: ManagedPtr { len: 0, offsets: [] },
               },
             ],
-            exports: ["main" => { pc: 3, num_args: 1, num_rets: 0 }],
+            exports: ["main" => { pc: 4, num_args: 1, num_rets: 0 }],
           },
         },
         main: main,
