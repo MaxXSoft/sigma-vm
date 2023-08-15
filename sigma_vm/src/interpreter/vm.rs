@@ -2,7 +2,7 @@ use crate::bytecode::consts::{Const, HeapConst, Str};
 use crate::bytecode::export::{ExportInfo, NumArgs};
 use crate::bytecode::insts::Inst;
 use crate::interpreter::context::{Context, DestructorKind, GlobalContext};
-use crate::interpreter::gc::{ContextRoots, GarbageCollector, ModuleRoots, Roots};
+use crate::interpreter::gc::{GarbageCollector, ModuleRoots, Roots};
 use crate::interpreter::heap::{Heap, Obj, ObjKind};
 use crate::interpreter::loader::{Error, Loader, Source};
 use crate::interpreter::policy::Policy;
@@ -96,7 +96,7 @@ impl<P: Policy> VM<P> {
     let croots = contexts
       .iter()
       .chain(iter::once(context))
-      .map(|c| ContextRoots { vars: &c.var_stack });
+      .map(|c| c.roots());
     self.global_heap.gc.collect(
       &self.global_heap.heap,
       Roots {
@@ -326,7 +326,6 @@ impl<P: Policy> GlobalHeap<P> {
   }
 }
 
-// TODO: move to new module
 /// Scheduler for running contexts.
 struct Scheduler<'vm, P: Policy> {
   vm: &'vm mut VM<P>,
