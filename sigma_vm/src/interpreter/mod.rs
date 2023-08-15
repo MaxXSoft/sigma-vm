@@ -98,6 +98,7 @@ mod test {
         insts![$($insts)*],
       ).unwrap();)*
       let _rets = vm.call($main, "main", [$(value!($aty: $ae)),*]).unwrap();
+      vm.terminate().unwrap();
       vm!(@results vm, $main, _rets, $($rs)+)
     }};
     (@results $vm:ident, $main:ident, $values:ident, vm_main $(,)?) => { ($vm, $main) };
@@ -426,7 +427,7 @@ mod test {
   #[test]
   fn destructor() {
     fn obj_counter(n: u64) -> u64 {
-      let (mut vm, main) = vm! {
+      let (vm, main) = vm! {
         modules: {
           main: {
             insts: [
@@ -470,7 +471,7 @@ mod test {
         args: [u64: n],
         results: vm_main,
       };
-      Sap::get_int_ptr(vm.context(main).globals().get(0).unwrap()).unwrap()
+      Sap::get_int_ptr(vm.globals(main).unwrap().get(0).unwrap()).unwrap()
     }
 
     // TODO: debug
