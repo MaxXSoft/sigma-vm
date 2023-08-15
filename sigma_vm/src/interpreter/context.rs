@@ -1,5 +1,6 @@
 use crate::bytecode::insts::Inst;
 use crate::bytecode::module::Module;
+use crate::interpreter::gc::ContextRoots;
 use crate::interpreter::loader::Source;
 use crate::interpreter::policy::Policy;
 use crate::interpreter::vm::{ControlFlow, GlobalHeap, Vars};
@@ -79,6 +80,13 @@ impl<P: Policy> Context<P> {
       destructor_kind: None,
       var_stack: self.var_stack,
       ra_stack: self.ra_stack,
+    }
+  }
+
+  /// Returns GC roots of the current context.
+  pub(super) fn roots(&self) -> ContextRoots<P> {
+    ContextRoots {
+      vars: &self.var_stack,
     }
   }
 }
