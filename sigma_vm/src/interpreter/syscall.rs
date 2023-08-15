@@ -96,9 +96,8 @@ where
   }
 
   /// Performs a native function call.
-  fn native_call<'vm>(state: VmState<'vm, P, H>) -> Result<ControlFlow, P::Error> {
-    todo!();
-    Ok(ControlFlow::Continue)
+  fn native_call<'vm>(_: VmState<'vm, P, H>) -> Result<ControlFlow, P::Error> {
+    unimplemented!("native function call")
   }
 
   /// Returns size of stack.
