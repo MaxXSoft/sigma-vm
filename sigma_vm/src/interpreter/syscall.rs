@@ -49,6 +49,8 @@ where
   H: Heap,
 {
   handlers: HashMap<i64, Box<dyn Handler<P, H>>>,
+  loaded_libs: HashMap<u64, Library>,
+  next_lib_handle: u64,
 }
 
 impl<P, H> Resolver<P, H>
@@ -60,6 +62,8 @@ where
   pub(super) fn new() -> Self {
     Self {
       handlers: HashMap::new(),
+      loaded_libs: HashMap::new(),
+      next_lib_handle: 1,
     }
   }
 
@@ -70,12 +74,14 @@ where
     state: VmState<P, H>,
   ) -> Result<ControlFlow, P::Error> {
     match syscall {
-      0 => Self::native_call(state),
-      1 => Ok(ControlFlow::Terminate),
-      2 => Ok(ControlFlow::GC),
-      3 => Self::stack_length(state),
-      4 => Self::del(state),
-      5 => Self::unload(state),
+      0 => self.native_load(state),
+      1 => self.native_unload(state),
+      2 => self.native_call(state),
+      3 => Ok(ControlFlow::Terminate),
+      4 => Ok(ControlFlow::GC),
+      5 => Self::stack_length(state),
+      6 => Self::del(state),
+      7 => Self::unload(state),
       _ => match self.handlers.get_mut(&syscall) {
         Some(handler) => handler.handle(state),
         None => P::report_invalid_syscall().map(|_| ControlFlow::Continue),
@@ -97,21 +103,57 @@ where
     self.handlers.insert(syscall, handler);
   }
 
+  /// Loads a native shared library.
+  ///
+  /// Stack layout:
+  /// * s0 (TOS): pointer to library path.
+  ///
+  /// Stack layout after call:
+  /// * s0 (TOS): library handle or zero (failed).
+  fn native_load(&mut self, state: VmState<P, H>) -> Result<ControlFlow, P::Error> {
+    // get library path
+    let path_ptr = P::get_ptr(&P::unwrap_val(state.value_stack.pop())?)?;
+    let path = P::utf8_str(state.heap, path_ptr)?;
+    // load library
+    let handle = if let Ok(lib) = unsafe { Library::new(path) } {
+      let handle = self.next_lib_handle;
+      self.next_lib_handle += 1;
+      self.loaded_libs.insert(handle, lib);
+      handle
+    } else {
+      0
+    };
+    // update stack
+    state.value_stack.push(P::int_val(handle));
+    Ok(ControlFlow::Continue)
+  }
+
+  /// Unloads a native shared library.
+  ///
+  /// Stack layout:
+  /// * s0 (TOS): library handle.
+  fn native_unload(&mut self, state: VmState<P, H>) -> Result<ControlFlow, P::Error> {
+    // get handle
+    let handle = P::get_int_ptr(&P::unwrap_val(state.value_stack.pop())?)?;
+    // remove the corresponding library
+    self.loaded_libs.remove(&handle);
+    Ok(ControlFlow::Continue)
+  }
+
   /// Performs a native function call.
   ///
   /// Stack layout:
   /// * s0 (TOS): pointer to function name.
-  /// * s1 (TOS): pointer to library path.
+  /// * s1: library handle.
   /// * s2: argument number.
   /// * s3: arguments n - 1.
   /// * ...
   /// * s{n + 2}: arguments 0.
-  fn native_call(state: VmState<P, H>) -> Result<ControlFlow, P::Error> {
-    // get name and path
+  fn native_call(&self, state: VmState<P, H>) -> Result<ControlFlow, P::Error> {
+    // get name and handle
     let name_ptr = P::get_ptr(&P::unwrap_val(state.value_stack.pop())?)?;
     let name = P::utf8_str(state.heap, name_ptr)?;
-    let path_ptr = P::get_ptr(&P::unwrap_val(state.value_stack.pop())?)?;
-    let path = P::utf8_str(state.heap, path_ptr)?;
+    let handle = P::get_int_ptr(&P::unwrap_val(state.value_stack.pop())?)?;
     // get arguments
     let num_args = P::get_int_ptr(&P::unwrap_val(state.value_stack.pop())?)?;
     let mut args = vec![];
@@ -119,9 +161,9 @@ where
       args.push(P::get_any(&P::unwrap_module(state.value_stack.pop())?));
     }
     args.reverse();
-    // load library and call the native function
+    // get library and call the native function
+    let lib = P::unwrap_module(self.loaded_libs.get(&handle))?;
     let ret_vals = unsafe {
-      let lib = P::unwrap_module(Library::new(path).ok())?;
       let func: Symbol<ffi::NativeFn> = P::unwrap_module(lib.get(name.as_bytes()).ok())?;
       func(ffi::VmState {
         heap: &mut (state.heap as &mut dyn ffi::HeapWrapper),
