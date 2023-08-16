@@ -650,7 +650,7 @@ pub(super) enum ControlFlow {
   LoadModuleMem(Ptr, u64),
   /// Requests an external call, with a module handle and
   /// a pointer to the function name.
-  CallExt(u64, Ptr),
+  CallExt(Ptr, Ptr),
   /// Requests a system call, with a system call number.
   Syscall(i64),
 }
