@@ -3,8 +3,8 @@ use crate::bytecode::export::{ExportInfo, NumArgs};
 use crate::bytecode::insts::Inst;
 use crate::interpreter::context::{Context, DestructorKind, GlobalContext};
 use crate::interpreter::gc::{GarbageCollector, ModuleRoots, Roots};
-use crate::interpreter::heap::{Heap, Obj, ObjKind, Ptr};
-use crate::interpreter::loader::{Error, Loader, Source};
+use crate::interpreter::heap::{Heap, Meta, Obj, ObjKind, Ptr};
+use crate::interpreter::loader::{Error, Loader};
 use crate::interpreter::native::NativeLoader;
 use crate::interpreter::policy::Policy;
 use crate::interpreter::syscall::{Resolver, VmState};
@@ -23,7 +23,7 @@ pub struct VM<P: Policy> {
   resolver: Resolver<P, P::Heap>,
   global_heap: GlobalHeap<P>,
   value_stack: Vec<P::Value>,
-  module_globals: HashMap<Source, Vars<P::Value>>,
+  module_globals: HashMap<Ptr, Vars<P::Value>>,
 }
 
 impl<P: Policy> VM<P> {
@@ -55,22 +55,22 @@ impl<P: Policy> VM<P> {
   }
 
   /// Loads a module from the given path.
-  pub fn load_from_path<T>(&mut self, path: T) -> Result<Source, Error>
+  pub fn load_from_path<T>(&mut self, path: T) -> Result<Ptr, Error>
   where
     T: AsRef<Path>,
   {
-    self.loader.load_from_path(path, &mut self.global_heap.heap)
+    self.loader.load_from_path(&mut self.global_heap.heap, path)
   }
 
   /// Loads a module from the given bytes.
-  pub fn load_from_bytes(&mut self, bytes: &[u8]) -> Result<Source, Error> {
+  pub fn load_from_bytes(&mut self, bytes: &[u8]) -> Result<Ptr, Error> {
     self
       .loader
-      .load_from_bytes(bytes, &mut self.global_heap.heap)
+      .load_from_bytes(&mut self.global_heap.heap, bytes)
   }
 
   /// Loads a module from the standard input.
-  pub fn load_from_stdin(&mut self) -> Result<Source, Error> {
+  pub fn load_from_stdin(&mut self) -> Result<Ptr, Error> {
     self.loader.load_from_stdin(&mut self.global_heap.heap)
   }
 
@@ -80,10 +80,10 @@ impl<P: Policy> VM<P> {
     consts: Box<[Const]>,
     exports: ExportInfo,
     insts: Box<[Inst]>,
-  ) -> Result<Source, Error> {
+  ) -> Result<Ptr, Error> {
     self
       .loader
-      .new_module(consts, exports, insts, &mut self.global_heap.heap)
+      .new_module(&mut self.global_heap.heap, consts, exports, insts)
   }
 
   /// Returns a reference to the heap.
@@ -93,7 +93,7 @@ impl<P: Policy> VM<P> {
 
   /// Returns global variables of the given module,
   /// or [`None`] if the module does not exist, not loaded or not initialized.
-  pub fn globals(&self, module: Source) -> Option<&Vars<P::Value>> {
+  pub fn globals(&self, module: Ptr) -> Option<&Vars<P::Value>> {
     self.module_globals.get(&module)
   }
 
@@ -141,7 +141,7 @@ where
   ///
   /// This method will retain the state of all contexts,
   /// call [`terminate`](VM#method.terminate) to stop the VM completely.
-  pub fn run_main<I, S>(&mut self, module: Source, args: I) -> Result<Vec<P::Value>, P::Error>
+  pub fn run_main<I, S>(&mut self, module: Ptr, args: I) -> Result<Vec<P::Value>, P::Error>
   where
     I: IntoIterator<Item = S>,
     S: AsRef<str>,
@@ -160,7 +160,7 @@ where
   ///
   /// This method will retain the state of all contexts,
   /// call [`terminate`](VM#method.terminate) to stop the VM completely.
-  pub fn call<I>(&mut self, module: Source, func: &str, args: I) -> Result<Vec<P::Value>, P::Error>
+  pub fn call<I>(&mut self, module: Ptr, func: &str, args: I) -> Result<Vec<P::Value>, P::Error>
   where
     I: IntoIterator<Item = P::Value>,
   {
@@ -254,22 +254,17 @@ impl<P: Policy> GlobalHeap<P> {
   /// Allocates a new heap memory.
   pub(super) fn alloc(&mut self, size: u64, align: u64) -> Result<Ptr, P::Error> {
     let layout = P::layout(size as usize, align as usize)?;
-    Ok(self.heap.alloc(layout))
+    Ok(self.heap.alloc(layout, Meta::Raw))
   }
 
   /// Allocates heap memory for the given object metadata pointer.
-  pub(super) fn new_object(&mut self, obj_ptr: Ptr, source: Source) -> Result<Ptr, P::Error> {
+  pub(super) fn new_object(&mut self, obj_ptr: Ptr, module: Ptr) -> Result<Ptr, P::Error> {
     let object = P::object(&self.heap, obj_ptr)?;
-    self.alloc_obj(object.size, object.align, ObjKind::Obj, obj_ptr, source)
+    self.alloc_obj(object.size, object.align, ObjKind::Obj, obj_ptr, module)
   }
 
   /// Allocates array for the given object metadata pointer.
-  pub(super) fn new_array(
-    &mut self,
-    obj_ptr: Ptr,
-    len: u64,
-    source: Source,
-  ) -> Result<Ptr, P::Error> {
+  pub(super) fn new_array(&mut self, obj_ptr: Ptr, len: u64, module: Ptr) -> Result<Ptr, P::Error> {
     let object = P::object(&self.heap, obj_ptr)?;
     let size = if len != 0 {
       object.aligned_size() * (len - 1) + object.size
@@ -281,7 +276,7 @@ impl<P: Policy> GlobalHeap<P> {
       object.align,
       ObjKind::Array(len as usize),
       obj_ptr,
-      source,
+      module,
     )
   }
 
@@ -292,16 +287,16 @@ impl<P: Policy> GlobalHeap<P> {
     align: u64,
     kind: ObjKind,
     obj_ptr: Ptr,
-    source: Source,
+    module: Ptr,
   ) -> Result<Ptr, P::Error> {
     let layout = P::layout(size as usize, align as usize)?;
-    Ok(self.heap.alloc_obj(
+    Ok(self.heap.alloc(
       layout,
-      Obj {
+      Meta::Obj(Obj {
         kind,
         ptr: obj_ptr,
-        source,
-      },
+        module,
+      }),
     ))
   }
 
@@ -311,7 +306,7 @@ impl<P: Policy> GlobalHeap<P> {
     let bs = s.as_bytes();
     let len = bs.len() as u64;
     let layout = Layout::from_size_align(Str::<[u8]>::size(len), Str::<[u8]>::ALIGN).unwrap();
-    let ptr = self.heap.alloc(layout);
+    let ptr = self.heap.alloc(layout, Meta::Raw);
     // write string data
     let addr = self.heap.addr_mut(ptr);
     // safety: `Str`'s memory layout is same as the following code's description
@@ -324,6 +319,17 @@ impl<P: Policy> GlobalHeap<P> {
       );
     }
     ptr
+  }
+
+  /// Deallocates the given pointer or module/native handle.
+  fn dealloc(&mut self, loader: &mut Loader, native_loader: &mut NativeLoader, ptr: Ptr) {
+    match self.heap.meta(ptr) {
+      Some(Meta::Module) => {
+        loader.unload(&mut self.heap, ptr);
+      }
+      Some(Meta::Native) => native_loader.unload(&mut self.heap, ptr),
+      _ => self.heap.dealloc(ptr),
+    };
   }
 
   /// Checks if the garbage collector succeeded in reducing the heap size.
@@ -371,15 +377,15 @@ impl<'vm, P: Policy> Scheduler<'vm, P> {
         None => continue,
       };
       // check if the module is initialized
-      let globals = if let Some(globals) = self.vm.module_globals.get_mut(&context.source) {
+      let globals = if let Some(globals) = self.vm.module_globals.get_mut(&context.module) {
         globals
       } else {
-        self.vm.module_globals.insert(context.source, Vars::new());
+        self.vm.module_globals.insert(context.module, Vars::new());
         self.init(context);
         continue;
       };
       // run the context
-      let module = P::unwrap_module(self.vm.loader.module(context.source))?;
+      let module = P::unwrap_module(self.vm.loader.module(context.module))?;
       let cf = context.run(GlobalContext {
         module,
         global_heap: &mut self.vm.global_heap,
@@ -404,7 +410,10 @@ impl<'vm, P: Policy> Scheduler<'vm, P> {
     // deallocate all pending pointers
     if context.destructor_kind.is_some() {
       for ptr in mem::take(&mut self.pending_ptrs) {
-        self.vm.global_heap.heap.dealloc(ptr);
+        self
+          .vm
+          .global_heap
+          .dealloc(&mut self.vm.loader, &mut self.vm.native_loader, ptr);
       }
     }
     // handle terminator
@@ -428,13 +437,13 @@ impl<'vm, P: Policy> Scheduler<'vm, P> {
 
   /// Initializes the given context information.
   fn init(&mut self, context: Context<P>) {
-    let init = Context::init(context.source);
+    let init = Context::init(context.module);
     // check if some one is calling initializer
     if context.pc != 0 {
       // Push argument only when the initializer is called implicitly.
       // In other words, if it's called explicitly, the argument should
       // be pushed by the caller.
-      self.vm.value_stack.push(P::int_val(context.source.into()));
+      self.vm.value_stack.push(P::ptr_val(context.module));
       self.contexts.push(context);
     }
     self.contexts.push(init);
@@ -457,7 +466,10 @@ impl<'vm, P: Policy> Scheduler<'vm, P> {
         self.pending_ptrs.push(ptr);
       } else {
         // no destructor, just deallocate
-        self.vm.global_heap.heap.dealloc(ptr);
+        self
+          .vm
+          .global_heap
+          .dealloc(&mut self.vm.loader, &mut self.vm.native_loader, ptr);
       }
     }
     Ok(())
@@ -466,7 +478,7 @@ impl<'vm, P: Policy> Scheduler<'vm, P> {
   /// Schedules the destructor of the given pointer to run.
   /// Returns `true` if the pointer has a destructor.
   fn schedule_destructor(&mut self, ptr: Ptr) -> Result<bool, P::Error> {
-    if let Some(obj) = self.vm.global_heap.heap.obj(ptr) {
+    if let Some(Meta::Obj(obj)) = self.vm.global_heap.heap.meta(ptr) {
       // get object metadata
       let object = P::object(&self.vm.global_heap.heap, obj.ptr)?;
       if object.destructor == 0 {
@@ -479,7 +491,7 @@ impl<'vm, P: Policy> Scheduler<'vm, P> {
             self.vm.value_stack.push(P::ptr_val(ptr));
             self
               .contexts
-              .push(Context::call(obj.source, object.destructor))
+              .push(Context::call(obj.module, object.destructor))
           }
           ObjKind::Array(len) => {
             // visit all objects
@@ -489,7 +501,7 @@ impl<'vm, P: Policy> Scheduler<'vm, P> {
               self.vm.value_stack.push(P::ptr_val(ptr));
               self
                 .contexts
-                .push(Context::call(obj.source, object.destructor));
+                .push(Context::call(obj.module, object.destructor));
             }
           }
         }
@@ -505,14 +517,14 @@ impl<'vm, P: Policy> Scheduler<'vm, P> {
   fn load_module(&mut self, context: Context<P>, ptr: Ptr) -> Result<(), P::Error> {
     // load module
     let path = P::utf8_str(&self.vm.global_heap.heap, ptr)?.to_string();
-    let handle = Source::from(
+    let handle = Ptr::from(
       self
         .vm
         .loader
-        .load_from_path(path, &mut self.vm.global_heap.heap),
+        .load_from_path(&mut self.vm.global_heap.heap, path),
     );
     // push handle to value stack
-    self.vm.value_stack.push(P::int_val(handle.into()));
+    self.vm.value_stack.push(P::ptr_val(handle));
     self.contexts.push(context.into_cont());
     Ok(())
   }
@@ -524,29 +536,28 @@ impl<'vm, P: Policy> Scheduler<'vm, P> {
     let addr = self.vm.global_heap.heap.addr(ptr);
     let bytes = unsafe { slice::from_raw_parts(addr as *const u8, len as usize) };
     // load module
-    let handle = Source::from(
+    let handle = Ptr::from(
       self
         .vm
         .loader
-        .load_from_bytes(bytes, &mut self.vm.global_heap.heap),
+        .load_from_bytes(&mut self.vm.global_heap.heap, bytes),
     );
     // push handle to value stack
-    self.vm.value_stack.push(P::int_val(handle.into()));
+    self.vm.value_stack.push(P::ptr_val(handle));
     self.contexts.push(context.into_cont());
     Ok(())
   }
 
   /// Calls an external function by the given handle and name pointer.
-  fn call_ext(&mut self, context: Context<P>, handle: u64, ptr: Ptr) -> Result<(), P::Error> {
+  fn call_ext(&mut self, context: Context<P>, handle: Ptr, ptr: Ptr) -> Result<(), P::Error> {
     // get the target module
-    let target = Source::from(handle);
-    let module = P::unwrap_module(self.vm.loader.module(target))?;
+    let module = P::unwrap_module(self.vm.loader.module(handle))?;
     // get call site information
     let name = P::utf8_str(&self.vm.global_heap.heap, ptr)?;
     let call_site = P::unwrap_module(module.call_site(name))?;
     // perform call
     self.contexts.push(context.into_cont());
-    self.contexts.push(Context::call(target, call_site.pc));
+    self.contexts.push(Context::call(handle, call_site.pc));
     Ok(())
   }
 
