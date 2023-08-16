@@ -1,6 +1,6 @@
-use crate::interpreter::heap::Heap;
-use crate::interpreter::loader::{Loader, Source};
-use crate::interpreter::native::{Native, NativeLoader};
+use crate::interpreter::heap::{Heap, Ptr};
+use crate::interpreter::loader::Loader;
+use crate::interpreter::native::NativeLoader;
 use crate::interpreter::policy::Policy;
 use crate::interpreter::vm::Vars;
 use std::collections::HashMap;
@@ -30,7 +30,7 @@ where
   /// Value stack.
   pub value_stack: &'vm mut Vec<P::Value>,
   /// Handle of all initialized modules, and their global variables.
-  pub module_globals: &'vm mut HashMap<Source, Vars<P::Value>>,
+  pub module_globals: &'vm mut HashMap<Ptr, Vars<P::Value>>,
 }
 
 /// Control flow after the system call.
@@ -112,9 +112,9 @@ where
     let path_ptr = P::get_ptr(&P::unwrap_val(state.value_stack.pop())?)?;
     let path = P::utf8_str(state.heap, path_ptr)?;
     // load library
-    let handle = Native::from(state.native_loader.load(path));
+    let handle = Ptr::from(state.native_loader.load(state.heap, path));
     // update stack
-    state.value_stack.push(P::int_val(handle.into()));
+    state.value_stack.push(P::ptr_val(handle));
     Ok(ControlFlow::Continue)
   }
 
@@ -124,9 +124,9 @@ where
   /// * s0 (TOS): library handle.
   fn native_unload(&mut self, state: VmState<P, H>) -> Result<ControlFlow, P::Error> {
     // get handle
-    let handle = P::get_int_ptr(&P::unwrap_val(state.value_stack.pop())?)?;
+    let handle = P::get_ptr(&P::unwrap_val(state.value_stack.pop())?)?;
     // remove the corresponding library
-    state.native_loader.unload(Native::from(handle));
+    state.native_loader.unload(state.heap, handle);
     Ok(ControlFlow::Continue)
   }
 
@@ -143,7 +143,7 @@ where
     // get name and handle
     let name_ptr = P::get_ptr(&P::unwrap_val(state.value_stack.pop())?)?;
     let name = P::utf8_str(state.heap, name_ptr)?.to_string();
-    let handle = P::get_int_ptr(&P::unwrap_val(state.value_stack.pop())?)?;
+    let handle = P::get_ptr(&P::unwrap_val(state.value_stack.pop())?)?;
     // get arguments
     let num_args = P::get_int_ptr(&P::unwrap_val(state.value_stack.pop())?)?;
     let mut args = vec![];
@@ -152,11 +152,7 @@ where
     }
     args.reverse();
     // call the native function
-    let rets = unsafe {
-      state
-        .native_loader
-        .call(Native::from(handle), &name, state.heap, &args)
-    };
+    let rets = unsafe { state.native_loader.call(handle, &name, state.heap, &args) };
     let rets = P::unwrap_module(rets.ok())?;
     // push return values to stack
     state
@@ -184,9 +180,9 @@ where
   /// Unloads module handle s0.
   fn unload(state: VmState<P, H>) -> Result<ControlFlow, P::Error> {
     let s0 = P::unwrap_val(state.value_stack.pop())?;
-    let source = Source::from(P::get_int_ptr(&s0)?);
-    state.loader.unload(source);
-    state.module_globals.remove(&source);
+    let handle = P::get_ptr(&s0)?;
+    state.loader.unload(state.heap, handle);
+    state.module_globals.remove(&handle);
     Ok(ControlFlow::Continue)
   }
 }
