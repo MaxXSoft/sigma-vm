@@ -73,7 +73,7 @@ where
       0 => Self::native_call(state),
       1 => Ok(ControlFlow::Terminate),
       2 => Ok(ControlFlow::GC),
-      3 => Self::stack_size(state),
+      3 => Self::stack_length(state),
       4 => Self::del(state),
       5 => Self::unload(state),
       _ => match self.handlers.get_mut(&syscall) {
@@ -137,8 +137,8 @@ where
     Ok(ControlFlow::Continue)
   }
 
-  /// Returns size of stack.
-  fn stack_size(state: VmState<P, H>) -> Result<ControlFlow, P::Error> {
+  /// Returns length of stack.
+  fn stack_length(state: VmState<P, H>) -> Result<ControlFlow, P::Error> {
     state
       .value_stack
       .push(P::int_val(state.value_stack.len() as u64));
