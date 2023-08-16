@@ -248,11 +248,13 @@ mod ffi {
     H: Heap,
   {
     fn alloc(&mut self, size: usize, align: usize) -> u64 {
-      self.alloc(Layout::from_size_align(size, align).unwrap())
+      self
+        .alloc(Layout::from_size_align(size, align).unwrap())
+        .into()
     }
 
     fn addr_mut(&mut self, ptr: u64) -> *mut () {
-      self.addr_mut(ptr)
+      self.addr_mut(ptr.into())
     }
   }
 
