@@ -1,10 +1,11 @@
 use crate::interpreter::loader::Source;
 use std::alloc::{self, Layout};
 use std::collections::{BTreeMap, HashMap};
-use std::{ops, slice};
+use std::{fmt, ops, slice};
 
 /// Heap pointer.
 #[repr(transparent)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Ptr(u64);
 
 impl From<u64> for Ptr {
@@ -55,6 +56,12 @@ impl ops::SubAssign<u64> for Ptr {
   }
 }
 
+impl fmt::Display for Ptr {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    write!(f, "{self:?}")
+  }
+}
+
 /// Managed heap interface.
 pub trait Heap {
   /// Creates a new heap.
@@ -62,34 +69,34 @@ pub trait Heap {
 
   /// Allocates a new memory with the given layout.
   /// Returns the pointer of the allocated memory.
-  fn alloc(&mut self, layout: Layout) -> u64;
+  fn alloc(&mut self, layout: Layout) -> Ptr;
 
   /// Allocates a new memory with the given layout and object metadata.
   /// Returns the pointer of the allocated memory.
-  fn alloc_obj(&mut self, layout: Layout, obj: Obj) -> u64;
+  fn alloc_obj(&mut self, layout: Layout, obj: Obj) -> Ptr;
 
   /// Deallocates the given pointer.
-  fn dealloc(&mut self, ptr: u64);
+  fn dealloc(&mut self, ptr: Ptr);
 
   /// Returns the size of all allocated memory in bytes.
   fn size(&self) -> usize;
 
   /// Returns the size of allocated memory of the given pointer, or [`None`]
   /// if the pointer is invalid.
-  fn size_of(&self, ptr: u64) -> Option<usize>;
+  fn size_of(&self, ptr: Ptr) -> Option<usize>;
 
   /// Returns the immutable memory address of the given pointer.
-  fn addr(&self, ptr: u64) -> *const ();
+  fn addr(&self, ptr: Ptr) -> *const ();
 
   /// Returns the mutable memory address of the given pointer.
-  fn addr_mut(&mut self, ptr: u64) -> *mut ();
+  fn addr_mut(&mut self, ptr: Ptr) -> *mut ();
 
   /// Returns a reference to the heap object metadata of the given pointer, or
   /// [`None`] if the corresponding heap memory is not allocated for an object.
-  fn obj(&self, ptr: u64) -> Option<&Obj>;
+  fn obj(&self, ptr: Ptr) -> Option<&Obj>;
 
   /// Returns a vector of pointers of all allocated memory.
-  fn ptrs(&self) -> Vec<u64>;
+  fn ptrs(&self) -> Vec<Ptr>;
 
   /// Resets the internal state.
   fn reset(&mut self);
@@ -119,21 +126,21 @@ pub enum ObjKind {
 /// Managed heap with memory out of bounds checking.
 pub trait CheckedHeap: Heap {
   /// Returns `true` if the given pointer and access length is valid.
-  fn is_valid(&self, ptr: u64, len: usize) -> bool;
+  fn is_valid(&self, ptr: Ptr, len: usize) -> bool;
 }
 
 /// Heap that uses system's allocator to allocate memory.
 #[derive(Default)]
 pub struct System {
-  mems: HashMap<u64, Mem>,
+  mems: HashMap<Ptr, Mem>,
   size: usize,
 }
 
 impl System {
   /// Allocates a new memory.
-  fn alloc(&mut self, layout: Layout, obj: Option<Obj>) -> u64 {
+  fn alloc(&mut self, layout: Layout, obj: Option<Obj>) -> Ptr {
     let mem = unsafe { Mem::new(layout, obj) };
-    let ptr = mem.data.as_ptr() as u64;
+    let ptr = (mem.data.as_ptr() as u64).into();
     self.mems.insert(ptr, mem);
     self.size += layout.size();
     ptr
@@ -145,15 +152,15 @@ impl Heap for System {
     Self::default()
   }
 
-  fn alloc(&mut self, layout: Layout) -> u64 {
+  fn alloc(&mut self, layout: Layout) -> Ptr {
     self.alloc(layout, None)
   }
 
-  fn alloc_obj(&mut self, layout: Layout, obj: Obj) -> u64 {
+  fn alloc_obj(&mut self, layout: Layout, obj: Obj) -> Ptr {
     self.alloc(layout, Some(obj))
   }
 
-  fn dealloc(&mut self, ptr: u64) {
+  fn dealloc(&mut self, ptr: Ptr) {
     if let Some(mem) = self.mems.remove(&ptr) {
       self.size -= mem.data.len();
     }
@@ -163,23 +170,23 @@ impl Heap for System {
     self.size
   }
 
-  fn size_of(&self, ptr: u64) -> Option<usize> {
+  fn size_of(&self, ptr: Ptr) -> Option<usize> {
     self.mems.get(&ptr).map(|m| m.data.len())
   }
 
-  fn addr(&self, ptr: u64) -> *const () {
-    ptr as *const ()
+  fn addr(&self, ptr: Ptr) -> *const () {
+    u64::from(ptr) as *const ()
   }
 
-  fn addr_mut(&mut self, ptr: u64) -> *mut () {
-    ptr as *mut ()
+  fn addr_mut(&mut self, ptr: Ptr) -> *mut () {
+    u64::from(ptr) as *mut ()
   }
 
-  fn obj(&self, ptr: u64) -> Option<&Obj> {
+  fn obj(&self, ptr: Ptr) -> Option<&Obj> {
     self.mems.get(&ptr).and_then(|m| m.obj.as_ref())
   }
 
-  fn ptrs(&self) -> Vec<u64> {
+  fn ptrs(&self) -> Vec<Ptr> {
     self.mems.keys().copied().collect()
   }
 
@@ -247,19 +254,19 @@ where
     }
   }
 
-  fn alloc(&mut self, layout: Layout) -> u64 {
+  fn alloc(&mut self, layout: Layout) -> Ptr {
     let ptr = self.heap.alloc(layout);
     self.add_range(self.addr(ptr), layout.size());
     ptr
   }
 
-  fn alloc_obj(&mut self, layout: Layout, obj: Obj) -> u64 {
+  fn alloc_obj(&mut self, layout: Layout, obj: Obj) -> Ptr {
     let ptr = self.heap.alloc_obj(layout, obj);
     self.add_range(self.addr(ptr), layout.size());
     ptr
   }
 
-  fn dealloc(&mut self, ptr: u64) {
+  fn dealloc(&mut self, ptr: Ptr) {
     // get left bound and right bound
     let l = self.addr(ptr) as usize;
     let prev_size = self.size();
@@ -285,23 +292,23 @@ where
     self.heap.size()
   }
 
-  fn size_of(&self, ptr: u64) -> Option<usize> {
+  fn size_of(&self, ptr: Ptr) -> Option<usize> {
     self.heap.size_of(ptr)
   }
 
-  fn addr(&self, ptr: u64) -> *const () {
+  fn addr(&self, ptr: Ptr) -> *const () {
     self.heap.addr(ptr)
   }
 
-  fn addr_mut(&mut self, ptr: u64) -> *mut () {
+  fn addr_mut(&mut self, ptr: Ptr) -> *mut () {
     self.heap.addr_mut(ptr)
   }
 
-  fn obj(&self, ptr: u64) -> Option<&Obj> {
+  fn obj(&self, ptr: Ptr) -> Option<&Obj> {
     self.heap.obj(ptr)
   }
 
-  fn ptrs(&self) -> Vec<u64> {
+  fn ptrs(&self) -> Vec<Ptr> {
     self.heap.ptrs()
   }
 
@@ -315,7 +322,7 @@ impl<H> CheckedHeap for Checked<H>
 where
   H: Heap,
 {
-  fn is_valid(&self, ptr: u64, len: usize) -> bool {
+  fn is_valid(&self, ptr: Ptr, len: usize) -> bool {
     if len == 0 {
       false
     } else {
