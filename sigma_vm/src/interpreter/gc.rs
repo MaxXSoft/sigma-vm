@@ -3,7 +3,7 @@ use crate::interpreter::heap::{Heap, Meta, ObjKind, Ptr};
 use crate::interpreter::policy::Policy;
 use crate::interpreter::vm::Vars;
 use std::collections::HashSet;
-use std::mem;
+use std::{iter, mem};
 
 /// Garbage collector interface.
 pub trait GarbageCollector {
@@ -77,6 +77,7 @@ where
 
 /// Garbage collection roots of contexts.
 pub struct ContextRoots<'gc, P: ?Sized + Policy> {
+  pub module: Ptr,
   pub vars: &'gc [Vars<P::Value>],
 }
 
@@ -89,6 +90,7 @@ where
       .vars
       .iter()
       .flat_map(|vs| vs.iter().filter_map(P::ptr_or_none))
+      .chain(iter::once(self.module))
   }
 }
 
