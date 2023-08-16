@@ -107,7 +107,7 @@ pub trait Heap {
 pub struct Obj {
   pub kind: ObjKind,
   /// Pointer to the real object metadata.
-  pub ptr: u64,
+  pub ptr: Ptr,
   /// Source of the module where the object was allocated.
   pub source: Source,
 }
