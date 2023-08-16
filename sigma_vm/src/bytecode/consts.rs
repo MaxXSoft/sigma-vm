@@ -1,6 +1,6 @@
 //! Definitions about constant pool.
 
-use crate::interpreter::heap::{Heap, Ptr};
+use crate::interpreter::heap::{Heap, Meta, Ptr};
 use crate::utils::{alloc_uninit, impl_try_from_int, Unsized};
 use std::alloc::Layout;
 use std::ptr::{self, Pointee};
@@ -126,7 +126,10 @@ impl Const {
     H: Heap,
   {
     let size = self.data.len();
-    let ptr = heap.alloc(Layout::from_size_align(size, self.kind.align()).unwrap());
+    let ptr = heap.alloc(
+      Layout::from_size_align(size, self.kind.align()).unwrap(),
+      Meta::Raw,
+    );
     unsafe { ptr::copy_nonoverlapping(self.data.as_ptr(), heap.addr_mut(ptr) as *mut u8, size) };
     HeapConst {
       kind: self.kind,
