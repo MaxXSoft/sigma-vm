@@ -2,14 +2,13 @@ use crate::bytecode::insts::Inst;
 use crate::bytecode::module::Module;
 use crate::interpreter::gc::ContextRoots;
 use crate::interpreter::heap::Ptr;
-use crate::interpreter::loader::Source;
 use crate::interpreter::policy::Policy;
 use crate::interpreter::vm::{ControlFlow, GlobalHeap, Vars};
 use std::mem;
 
 /// Execution context of virtual machine.
 pub(super) struct Context<P: Policy> {
-  pub(super) source: Source,
+  pub(super) module: Ptr,
   pub(super) pc: u64,
   pub(super) destructor_kind: Option<DestructorKind>,
   var_stack: Vec<Vars<P::Value>>,
@@ -18,9 +17,9 @@ pub(super) struct Context<P: Policy> {
 
 impl<P: Policy> Context<P> {
   /// Creates a new context for initialization.
-  pub(super) fn init(source: Source) -> Self {
+  pub(super) fn init(module: Ptr) -> Self {
     Self {
-      source,
+      module,
       pc: 0,
       destructor_kind: None,
       var_stack: vec![Vars::new()],
@@ -29,9 +28,9 @@ impl<P: Policy> Context<P> {
   }
 
   /// Creates a new context for function call.
-  pub(super) fn call(source: Source, pc: u64) -> Self {
+  pub(super) fn call(module: Ptr, pc: u64) -> Self {
     Self {
-      source,
+      module,
       pc,
       destructor_kind: None,
       var_stack: vec![Vars::new()],
@@ -42,7 +41,7 @@ impl<P: Policy> Context<P> {
   /// Creates a new context for terminator.
   pub(super) fn terminator() -> Self {
     Self {
-      source: Source::Invalid,
+      module: Ptr::null(),
       pc: 0,
       destructor_kind: Some(DestructorKind::Terminator),
       var_stack: vec![],
@@ -53,7 +52,7 @@ impl<P: Policy> Context<P> {
   /// Converts the current context into a new one for destructor.
   pub(super) fn into_destructor(self) -> Self {
     Self {
-      source: self.source,
+      module: self.module,
       pc: self.pc,
       destructor_kind: Some(DestructorKind::Destructor),
       var_stack: self.var_stack,
@@ -64,7 +63,7 @@ impl<P: Policy> Context<P> {
   /// Converts the current context into a new one for continue.
   pub(super) fn into_cont(self) -> Self {
     Self {
-      source: self.source,
+      module: self.module,
       pc: self.pc + 1,
       destructor_kind: None,
       var_stack: self.var_stack,
@@ -123,7 +122,7 @@ where
       (pop($v:ident: _)) => {
         let $v = gctx.pop_any()?;
       };
-      (push($v:expr, ptr)) => {
+      (push($v:expr, Ptr)) => {
         gctx.push_ptr($v);
       };
     }
@@ -393,7 +392,7 @@ where
           return ControlFlow::GC.into();
         }
         let obj_ptr = gctx.pop_ptr()?;
-        let ptr = gctx.global_heap.new_object(obj_ptr, self.source)?;
+        let ptr = gctx.global_heap.new_object(obj_ptr, self.module)?;
         gctx.push_ptr(ptr);
         PcUpdate::Next
       }
@@ -403,7 +402,7 @@ where
         }
         let c = P::unwrap_val(gctx.module.consts.get(opr as usize))?;
         let obj_ptr = P::obj_ptr_from_const(c)?;
-        let ptr = gctx.global_heap.new_object(obj_ptr, self.source)?;
+        let ptr = gctx.global_heap.new_object(obj_ptr, self.module)?;
         gctx.push_ptr(ptr);
         PcUpdate::Next
       }
@@ -413,7 +412,7 @@ where
         }
         let len = gctx.pop_int_ptr()?;
         let obj_ptr = gctx.pop_ptr()?;
-        let ptr = gctx.global_heap.new_array(obj_ptr, len, self.source)?;
+        let ptr = gctx.global_heap.new_array(obj_ptr, len, self.module)?;
         gctx.push_ptr(ptr);
         PcUpdate::Next
       }
@@ -424,7 +423,7 @@ where
         let len = gctx.pop_int_ptr()?;
         let c = P::unwrap_val(gctx.module.consts.get(opr as usize))?;
         let obj_ptr = P::obj_ptr_from_const(c)?;
-        let ptr = gctx.global_heap.new_array(obj_ptr, len, self.source)?;
+        let ptr = gctx.global_heap.new_array(obj_ptr, len, self.module)?;
         gctx.push_ptr(ptr);
         PcUpdate::Next
       }
@@ -579,7 +578,7 @@ where
       Inst::D2F => unary!(s0: f64, f32: s0 as f32),
       Inst::ITF => unary!(s0: u64, f32: unsafe { *(&s0 as *const _ as *const f32) }),
       Inst::ITD => unary!(s0: u64, f64: unsafe { *(&s0 as *const _ as *const f64) }),
-      Inst::ITP => unary!(s0: u64, ptr: s0.into()),
+      Inst::ITP => unary!(s0: u64, Ptr: s0.into()),
     })
   }
 }
