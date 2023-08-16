@@ -88,7 +88,7 @@ impl ops::Sub<i64> for Ptr {
 
 impl ops::SubAssign<i64> for Ptr {
   fn sub_assign(&mut self, rhs: i64) {
-    self.0 = (self.0 as i64 + rhs) as u64;
+    self.0 = (self.0 as i64 - rhs) as u64;
   }
 }
 
