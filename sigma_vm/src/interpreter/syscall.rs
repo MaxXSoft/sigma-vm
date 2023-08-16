@@ -1,10 +1,9 @@
 use crate::interpreter::heap::Heap;
 use crate::interpreter::loader::{Loader, Source};
+use crate::interpreter::native::{Native, NativeLoader};
 use crate::interpreter::policy::Policy;
 use crate::interpreter::vm::Vars;
-use libloading::{Library, Symbol};
 use std::collections::HashMap;
-use std::slice;
 
 /// System call handler.
 pub trait Handler<P, H>
@@ -24,6 +23,8 @@ where
 {
   /// Module loader.
   pub loader: &'vm mut Loader,
+  /// Native library loader.
+  pub native_loader: &'vm mut NativeLoader,
   /// Heap.
   pub heap: &'vm mut H,
   /// Value stack.
@@ -49,8 +50,6 @@ where
   H: Heap,
 {
   handlers: HashMap<i64, Box<dyn Handler<P, H>>>,
-  loaded_libs: HashMap<u64, Library>,
-  next_lib_handle: u64,
 }
 
 impl<P, H> Resolver<P, H>
@@ -62,8 +61,6 @@ where
   pub(super) fn new() -> Self {
     Self {
       handlers: HashMap::new(),
-      loaded_libs: HashMap::new(),
-      next_lib_handle: 1,
     }
   }
 
@@ -115,16 +112,9 @@ where
     let path_ptr = P::get_ptr(&P::unwrap_val(state.value_stack.pop())?)?;
     let path = P::utf8_str(state.heap, path_ptr)?;
     // load library
-    let handle = if let Ok(lib) = unsafe { Library::new(path) } {
-      let handle = self.next_lib_handle;
-      self.next_lib_handle += 1;
-      self.loaded_libs.insert(handle, lib);
-      handle
-    } else {
-      0
-    };
+    let handle = Native::from(state.native_loader.load(path));
     // update stack
-    state.value_stack.push(P::int_val(handle));
+    state.value_stack.push(P::int_val(handle.into()));
     Ok(ControlFlow::Continue)
   }
 
@@ -136,7 +126,7 @@ where
     // get handle
     let handle = P::get_int_ptr(&P::unwrap_val(state.value_stack.pop())?)?;
     // remove the corresponding library
-    self.loaded_libs.remove(&handle);
+    state.native_loader.unload(Native::from(handle));
     Ok(ControlFlow::Continue)
   }
 
@@ -152,7 +142,7 @@ where
   fn native_call(&self, state: VmState<P, H>) -> Result<ControlFlow, P::Error> {
     // get name and handle
     let name_ptr = P::get_ptr(&P::unwrap_val(state.value_stack.pop())?)?;
-    let name = P::utf8_str(state.heap, name_ptr)?;
+    let name = P::utf8_str(state.heap, name_ptr)?.to_string();
     let handle = P::get_int_ptr(&P::unwrap_val(state.value_stack.pop())?)?;
     // get arguments
     let num_args = P::get_int_ptr(&P::unwrap_val(state.value_stack.pop())?)?;
@@ -161,18 +151,14 @@ where
       args.push(P::get_any(&P::unwrap_module(state.value_stack.pop())?));
     }
     args.reverse();
-    // get library and call the native function
-    let lib = P::unwrap_module(self.loaded_libs.get(&handle))?;
-    let ret_vals = unsafe {
-      let func: Symbol<ffi::NativeFn> = P::unwrap_module(lib.get(name.as_bytes()).ok())?;
-      func(ffi::VmState {
-        heap: &mut (state.heap as &mut dyn ffi::HeapWrapper),
-        num_args: num_args as usize,
-        args: args.as_ptr(),
-      })
+    // call the native function
+    let rets = unsafe {
+      state
+        .native_loader
+        .call(Native::from(handle), &name, state.heap, &args)
     };
+    let rets = P::unwrap_module(rets.ok())?;
     // push return values to stack
-    let rets = unsafe { slice::from_raw_parts(ret_vals.rets, ret_vals.num_rets) };
     state
       .value_stack
       .extend(rets.iter().map(|v| P::int_val(*v)));
@@ -202,80 +188,5 @@ where
     state.loader.unload(source);
     state.module_globals.remove(&source);
     Ok(ControlFlow::Continue)
-  }
-}
-
-/// FFI for native calls.
-mod ffi {
-  use crate::interpreter::heap::Heap;
-  use std::alloc::Layout;
-  use std::ffi::c_void;
-
-  /// Function type of native functions.
-  pub type NativeFn = unsafe extern "C" fn(VmState) -> RetVals;
-
-  /// Virtual machine state.
-  #[repr(C)]
-  pub struct VmState<'vm> {
-    pub heap: &'vm mut &'vm mut dyn HeapWrapper,
-    pub num_args: usize,
-    pub args: *const u64,
-  }
-
-  /// Return values.
-  #[repr(C)]
-  pub struct RetVals {
-    pub num_rets: usize,
-    pub rets: *const u64,
-  }
-
-  /// Wrapper trait for heaps.
-  pub trait HeapWrapper {
-    /// Allocates a new memory with the given size and align.
-    /// Returns the pointer of the allocated memory.
-    ///
-    /// # Panics
-    ///
-    /// Panics if size or align are invalid.
-    fn alloc(&mut self, size: usize, align: usize) -> u64;
-
-    /// Returns the mutable memory address of the given pointer.
-    fn addr_mut(&mut self, ptr: u64) -> *mut ();
-  }
-
-  impl<H> HeapWrapper for H
-  where
-    H: Heap,
-  {
-    fn alloc(&mut self, size: usize, align: usize) -> u64 {
-      self
-        .alloc(Layout::from_size_align(size, align).unwrap())
-        .into()
-    }
-
-    fn addr_mut(&mut self, ptr: u64) -> *mut () {
-      self.addr_mut(ptr.into())
-    }
-  }
-
-  /// Allocates a new memory with the given size and align.
-  /// Returns the heap pointer of the allocated memory.
-  ///
-  /// # Panics
-  ///
-  /// Panics if size or align are invalid.
-  #[no_mangle]
-  pub extern "C" fn sigma_vm_heap_alloc(
-    heap: &mut &mut dyn HeapWrapper,
-    size: usize,
-    align: usize,
-  ) -> u64 {
-    heap.alloc(size, align)
-  }
-
-  /// Returns the memory address of the given pointer.
-  #[no_mangle]
-  pub extern "C" fn sigma_vm_heap_addr(heap: &mut &mut dyn HeapWrapper, ptr: u64) -> *mut c_void {
-    heap.addr_mut(ptr) as *mut c_void
   }
 }
