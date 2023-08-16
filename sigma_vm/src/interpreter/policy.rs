@@ -1,6 +1,6 @@
 use crate::bytecode::consts::{ConstKind, HeapConst, Object, Str};
 use crate::interpreter::gc::GarbageCollector;
-use crate::interpreter::heap::{CheckedHeap, Heap};
+use crate::interpreter::heap::{CheckedHeap, Heap, Ptr};
 use crate::utils::Unsized;
 use std::alloc::Layout;
 use std::marker::PhantomData;
@@ -30,7 +30,7 @@ pub trait Policy {
   fn f64_val(f: f64) -> Self::Value;
 
   /// Creates pointer value.
-  fn ptr_val(p: u64) -> Self::Value;
+  fn ptr_val(p: Ptr) -> Self::Value;
 
   /// Extracts an integer value from the given value.
   ///
@@ -44,22 +44,22 @@ pub trait Policy {
   fn get_f64(v: &Self::Value) -> Result<f64, Self::Error>;
 
   /// Extracts a pointer value from the given value.
-  fn get_ptr(v: &Self::Value) -> Result<u64, Self::Error>;
+  fn get_ptr(v: &Self::Value) -> Result<Ptr, Self::Error>;
 
   /// Extracts a 64-bit untyped value from the given value.
   fn get_any(v: &Self::Value) -> u64;
 
   /// Returns the pointer value if the given value is a pointer,
   /// otherwise [`None`].
-  fn ptr_or_none(v: &Self::Value) -> Option<u64>;
+  fn ptr_or_none(v: &Self::Value) -> Option<Ptr>;
 
   /// Returns a string pointer from the given heap constant,
   /// returns an error if necessary.
-  fn str_ptr_from_const(c: &HeapConst) -> Result<u64, Self::Error>;
+  fn str_ptr_from_const(c: &HeapConst) -> Result<Ptr, Self::Error>;
 
   /// Returns an object metadata pointer from the given heap constant,
   /// returns an error if necessary.
-  fn obj_ptr_from_const(c: &HeapConst) -> Result<u64, Self::Error>;
+  fn obj_ptr_from_const(c: &HeapConst) -> Result<Ptr, Self::Error>;
 
   /// Unwraps an [`Option<Value>`], returns an error if necessary.
   fn unwrap_val<V>(v: Option<V>) -> Result<V, Self::Error>;
@@ -81,7 +81,7 @@ pub trait Policy {
 
   /// Checks whether the given memory access is valid,
   /// returns an error if necessary.
-  fn check_access(heap: &Self::Heap, p: u64, len: usize, align: usize) -> Result<(), Self::Error>;
+  fn check_access(heap: &Self::Heap, p: Ptr, len: usize, align: usize) -> Result<(), Self::Error>;
 
   /// Creates a value from a heap constant.
   fn val_from_const(heap: &Self::Heap, c: &HeapConst) -> Self::Value {
@@ -103,7 +103,7 @@ pub trait Policy {
   }
 
   /// Returns a reference of string by the given pointer.
-  fn str(heap: &Self::Heap, ptr: u64) -> Result<&Str<[u8]>, Self::Error> {
+  fn str(heap: &Self::Heap, ptr: Ptr) -> Result<&Str<[u8]>, Self::Error> {
     type S = Str<[u8]>;
     let addr = heap.addr(ptr);
     // read string's length from heap
@@ -120,10 +120,10 @@ pub trait Policy {
   }
 
   /// Returns a reference of a UTF-8 string by the given pointer.
-  fn utf8_str(heap: &Self::Heap, ptr: u64) -> Result<&str, Self::Error>;
+  fn utf8_str(heap: &Self::Heap, ptr: Ptr) -> Result<&str, Self::Error>;
 
   /// Returns a reference of object metadata by the given pointer.
-  fn object(heap: &Self::Heap, ptr: u64) -> Result<&Object<[u64]>, Self::Error> {
+  fn object(heap: &Self::Heap, ptr: Ptr) -> Result<&Object<[u64]>, Self::Error> {
     type O = Object<[u64]>;
     let addr = heap.addr(ptr);
     // read object metadata's length from heap
@@ -193,14 +193,14 @@ where
     StrictValue::Double(f)
   }
 
-  fn ptr_val(p: u64) -> Self::Value {
+  fn ptr_val(p: Ptr) -> Self::Value {
     StrictValue::Ptr(p)
   }
 
   fn get_int_ptr(v: &Self::Value) -> Result<u64, Self::Error> {
     match v {
       StrictValue::Int(i) => Ok(*i),
-      StrictValue::Ptr(p) => Ok(*p),
+      StrictValue::Ptr(p) => Ok((*p).into()),
       _ => Err(StrictError::TypeMismatch),
     }
   }
@@ -219,7 +219,7 @@ where
     }
   }
 
-  fn get_ptr(v: &Self::Value) -> Result<u64, Self::Error> {
+  fn get_ptr(v: &Self::Value) -> Result<Ptr, Self::Error> {
     match v {
       StrictValue::Ptr(p) => Ok(*p),
       _ => Err(StrictError::TypeMismatch),
@@ -229,20 +229,20 @@ where
   fn get_any(v: &Self::Value) -> u64 {
     match v {
       StrictValue::Int(i) => *i,
-      StrictValue::Ptr(p) => *p,
+      StrictValue::Ptr(p) => (*p).into(),
       StrictValue::Float(f) => unsafe { *(f as *const _ as *const u32) as u64 },
       StrictValue::Double(d) => unsafe { *(d as *const _ as *const u64) },
     }
   }
 
-  fn ptr_or_none(v: &Self::Value) -> Option<u64> {
+  fn ptr_or_none(v: &Self::Value) -> Option<Ptr> {
     match v {
       StrictValue::Ptr(p) => Some(*p),
       _ => None,
     }
   }
 
-  fn str_ptr_from_const(c: &HeapConst) -> Result<u64, Self::Error> {
+  fn str_ptr_from_const(c: &HeapConst) -> Result<Ptr, Self::Error> {
     if c.kind() == ConstKind::Str {
       Ok(c.ptr())
     } else {
@@ -250,7 +250,7 @@ where
     }
   }
 
-  fn obj_ptr_from_const(c: &HeapConst) -> Result<u64, Self::Error> {
+  fn obj_ptr_from_const(c: &HeapConst) -> Result<Ptr, Self::Error> {
     if c.kind() == ConstKind::Object {
       Ok(c.ptr())
     } else {
@@ -286,7 +286,7 @@ where
     H::new()
   }
 
-  fn check_access(heap: &Self::Heap, p: u64, len: usize, _: usize) -> Result<(), Self::Error> {
+  fn check_access(heap: &Self::Heap, p: Ptr, len: usize, _: usize) -> Result<(), Self::Error> {
     if heap.is_valid(p, len) {
       Ok(())
     } else {
@@ -294,7 +294,7 @@ where
     }
   }
 
-  fn utf8_str(heap: &Self::Heap, ptr: u64) -> Result<&str, Self::Error> {
+  fn utf8_str(heap: &Self::Heap, ptr: Ptr) -> Result<&str, Self::Error> {
     Self::str(heap, ptr)?
       .to_str()
       .ok_or(StrictError::InvalidUtf8)
@@ -325,7 +325,7 @@ where
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum StrictValue {
   Int(u64),
-  Ptr(u64),
+  Ptr(Ptr),
   Float(f32),
   Double(f64),
 }
@@ -416,7 +416,7 @@ where
     Strict::<H, GC>::f64_val(f)
   }
 
-  fn ptr_val(p: u64) -> Self::Value {
+  fn ptr_val(p: Ptr) -> Self::Value {
     Strict::<H, GC>::ptr_val(p)
   }
 
@@ -432,7 +432,7 @@ where
     Strict::<H, GC>::get_f64(v).map_err(StrictAlignError::Strict)
   }
 
-  fn get_ptr(v: &Self::Value) -> Result<u64, Self::Error> {
+  fn get_ptr(v: &Self::Value) -> Result<Ptr, Self::Error> {
     Strict::<H, GC>::get_ptr(v).map_err(StrictAlignError::Strict)
   }
 
@@ -440,15 +440,15 @@ where
     Strict::<H, GC>::get_any(v)
   }
 
-  fn ptr_or_none(v: &Self::Value) -> Option<u64> {
+  fn ptr_or_none(v: &Self::Value) -> Option<Ptr> {
     Strict::<H, GC>::ptr_or_none(v)
   }
 
-  fn str_ptr_from_const(c: &HeapConst) -> Result<u64, Self::Error> {
+  fn str_ptr_from_const(c: &HeapConst) -> Result<Ptr, Self::Error> {
     Strict::<H, GC>::str_ptr_from_const(c).map_err(StrictAlignError::Strict)
   }
 
-  fn obj_ptr_from_const(c: &HeapConst) -> Result<u64, Self::Error> {
+  fn obj_ptr_from_const(c: &HeapConst) -> Result<Ptr, Self::Error> {
     Strict::<H, GC>::obj_ptr_from_const(c).map_err(StrictAlignError::Strict)
   }
 
@@ -476,16 +476,16 @@ where
     self.strict.new_heap()
   }
 
-  fn check_access(heap: &Self::Heap, p: u64, len: usize, align: usize) -> Result<(), Self::Error> {
+  fn check_access(heap: &Self::Heap, p: Ptr, len: usize, align: usize) -> Result<(), Self::Error> {
     Strict::<H, GC>::check_access(heap, p, len, align).map_err(StrictAlignError::Strict)?;
-    if !align.is_power_of_two() || (p & (align as u64 - 1)) != 0 {
+    if !align.is_power_of_two() || (u64::from(p) & (align as u64 - 1)) != 0 {
       Err(StrictAlignError::MisalignedAccess)
     } else {
       Ok(())
     }
   }
 
-  fn utf8_str(heap: &Self::Heap, ptr: u64) -> Result<&str, Self::Error> {
+  fn utf8_str(heap: &Self::Heap, ptr: Ptr) -> Result<&str, Self::Error> {
     Strict::<H, GC>::utf8_str(heap, ptr).map_err(StrictAlignError::Strict)
   }
 
@@ -573,7 +573,7 @@ where
     NoCheckValue::new(value)
   }
 
-  fn ptr_val(p: u64) -> Self::Value {
+  fn ptr_val(p: Ptr) -> Self::Value {
     NoCheckValue::new_ptr(p)
   }
 
@@ -589,23 +589,23 @@ where
     Ok(unsafe { *(&v.value as *const _ as *const f64) })
   }
 
-  fn get_ptr(v: &Self::Value) -> Result<u64, Self::Error> {
-    Ok(v.value)
+  fn get_ptr(v: &Self::Value) -> Result<Ptr, Self::Error> {
+    Ok(v.value.into())
   }
 
   fn get_any(v: &Self::Value) -> u64 {
     v.value
   }
 
-  fn ptr_or_none(v: &Self::Value) -> Option<u64> {
-    v.is_ptr.then_some(v.value)
+  fn ptr_or_none(v: &Self::Value) -> Option<Ptr> {
+    v.is_ptr.then_some(v.value.into())
   }
 
-  fn str_ptr_from_const(c: &HeapConst) -> Result<u64, Self::Error> {
+  fn str_ptr_from_const(c: &HeapConst) -> Result<Ptr, Self::Error> {
     Ok(c.ptr())
   }
 
-  fn obj_ptr_from_const(c: &HeapConst) -> Result<u64, Self::Error> {
+  fn obj_ptr_from_const(c: &HeapConst) -> Result<Ptr, Self::Error> {
     Ok(c.ptr())
   }
 
@@ -633,11 +633,11 @@ where
     H::new()
   }
 
-  fn check_access(_: &Self::Heap, _: u64, _: usize, _: usize) -> Result<(), Self::Error> {
+  fn check_access(_: &Self::Heap, _: Ptr, _: usize, _: usize) -> Result<(), Self::Error> {
     Ok(())
   }
 
-  fn utf8_str(heap: &Self::Heap, ptr: u64) -> Result<&str, Self::Error> {
+  fn utf8_str(heap: &Self::Heap, ptr: Ptr) -> Result<&str, Self::Error> {
     Ok(unsafe { std::str::from_utf8_unchecked(&Self::str(heap, ptr)?.bytes) })
   }
 
@@ -684,10 +684,10 @@ impl NoCheckValue {
   }
 
   /// Creates a new pointer.
-  fn new_ptr(value: u64) -> Self {
+  fn new_ptr(ptr: Ptr) -> Self {
     Self {
       is_ptr: true,
-      value,
+      value: ptr.into(),
     }
   }
 }
