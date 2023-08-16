@@ -42,6 +42,28 @@ impl ops::AddAssign<u64> for Ptr {
   }
 }
 
+impl ops::Add<i64> for Ptr {
+  type Output = Self;
+
+  fn add(self, rhs: i64) -> Self::Output {
+    Self((self.0 as i64 + rhs) as u64)
+  }
+}
+
+impl ops::Add<Ptr> for i64 {
+  type Output = Ptr;
+
+  fn add(self, rhs: Ptr) -> Self::Output {
+    Ptr((self + rhs.0 as i64) as u64)
+  }
+}
+
+impl ops::AddAssign<i64> for Ptr {
+  fn add_assign(&mut self, rhs: i64) {
+    self.0 = (self.0 as i64 + rhs) as u64;
+  }
+}
+
 impl ops::Sub<u64> for Ptr {
   type Output = Self;
 
@@ -53,6 +75,20 @@ impl ops::Sub<u64> for Ptr {
 impl ops::SubAssign<u64> for Ptr {
   fn sub_assign(&mut self, rhs: u64) {
     self.0 -= rhs;
+  }
+}
+
+impl ops::Sub<i64> for Ptr {
+  type Output = Self;
+
+  fn sub(self, rhs: i64) -> Self::Output {
+    Self((self.0 as i64 - rhs) as u64)
+  }
+}
+
+impl ops::SubAssign<i64> for Ptr {
+  fn sub_assign(&mut self, rhs: i64) {
+    self.0 = (self.0 as i64 + rhs) as u64;
   }
 }
 
