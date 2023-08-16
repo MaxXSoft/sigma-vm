@@ -1,5 +1,5 @@
 use crate::bytecode::consts::{HeapConst, Object};
-use crate::interpreter::heap::{Heap, ObjKind, Ptr};
+use crate::interpreter::heap::{Heap, Meta, ObjKind, Ptr};
 use crate::interpreter::policy::Policy;
 use crate::interpreter::vm::Vars;
 use std::collections::HashSet;
@@ -163,10 +163,11 @@ impl GarbageCollector for MarkSweep {
         continue;
       }
       // get object metadata
-      if let Some(obj) = heap.obj(ptr) {
+      if let Some(Meta::Obj(obj)) = heap.meta(ptr) {
         let object: &Object<[u64]> = P::object(heap, obj.ptr)?;
-        // mark object metadata
+        // mark object metadata and module handle
         worklist.push(obj.ptr);
+        worklist.push(obj.module);
         // handle by kind
         match obj.kind {
           ObjKind::Obj => Self::extend_workist::<P>(&mut worklist, object, heap, ptr)?,
