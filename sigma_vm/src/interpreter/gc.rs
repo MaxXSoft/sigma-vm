@@ -1,5 +1,5 @@
 use crate::bytecode::consts::{HeapConst, Object};
-use crate::interpreter::heap::{Heap, ObjKind};
+use crate::interpreter::heap::{Heap, ObjKind, Ptr};
 use crate::interpreter::policy::Policy;
 use crate::interpreter::vm::Vars;
 use std::collections::HashSet;
@@ -17,7 +17,7 @@ pub trait GarbageCollector {
     &mut self,
     heap: &P::Heap,
     roots: Roots<'gc, P, M, C>,
-  ) -> Result<Vec<u64>, P::Error>
+  ) -> Result<Vec<Ptr>, P::Error>
   where
     P: 'gc + Policy,
     M: 'gc + Iterator<Item = ModuleRoots<'gc, P>>,
@@ -46,7 +46,7 @@ where
   C: 'gc + Iterator<Item = ContextRoots<'gc, P>>,
 {
   /// Returns an iterator of all garbage collection roots (pointers).
-  fn roots(self) -> impl 'gc + Iterator<Item = u64> {
+  fn roots(self) -> impl 'gc + Iterator<Item = Ptr> {
     self
       .values
       .iter()
@@ -66,7 +66,7 @@ impl<'gc, P> ModuleRoots<'gc, P>
 where
   P: 'gc + ?Sized + Policy,
 {
-  fn roots(self) -> impl 'gc + Iterator<Item = u64> {
+  fn roots(self) -> impl 'gc + Iterator<Item = Ptr> {
     self
       .consts
       .iter()
@@ -84,7 +84,7 @@ impl<'gc, P> ContextRoots<'gc, P>
 where
   P: 'gc + ?Sized + Policy,
 {
-  fn roots(self) -> impl 'gc + Iterator<Item = u64> {
+  fn roots(self) -> impl 'gc + Iterator<Item = Ptr> {
     self
       .vars
       .iter()
@@ -104,7 +104,7 @@ impl GarbageCollector for Nothing {
     &mut self,
     _: &P::Heap,
     _: Roots<'gc, P, M, C>,
-  ) -> Result<Vec<u64>, P::Error>
+  ) -> Result<Vec<Ptr>, P::Error>
   where
     P: 'gc + Policy,
     M: 'gc + Iterator<Item = ModuleRoots<'gc, P>>,
@@ -122,10 +122,10 @@ pub struct MarkSweep;
 impl MarkSweep {
   /// Pushes object pointer to the worklist by the given object metadata.
   fn extend_workist<P>(
-    worklist: &mut Vec<u64>,
+    worklist: &mut Vec<Ptr>,
     object: &Object<[u64]>,
     heap: &P::Heap,
-    ptr: u64,
+    ptr: Ptr,
   ) -> Result<(), P::Error>
   where
     P: Policy,
@@ -134,7 +134,7 @@ impl MarkSweep {
       let ptr_size = mem::size_of::<u64>() as u64;
       let ptr = ptr + o * ptr_size;
       P::check_access(heap, ptr, ptr_size as usize, ptr_size as usize)?;
-      worklist.push(unsafe { *(heap.addr(ptr) as *const u64) });
+      worklist.push(unsafe { *(heap.addr(ptr) as *const Ptr) });
     }
     Ok(())
   }
@@ -149,7 +149,7 @@ impl GarbageCollector for MarkSweep {
     &mut self,
     heap: &P::Heap,
     roots: Roots<'gc, P, M, C>,
-  ) -> Result<Vec<u64>, P::Error>
+  ) -> Result<Vec<Ptr>, P::Error>
   where
     P: 'gc + Policy,
     M: 'gc + Iterator<Item = ModuleRoots<'gc, P>>,
