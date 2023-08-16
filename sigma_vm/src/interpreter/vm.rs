@@ -5,6 +5,7 @@ use crate::interpreter::context::{Context, DestructorKind, GlobalContext};
 use crate::interpreter::gc::{GarbageCollector, ModuleRoots, Roots};
 use crate::interpreter::heap::{Heap, Obj, ObjKind, Ptr};
 use crate::interpreter::loader::{Error, Loader, Source};
+use crate::interpreter::native::NativeLoader;
 use crate::interpreter::policy::Policy;
 use crate::interpreter::syscall::{Resolver, VmState};
 use crate::utils::{IntoU64, Unsized};
@@ -18,6 +19,7 @@ use std::{mem, slice};
 /// Virtual machine for running bytecode.
 pub struct VM<P: Policy> {
   loader: Loader,
+  native_loader: NativeLoader,
   resolver: Resolver<P, P::Heap>,
   global_heap: GlobalHeap<P>,
   value_stack: Vec<P::Value>,
@@ -29,6 +31,7 @@ impl<P: Policy> VM<P> {
   pub fn new(policy: P) -> Self {
     Self {
       loader: Loader::new(),
+      native_loader: NativeLoader::new(),
       resolver: Resolver::new(),
       global_heap: GlobalHeap::new(policy),
       value_stack: vec![],
@@ -92,6 +95,15 @@ impl<P: Policy> VM<P> {
   /// or [`None`] if the module does not exist, not loaded or not initialized.
   pub fn globals(&self, module: Source) -> Option<&Vars<P::Value>> {
     self.module_globals.get(&module)
+  }
+
+  /// Resets the internal state.
+  pub fn reset(&mut self) {
+    self.loader.unload_all();
+    self.native_loader.unload_all();
+    self.global_heap.reset();
+    self.value_stack.clear();
+    self.module_globals.clear();
   }
 
   /// Runs garbage collector, returns pointers to be deallocated.
@@ -183,14 +195,6 @@ where
   /// Terminates all VM contexts.
   pub fn terminate(&mut self) -> Result<(), P::Error> {
     Scheduler::new(self, Context::terminator()).run()
-  }
-
-  /// Resets the internal state.
-  pub fn reset(&mut self) {
-    self.loader.unload_all();
-    self.global_heap.reset();
-    self.value_stack.clear();
-    self.module_globals.clear();
   }
 }
 
@@ -553,6 +557,7 @@ impl<'vm, P: Policy> Scheduler<'vm, P> {
       syscall,
       VmState {
         loader: &mut self.vm.loader,
+        native_loader: &mut self.vm.native_loader,
         heap: &mut self.vm.global_heap.heap,
         value_stack: &mut self.vm.value_stack,
         module_globals: &mut self.vm.module_globals,
