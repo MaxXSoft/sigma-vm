@@ -3,20 +3,19 @@ use crate::bytecode::export::ExportInfo;
 use crate::bytecode::insts::Inst;
 use crate::bytecode::module::Module;
 use crate::bytecode::reader::{Error as ReaderError, Reader};
-use crate::interpreter::heap::Heap;
+use crate::interpreter::heap::{Heap, Meta, Ptr};
+use std::alloc::Layout;
 use std::collections::HashMap;
-use std::fmt;
 use std::io::Error as IoError;
 use std::path::{Path, PathBuf};
+use std::{fmt, mem};
 
 /// Module loader for dynamically loading modules at runtime.
 #[derive(Debug, Default)]
 pub struct Loader {
   search_paths: Vec<PathBuf>,
-  resolved_paths: HashMap<PathBuf, u32>,
-  loaded_mods: HashMap<Source, Module>,
-  next_file_id: u32,
-  next_mem_id: u32,
+  resolved_paths: HashMap<PathBuf, Ptr>,
+  loaded_mods: HashMap<Ptr, Module>,
 }
 
 impl Loader {
@@ -34,7 +33,7 @@ impl Loader {
   }
 
   /// Loads a module from the given path.
-  pub fn load_from_path<P, H>(&mut self, path: P, heap: &mut H) -> Result<Source, Error>
+  pub fn load_from_path<P, H>(&mut self, heap: &mut H, path: P) -> Result<Ptr, Error>
   where
     P: AsRef<Path>,
     H: Heap,
@@ -51,38 +50,36 @@ impl Loader {
     }
     .ok_or(Error::InvalidPath(path.into()))?;
     // update resolved path, return if the module has already been loaded
-    if let Some(id) = self.resolved_paths.get(&final_path) {
-      return Ok(Source::File(*id));
+    if let Some(handle) = self.resolved_paths.get(&final_path) {
+      return Ok(*handle);
     }
     // read bytecode from the path
     let mut reader = Reader::from_path(final_path.clone()).map_err(Error::IO)?;
     reader.read().map_err(Error::Reader)?;
+    // create a new handle
+    let handle = Self::new_handle(heap, Source::File);
     // add to loaded modules
-    let id = self.next_file_id;
-    self.next_file_id += 1;
-    let source = Source::File(id);
-    self.resolved_paths.insert(final_path, id);
-    self.loaded_mods.insert(source, reader.into_module(heap));
-    Ok(source)
+    self.resolved_paths.insert(final_path, handle);
+    self.loaded_mods.insert(handle, reader.into_module(heap));
+    Ok(handle)
   }
 
   /// Loads a module from the given bytes.
-  pub fn load_from_bytes<H>(&mut self, bytes: &[u8], heap: &mut H) -> Result<Source, Error>
+  pub fn load_from_bytes<H>(&mut self, heap: &mut H, bytes: &[u8]) -> Result<Ptr, Error>
   where
     H: Heap,
   {
-    let source = Source::Memory(self.next_mem_id);
-    self.next_mem_id += 1;
     // read bytecode from bytes
     let mut reader = Reader::from(bytes);
     reader.read().map_err(Error::Reader)?;
     // add to loaded modules
-    self.loaded_mods.insert(source, reader.into_module(heap));
-    Ok(source)
+    let handle = Self::new_handle(heap, Source::Other);
+    self.loaded_mods.insert(handle, reader.into_module(heap));
+    Ok(handle)
   }
 
   /// Loads a module from the standard input.
-  pub fn load_from_stdin<H>(&mut self, heap: &mut H) -> Result<Source, Error>
+  pub fn load_from_stdin<H>(&mut self, heap: &mut H) -> Result<Ptr, Error>
   where
     H: Heap,
   {
@@ -90,24 +87,22 @@ impl Loader {
     let mut reader = Reader::from_stdin();
     reader.read().map_err(Error::Reader)?;
     // add to loaded modules
-    let source = Source::Stdin;
-    self.loaded_mods.insert(source, reader.into_module(heap));
-    Ok(source)
+    let handle = Self::new_handle(heap, Source::Other);
+    self.loaded_mods.insert(handle, reader.into_module(heap));
+    Ok(handle)
   }
 
   /// Creates a module from the given constants and instructions.
   pub fn new_module<H>(
     &mut self,
+    heap: &mut H,
     consts: Box<[Const]>,
     exports: ExportInfo,
     insts: Box<[Inst]>,
-    heap: &mut H,
-  ) -> Result<Source, Error>
+  ) -> Result<Ptr, Error>
   where
     H: Heap,
   {
-    let source = Source::Memory(self.next_mem_id);
-    self.next_mem_id += 1;
     // create module
     let module = Module {
       consts: consts
@@ -119,70 +114,66 @@ impl Loader {
       insts,
     };
     // add to loaded modules
-    self.loaded_mods.insert(source, module);
-    Ok(source)
+    let handle = Self::new_handle(heap, Source::Other);
+    self.loaded_mods.insert(handle, module);
+    Ok(handle)
   }
 
-  /// Unloads a module by the given source.
-  pub fn unload(&mut self, source: Source) -> Option<Module> {
-    if let Source::File(id) = source {
-      self.resolved_paths.retain(|_, v| *v != id);
+  /// Unloads a module by the given handle, also deallocates the handle.
+  pub fn unload<H>(&mut self, heap: &mut H, handle: Ptr) -> Option<Module>
+  where
+    H: Heap,
+  {
+    let module = self.loaded_mods.remove(&handle);
+    if module.is_some() {
+      if Self::source(heap, handle) == Source::File {
+        self.resolved_paths.retain(|_, h| *h != handle);
+      }
+      heap.dealloc(handle);
     }
-    self.loaded_mods.remove(&source)
+    module
   }
 
-  /// Unloads all loaded modules.
-  pub fn unload_all(&mut self) {
+  /// Unloads all loaded modules, the handles will not be deallocated.
+  pub(super) fn unload_all(&mut self) {
     self.resolved_paths.clear();
     self.loaded_mods.clear();
-    self.next_mem_id = 0;
   }
 
-  /// Returns a loaded module by the given source.
-  pub fn module(&self, source: Source) -> Option<&Module> {
-    self.loaded_mods.get(&source)
+  /// Returns a loaded module by the given handle.
+  pub fn module(&self, handle: Ptr) -> Option<&Module> {
+    self.loaded_mods.get(&handle)
+  }
+
+  /// Creates a new handle.
+  fn new_handle<H>(heap: &mut H, source: Source) -> Ptr
+  where
+    H: Heap,
+  {
+    let handle = heap.alloc(
+      Layout::from_size_align(mem::size_of_val(&source), mem::align_of_val(&source)).unwrap(),
+      Meta::Module,
+    );
+    unsafe { *(heap.addr_mut(handle) as *mut Source) = source };
+    handle
+  }
+
+  /// Returns the source of the given handle.
+  fn source<H>(heap: &H, handle: Ptr) -> Source
+  where
+    H: Heap,
+  {
+    unsafe { *(heap.addr(handle) as *const Source) }
   }
 }
 
 /// Source identifier of the loaded module.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Source {
-  /// Invalid source.
-  Invalid,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Source {
   /// Module is loaded from file.
-  File(u32),
-  /// Module is loaded from memory.
-  Memory(u32),
-  /// Module is loaded from standard input.
-  Stdin,
-}
-
-impl From<Source> for u64 {
-  fn from(source: Source) -> Self {
-    match source {
-      Source::Invalid => 0,
-      Source::File(id) => (1 << 32) | id as u64,
-      Source::Memory(id) => (2 << 32) | id as u64,
-      Source::Stdin => 3 << 32,
-    }
-  }
-}
-
-impl From<u64> for Source {
-  fn from(value: u64) -> Self {
-    match value >> 32 {
-      1 => Self::File(value as u32),
-      2 => Self::Memory(value as u32),
-      3 if value as u32 == 0 => Self::Stdin,
-      _ => Self::Invalid,
-    }
-  }
-}
-
-impl<E> From<Result<Source, E>> for Source {
-  fn from(result: Result<Source, E>) -> Self {
-    result.unwrap_or(Self::Invalid)
-  }
+  File,
+  /// Module is loaded from other sources.
+  Other,
 }
 
 /// Error for the module loader.
