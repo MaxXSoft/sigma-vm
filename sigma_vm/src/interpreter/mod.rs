@@ -1,12 +1,12 @@
 pub mod gc;
 pub mod heap;
 pub mod loader;
+pub mod native;
 pub mod policy;
 pub mod syscall;
 pub mod vm;
 
 mod context;
-mod native;
 
 #[cfg(test)]
 mod test {

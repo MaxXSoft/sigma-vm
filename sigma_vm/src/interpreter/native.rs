@@ -5,7 +5,7 @@ use std::num::NonZeroU64;
 use std::{fmt, slice};
 
 /// Native library loader.
-pub(super) struct NativeLoader {
+pub struct NativeLoader {
   resolved_paths: HashMap<String, Native>,
   loaded_libs: HashMap<Native, Library>,
   next_handle: u64,
@@ -13,7 +13,7 @@ pub(super) struct NativeLoader {
 
 impl NativeLoader {
   /// Creates a new native library loader.
-  pub(super) fn new() -> Self {
+  pub fn new() -> Self {
     Self {
       resolved_paths: HashMap::new(),
       loaded_libs: HashMap::new(),
@@ -23,7 +23,7 @@ impl NativeLoader {
 
   /// Loads a native shared library by the given path,
   /// return the handle of loaded library, or a invalid handle.
-  pub(super) fn load(&mut self, path: &str) -> Result<Native, Error> {
+  pub fn load(&mut self, path: &str) -> Result<Native, Error> {
     if let Some(handle) = self.resolved_paths.get(path) {
       Ok(*handle)
     } else {
@@ -41,13 +41,13 @@ impl NativeLoader {
   }
 
   /// Unloads a loaded native shared library by the given handle.
-  pub(super) fn unload(&mut self, handle: Native) {
+  pub fn unload(&mut self, handle: Native) {
     self.resolved_paths.retain(|_, h| *h != handle);
     self.loaded_libs.remove(&handle);
   }
 
   /// Unloads all loaded native shared library.
-  pub(super) fn unload_all(&mut self) {
+  pub fn unload_all(&mut self) {
     self.resolved_paths.clear();
     self.loaded_libs.clear();
     self.next_handle = 1;
@@ -58,7 +58,7 @@ impl NativeLoader {
   /// # Safety
   ///
   /// The signature of the given function must match the FFI of native calls.
-  pub(super) unsafe fn call<H>(
+  pub unsafe fn call<H>(
     &self,
     handle: Native,
     name: &str,
