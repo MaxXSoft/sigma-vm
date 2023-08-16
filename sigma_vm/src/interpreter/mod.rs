@@ -58,6 +58,9 @@ mod test {
     (u64: $e:expr) => {
       Sap::int_val($e)
     };
+    (Ptr: $e:expr) => {
+      Sap::ptr_val($e)
+    };
     (f32: $e:expr) => {
       Sap::f32_val($e)
     };
@@ -418,7 +421,7 @@ mod test {
           },
         },
         main: main,
-        args: [u64: counter.into(), u64: n],
+        args: [Ptr: counter, u64: n],
         results: (u64, u64),
       }
     }
@@ -492,7 +495,7 @@ mod test {
       modules: {
         main: {
           insts: [
-            Sys(5),
+            Sys(7),
             Ret,
 
           // main:
