@@ -8,8 +8,15 @@
 extern "C" {
 #endif  // __cplusplus
 
+///
 /// Virtual machine heap.
+///
 typedef void *sigma_vm_heap_t;
+
+///
+/// Heap pointer.
+///
+typedef uint64_t sigma_vm_ptr_t;
 
 ///
 /// Virtual machine state.
@@ -34,12 +41,13 @@ typedef struct {
 ///
 /// Panics if size or align are invalid.
 ///
-uint64_t sigma_vm_heap_alloc(sigma_vm_heap_t heap, size_t size, size_t align);
+sigma_vm_ptr_t sigma_vm_heap_alloc(sigma_vm_heap_t heap, size_t size,
+                                   size_t align);
 
 ///
 /// Returns the memory address of the given pointer.
 ///
-void *sigma_vm_heap_addr(sigma_vm_heap_t heap, uint64_t ptr);
+void *sigma_vm_heap_addr(sigma_vm_heap_t heap, sigma_vm_ptr_t ptr);
 
 #ifdef __cplusplus
 }  // extern "C"
