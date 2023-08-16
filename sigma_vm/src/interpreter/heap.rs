@@ -1,7 +1,59 @@
 use crate::interpreter::loader::Source;
 use std::alloc::{self, Layout};
 use std::collections::{BTreeMap, HashMap};
-use std::slice;
+use std::{ops, slice};
+
+/// Heap pointer.
+#[repr(transparent)]
+pub struct Ptr(u64);
+
+impl From<u64> for Ptr {
+  fn from(value: u64) -> Self {
+    Self(value)
+  }
+}
+
+impl From<Ptr> for u64 {
+  fn from(ptr: Ptr) -> Self {
+    ptr.0
+  }
+}
+
+impl ops::Add<u64> for Ptr {
+  type Output = Self;
+
+  fn add(self, rhs: u64) -> Self::Output {
+    Self(self.0 + rhs)
+  }
+}
+
+impl ops::Add<Ptr> for u64 {
+  type Output = Ptr;
+
+  fn add(self, rhs: Ptr) -> Self::Output {
+    Ptr(self + rhs.0)
+  }
+}
+
+impl ops::AddAssign<u64> for Ptr {
+  fn add_assign(&mut self, rhs: u64) {
+    self.0 += rhs;
+  }
+}
+
+impl ops::Sub<u64> for Ptr {
+  type Output = Self;
+
+  fn sub(self, rhs: u64) -> Self::Output {
+    Self(self.0 - rhs)
+  }
+}
+
+impl ops::SubAssign<u64> for Ptr {
+  fn sub_assign(&mut self, rhs: u64) {
+    self.0 -= rhs;
+  }
+}
 
 /// Managed heap interface.
 pub trait Heap {
