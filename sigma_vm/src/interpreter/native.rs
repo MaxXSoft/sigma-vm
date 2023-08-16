@@ -1,14 +1,13 @@
-use crate::interpreter::heap::Heap;
+use crate::interpreter::heap::{Heap, Meta, Ptr};
 use libloading::{Error as Loading, Library, Symbol};
+use std::alloc::Layout;
 use std::collections::HashMap;
-use std::num::NonZeroU64;
 use std::{fmt, slice};
 
 /// Native library loader.
 pub struct NativeLoader {
-  resolved_paths: HashMap<String, Native>,
-  loaded_libs: HashMap<Native, Library>,
-  next_handle: u64,
+  resolved_paths: HashMap<String, Ptr>,
+  loaded_libs: HashMap<Ptr, Library>,
 }
 
 impl NativeLoader {
@@ -17,20 +16,21 @@ impl NativeLoader {
     Self {
       resolved_paths: HashMap::new(),
       loaded_libs: HashMap::new(),
-      next_handle: 1,
     }
   }
 
   /// Loads a native shared library by the given path,
   /// return the handle of loaded library, or a invalid handle.
-  pub fn load(&mut self, path: &str) -> Result<Native, Error> {
+  pub fn load<H>(&mut self, heap: &mut H, path: &str) -> Result<Ptr, Error>
+  where
+    H: Heap,
+  {
     if let Some(handle) = self.resolved_paths.get(path) {
       Ok(*handle)
     } else {
       match unsafe { Library::new(path) } {
         Ok(lib) => {
-          let handle = Native::from(self.next_handle);
-          self.next_handle += 1;
+          let handle = heap.alloc(Layout::from_size_align(1, 1).unwrap(), Meta::Native);
           self.resolved_paths.insert(path.into(), handle);
           self.loaded_libs.insert(handle, lib);
           Ok(handle)
@@ -40,17 +40,23 @@ impl NativeLoader {
     }
   }
 
-  /// Unloads a loaded native shared library by the given handle.
-  pub fn unload(&mut self, handle: Native) {
-    self.resolved_paths.retain(|_, h| *h != handle);
-    self.loaded_libs.remove(&handle);
+  /// Unloads a loaded native shared library by the given handle,
+  /// also deallocates the handle.
+  pub fn unload<H>(&mut self, heap: &mut H, handle: Ptr)
+  where
+    H: Heap,
+  {
+    if self.loaded_libs.remove(&handle).is_some() {
+      self.resolved_paths.retain(|_, h| *h != handle);
+      heap.dealloc(handle);
+    }
   }
 
-  /// Unloads all loaded native shared library.
-  pub fn unload_all(&mut self) {
+  /// Unloads all loaded native shared library,
+  /// the handles will not be deallocated.
+  pub(super) fn unload_all(&mut self) {
     self.resolved_paths.clear();
     self.loaded_libs.clear();
-    self.next_handle = 1;
   }
 
   /// Calls a function in the native shared library by the given handle.
@@ -60,7 +66,7 @@ impl NativeLoader {
   /// The signature of the given function must match the FFI of native calls.
   pub unsafe fn call<H>(
     &self,
-    handle: Native,
+    handle: Ptr,
     name: &str,
     heap: &mut H,
     args: &[u64],
@@ -102,41 +108,9 @@ impl fmt::Display for Error {
   }
 }
 
-/// Native library handle.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Native {
-  /// Invalid handle.
-  Invalid,
-  /// Handle.
-  Handle(NonZeroU64),
-}
-
-impl From<Native> for u64 {
-  fn from(handle: Native) -> Self {
-    match handle {
-      Native::Invalid => 0,
-      Native::Handle(h) => h.get(),
-    }
-  }
-}
-
-impl From<u64> for Native {
-  fn from(value: u64) -> Self {
-    NonZeroU64::new(value)
-      .map(Self::Handle)
-      .unwrap_or(Self::Invalid)
-  }
-}
-
-impl<E> From<Result<Native, E>> for Native {
-  fn from(result: Result<Native, E>) -> Self {
-    result.unwrap_or(Self::Invalid)
-  }
-}
-
 /// FFI for native calls.
 mod ffi {
-  use crate::interpreter::heap::Heap;
+  use crate::interpreter::heap::{Heap, Meta};
   use std::alloc::Layout;
   use std::ffi::c_void;
 
@@ -178,7 +152,7 @@ mod ffi {
   {
     fn alloc(&mut self, size: usize, align: usize) -> u64 {
       self
-        .alloc(Layout::from_size_align(size, align).unwrap())
+        .alloc(Layout::from_size_align(size, align).unwrap(), Meta::Raw)
         .into()
     }
 
