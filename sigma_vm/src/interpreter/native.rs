@@ -90,6 +90,12 @@ impl NativeLoader {
   }
 }
 
+impl Default for NativeLoader {
+  fn default() -> Self {
+    Self::new()
+  }
+}
+
 /// Errors for the native library loader.
 #[derive(Debug)]
 pub enum Error {
