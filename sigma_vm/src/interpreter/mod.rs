@@ -6,6 +6,7 @@ pub mod syscall;
 pub mod vm;
 
 mod context;
+mod native;
 
 #[cfg(test)]
 mod test {
