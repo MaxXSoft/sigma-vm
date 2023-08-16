@@ -1,4 +1,4 @@
-use crate::interpreter::heap::{Heap, Ptr};
+use crate::interpreter::heap::{Heap, Meta, Ptr};
 use crate::interpreter::loader::Loader;
 use crate::interpreter::native::NativeLoader;
 use crate::interpreter::policy::Policy;
@@ -173,7 +173,13 @@ where
   fn del(state: VmState<P, H>) -> Result<ControlFlow, P::Error> {
     let s0 = P::unwrap_val(state.value_stack.pop())?;
     let ptr = P::get_ptr(&s0)?;
-    state.heap.dealloc(ptr);
+    match state.heap.meta(ptr) {
+      Some(Meta::Module) => {
+        state.loader.unload(state.heap, ptr);
+      }
+      Some(Meta::Native) => state.native_loader.unload(state.heap, ptr),
+      _ => state.heap.dealloc(ptr),
+    };
     Ok(ControlFlow::Continue)
   }
 
