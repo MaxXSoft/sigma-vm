@@ -463,11 +463,11 @@ where
       }
       Inst::CallExt => {
         let ptr = gctx.pop_ptr()?;
-        let handle = gctx.pop_int_ptr()?;
+        let handle = gctx.pop_ptr()?;
         return ControlFlow::CallExt(handle, ptr).into();
       }
       Inst::CallExtC(opr) => {
-        let handle = gctx.pop_int_ptr()?;
+        let handle = gctx.pop_ptr()?;
         let c = P::unwrap_val(gctx.module.consts.get(opr as usize))?;
         let ptr = P::str_ptr_from_const(c)?;
         return ControlFlow::CallExt(handle, ptr).into();
