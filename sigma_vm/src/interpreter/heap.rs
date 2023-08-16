@@ -8,6 +8,13 @@ use std::{fmt, ops, slice};
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Ptr(u64);
 
+impl Ptr {
+  /// Returns a null pointer.
+  pub fn null() -> Self {
+    Self(0)
+  }
+}
+
 impl From<u64> for Ptr {
   fn from(value: u64) -> Self {
     Self(value)
