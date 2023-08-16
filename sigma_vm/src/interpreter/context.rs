@@ -74,6 +74,7 @@ impl<P: Policy> Context<P> {
   /// Returns GC roots of the current context.
   pub(super) fn roots(&self) -> ContextRoots<P> {
     ContextRoots {
+      module: self.module,
       vars: &self.var_stack,
     }
   }
