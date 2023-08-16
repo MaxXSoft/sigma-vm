@@ -1,6 +1,6 @@
 //! Definitions about constant pool.
 
-use crate::interpreter::heap::Heap;
+use crate::interpreter::heap::{Heap, Ptr};
 use crate::utils::{alloc_uninit, impl_try_from_int, Unsized};
 use std::alloc::Layout;
 use std::ptr::{self, Pointee};
@@ -144,7 +144,7 @@ impl Const {
 #[derive(Debug)]
 pub struct HeapConst {
   kind: ConstKind,
-  ptr: u64,
+  ptr: Ptr,
 }
 
 impl HeapConst {
@@ -154,7 +154,7 @@ impl HeapConst {
   }
 
   /// Returns the heap pointer of the current constant.
-  pub fn ptr(&self) -> u64 {
+  pub fn ptr(&self) -> Ptr {
     self.ptr
   }
 }
