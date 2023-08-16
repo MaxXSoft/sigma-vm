@@ -14,15 +14,21 @@ impl Ptr {
   }
 }
 
+impl From<Ptr> for u64 {
+  fn from(ptr: Ptr) -> Self {
+    ptr.0
+  }
+}
+
 impl From<u64> for Ptr {
   fn from(value: u64) -> Self {
     Self(value)
   }
 }
 
-impl From<Ptr> for u64 {
-  fn from(ptr: Ptr) -> Self {
-    ptr.0
+impl<E> From<Result<Self, E>> for Ptr {
+  fn from(result: Result<Self, E>) -> Self {
+    result.unwrap_or(Ptr::null())
   }
 }
 
