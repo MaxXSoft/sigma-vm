@@ -1,6 +1,7 @@
 use crate::bytecode::insts::Inst;
 use crate::bytecode::module::Module;
 use crate::interpreter::gc::ContextRoots;
+use crate::interpreter::heap::Ptr;
 use crate::interpreter::loader::Source;
 use crate::interpreter::policy::Policy;
 use crate::interpreter::vm::{ControlFlow, GlobalHeap, Vars};
@@ -227,63 +228,63 @@ where
       Inst::LdP => {
         let ptr = gctx.pop_ptr()?;
         let data = gctx.global_heap.load::<u64>(ptr)?;
-        gctx.push_ptr(data);
+        gctx.push_ptr(data.into());
         PcUpdate::Next
       }
       Inst::LdBO(opr) => {
         let offset = opr * mem::size_of::<i8>() as i64;
-        let ptr = (gctx.pop_ptr()? as i64 + offset) as u64;
+        let ptr = gctx.pop_ptr()? + offset;
         let data = gctx.global_heap.load::<i8>(ptr)?;
         gctx.push_int(data);
         PcUpdate::Next
       }
       Inst::LdBUO(opr) => {
         let offset = opr * mem::size_of::<u8>() as i64;
-        let ptr = (gctx.pop_ptr()? as i64 + offset) as u64;
+        let ptr = gctx.pop_ptr()? + offset;
         let data = gctx.global_heap.load::<u8>(ptr)?;
         gctx.push_int(data);
         PcUpdate::Next
       }
       Inst::LdHO(opr) => {
         let offset = opr * mem::size_of::<i16>() as i64;
-        let ptr = (gctx.pop_ptr()? as i64 + offset) as u64;
+        let ptr = gctx.pop_ptr()? + offset;
         let data = gctx.global_heap.load::<i16>(ptr)?;
         gctx.push_int(data);
         PcUpdate::Next
       }
       Inst::LdHUO(opr) => {
         let offset = opr * mem::size_of::<u16>() as i64;
-        let ptr = (gctx.pop_ptr()? as i64 + offset) as u64;
+        let ptr = gctx.pop_ptr()? + offset;
         let data = gctx.global_heap.load::<u16>(ptr)?;
         gctx.push_int(data);
         PcUpdate::Next
       }
       Inst::LdWO(opr) => {
         let offset = opr * mem::size_of::<i32>() as i64;
-        let ptr = (gctx.pop_ptr()? as i64 + offset) as u64;
+        let ptr = gctx.pop_ptr()? + offset;
         let data = gctx.global_heap.load::<i32>(ptr)?;
         gctx.push_int(data);
         PcUpdate::Next
       }
       Inst::LdWUO(opr) => {
         let offset = opr * mem::size_of::<u32>() as i64;
-        let ptr = (gctx.pop_ptr()? as i64 + offset) as u64;
+        let ptr = gctx.pop_ptr()? + offset;
         let data = gctx.global_heap.load::<u32>(ptr)?;
         gctx.push_int(data);
         PcUpdate::Next
       }
       Inst::LdDO(opr) => {
         let offset = opr * mem::size_of::<u64>() as i64;
-        let ptr = (gctx.pop_ptr()? as i64 + offset) as u64;
+        let ptr = gctx.pop_ptr()? + offset;
         let data = gctx.global_heap.load::<u64>(ptr)?;
         gctx.push_int(data);
         PcUpdate::Next
       }
       Inst::LdPO(opr) => {
         let offset = opr * mem::size_of::<u64>() as i64;
-        let ptr = (gctx.pop_ptr()? as i64 + offset) as u64;
+        let ptr = gctx.pop_ptr()? + offset;
         let data = gctx.global_heap.load::<u64>(ptr)?;
-        gctx.push_ptr(data);
+        gctx.push_ptr(data.into());
         PcUpdate::Next
       }
       Inst::LdV(opr) => {
@@ -334,28 +335,28 @@ where
       Inst::StBO(opr) => {
         let v = gctx.pop()?;
         let offset = opr * mem::size_of::<u8>() as i64;
-        let ptr = (gctx.pop_ptr()? as i64 + offset) as u64;
+        let ptr = gctx.pop_ptr()? + offset;
         gctx.global_heap.store::<u8>(v, ptr)?;
         PcUpdate::Next
       }
       Inst::StHO(opr) => {
         let v = gctx.pop()?;
         let offset = opr * mem::size_of::<u16>() as i64;
-        let ptr = (gctx.pop_ptr()? as i64 + offset) as u64;
+        let ptr = gctx.pop_ptr()? + offset;
         gctx.global_heap.store::<u16>(v, ptr)?;
         PcUpdate::Next
       }
       Inst::StWO(opr) => {
         let v = gctx.pop()?;
         let offset = opr * mem::size_of::<u32>() as i64;
-        let ptr = (gctx.pop_ptr()? as i64 + offset) as u64;
+        let ptr = gctx.pop_ptr()? + offset;
         gctx.global_heap.store::<u32>(v, ptr)?;
         PcUpdate::Next
       }
       Inst::StDO(opr) => {
         let v = gctx.pop()?;
         let offset = opr * mem::size_of::<u64>() as i64;
-        let ptr = (gctx.pop_ptr()? as i64 + offset) as u64;
+        let ptr = gctx.pop_ptr()? + offset;
         gctx.global_heap.store::<u64>(v, ptr)?;
         PcUpdate::Next
       }
@@ -516,7 +517,7 @@ where
         let lhs = gctx.pop()?;
         let sum = P::get_int_ptr(&lhs)?.wrapping_add(P::get_int_ptr(&rhs)?);
         if P::ptr_or_none(&lhs).is_some() ^ P::ptr_or_none(&rhs).is_some() {
-          gctx.push_ptr(sum);
+          gctx.push_ptr(sum.into());
         } else {
           gctx.push_int(sum);
         }
@@ -527,7 +528,7 @@ where
         let lhs = gctx.pop()?;
         let sub = P::get_int_ptr(&lhs)?.wrapping_sub(P::get_int_ptr(&rhs)?);
         if P::ptr_or_none(&lhs).is_some() {
-          gctx.push_ptr(sub);
+          gctx.push_ptr(sub.into());
         } else {
           gctx.push_int(sub);
         }
@@ -578,7 +579,7 @@ where
       Inst::D2F => unary!(s0: f64, f32: s0 as f32),
       Inst::ITF => unary!(s0: u64, f32: unsafe { *(&s0 as *const _ as *const f32) }),
       Inst::ITD => unary!(s0: u64, f64: unsafe { *(&s0 as *const _ as *const f64) }),
-      Inst::ITP => unary!(s0: u64, ptr: s0),
+      Inst::ITP => unary!(s0: u64, ptr: s0.into()),
     })
   }
 }
@@ -627,7 +628,7 @@ impl<'vm, P: Policy> GlobalContext<'vm, P> {
   }
 
   /// Pushes a pointer to the value stack.
-  fn push_ptr(&mut self, p: u64) {
+  fn push_ptr(&mut self, p: Ptr) {
     self.push(P::ptr_val(p))
   }
 
@@ -652,7 +653,7 @@ impl<'vm, P: Policy> GlobalContext<'vm, P> {
   }
 
   /// Pops a pointer from the value stack.
-  fn pop_ptr(&mut self) -> Result<u64, P::Error> {
+  fn pop_ptr(&mut self) -> Result<Ptr, P::Error> {
     P::get_ptr(&self.pop()?)
   }
 

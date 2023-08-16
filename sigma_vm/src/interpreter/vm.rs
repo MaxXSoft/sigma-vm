@@ -3,7 +3,7 @@ use crate::bytecode::export::{ExportInfo, NumArgs};
 use crate::bytecode::insts::Inst;
 use crate::interpreter::context::{Context, DestructorKind, GlobalContext};
 use crate::interpreter::gc::{GarbageCollector, ModuleRoots, Roots};
-use crate::interpreter::heap::{Heap, Obj, ObjKind};
+use crate::interpreter::heap::{Heap, Obj, ObjKind, Ptr};
 use crate::interpreter::loader::{Error, Loader, Source};
 use crate::interpreter::policy::Policy;
 use crate::interpreter::syscall::{Resolver, VmState};
@@ -99,7 +99,7 @@ impl<P: Policy> VM<P> {
     &mut self,
     contexts: &[Context<P>],
     context: &Context<P>,
-  ) -> Result<Vec<u64>, P::Error> {
+  ) -> Result<Vec<Ptr>, P::Error> {
     let mroots = self.module_globals.iter().flat_map(|(s, g)| {
       self.loader.module(*s).map(|m| ModuleRoots::<P> {
         consts: &m.consts,
@@ -216,7 +216,7 @@ impl<P: Policy> GlobalHeap<P> {
   }
 
   /// Loads the given pointer as type `T`.
-  pub(super) fn load<T>(&mut self, ptr: u64) -> Result<u64, P::Error>
+  pub(super) fn load<T>(&mut self, ptr: Ptr) -> Result<u64, P::Error>
   where
     T: Copy + IntoU64,
   {
@@ -232,7 +232,7 @@ impl<P: Policy> GlobalHeap<P> {
 
   /// Stores the given value (of type `T`) to the memory
   /// pointed by the given pointer.
-  pub(super) fn store<T>(&mut self, v: P::Value, ptr: u64) -> Result<(), P::Error>
+  pub(super) fn store<T>(&mut self, v: P::Value, ptr: Ptr) -> Result<(), P::Error>
   where
     T: Copy,
   {
@@ -248,13 +248,13 @@ impl<P: Policy> GlobalHeap<P> {
   }
 
   /// Allocates a new heap memory.
-  pub(super) fn alloc(&mut self, size: u64, align: u64) -> Result<u64, P::Error> {
+  pub(super) fn alloc(&mut self, size: u64, align: u64) -> Result<Ptr, P::Error> {
     let layout = P::layout(size as usize, align as usize)?;
     Ok(self.heap.alloc(layout))
   }
 
   /// Allocates heap memory for the given object metadata pointer.
-  pub(super) fn new_object(&mut self, obj_ptr: u64, source: Source) -> Result<u64, P::Error> {
+  pub(super) fn new_object(&mut self, obj_ptr: Ptr, source: Source) -> Result<Ptr, P::Error> {
     let object = P::object(&self.heap, obj_ptr)?;
     self.alloc_obj(object.size, object.align, ObjKind::Obj, obj_ptr, source)
   }
@@ -262,10 +262,10 @@ impl<P: Policy> GlobalHeap<P> {
   /// Allocates array for the given object metadata pointer.
   pub(super) fn new_array(
     &mut self,
-    obj_ptr: u64,
+    obj_ptr: Ptr,
     len: u64,
     source: Source,
-  ) -> Result<u64, P::Error> {
+  ) -> Result<Ptr, P::Error> {
     let object = P::object(&self.heap, obj_ptr)?;
     let size = if len != 0 {
       object.aligned_size() * (len - 1) + object.size
@@ -287,9 +287,9 @@ impl<P: Policy> GlobalHeap<P> {
     size: u64,
     align: u64,
     kind: ObjKind,
-    obj_ptr: u64,
+    obj_ptr: Ptr,
     source: Source,
-  ) -> Result<u64, P::Error> {
+  ) -> Result<Ptr, P::Error> {
     let layout = P::layout(size as usize, align as usize)?;
     Ok(self.heap.alloc_obj(
       layout,
@@ -302,7 +302,7 @@ impl<P: Policy> GlobalHeap<P> {
   }
 
   /// Allocates a new string on heap, returns the heap pointer.
-  fn alloc_str(&mut self, s: &str) -> u64 {
+  fn alloc_str(&mut self, s: &str) -> Ptr {
     // allocate heap memory
     let bs = s.as_bytes();
     let len = bs.len() as u64;
@@ -324,7 +324,7 @@ impl<P: Policy> GlobalHeap<P> {
 
   /// Checks if the garbage collector succeeded in reducing the heap size.
   /// Returns an error if necessary.
-  fn gc_success(&self, dealloc_ptrs: &[u64]) -> Result<(), P::Error> {
+  fn gc_success(&self, dealloc_ptrs: &[Ptr]) -> Result<(), P::Error> {
     let dealloc_size: usize = dealloc_ptrs
       .iter()
       .filter_map(|p| self.heap.size_of(*p))
@@ -342,7 +342,7 @@ struct Scheduler<'vm, P: Policy> {
   ///
   /// GC is running if this vector is not empty. All pointers in this vector
   /// should be deallocated when running run information for destructor.
-  pending_ptrs: Vec<u64>,
+  pending_ptrs: Vec<Ptr>,
 }
 
 impl<'vm, P: Policy> Scheduler<'vm, P> {
@@ -461,7 +461,7 @@ impl<'vm, P: Policy> Scheduler<'vm, P> {
 
   /// Schedules the destructor of the given pointer to run.
   /// Returns `true` if the pointer has a destructor.
-  fn schedule_destructor(&mut self, ptr: u64) -> Result<bool, P::Error> {
+  fn schedule_destructor(&mut self, ptr: Ptr) -> Result<bool, P::Error> {
     if let Some(obj) = self.vm.global_heap.heap.obj(ptr) {
       // get object metadata
       let object = P::object(&self.vm.global_heap.heap, obj.ptr)?;
@@ -498,7 +498,7 @@ impl<'vm, P: Policy> Scheduler<'vm, P> {
   }
 
   /// Loads module from the given path pointer.
-  fn load_module(&mut self, context: Context<P>, ptr: u64) -> Result<(), P::Error> {
+  fn load_module(&mut self, context: Context<P>, ptr: Ptr) -> Result<(), P::Error> {
     // load module
     let path = P::utf8_str(&self.vm.global_heap.heap, ptr)?.to_string();
     let handle = Source::from(
@@ -514,7 +514,7 @@ impl<'vm, P: Policy> Scheduler<'vm, P> {
   }
 
   /// Loads module from the given memory.
-  fn load_module_mem(&mut self, context: Context<P>, ptr: u64, len: u64) -> Result<(), P::Error> {
+  fn load_module_mem(&mut self, context: Context<P>, ptr: Ptr, len: u64) -> Result<(), P::Error> {
     // get byte slice
     P::check_access(&self.vm.global_heap.heap, ptr, len as usize, 1)?;
     let addr = self.vm.global_heap.heap.addr(ptr);
@@ -533,7 +533,7 @@ impl<'vm, P: Policy> Scheduler<'vm, P> {
   }
 
   /// Calls an external function by the given handle and name pointer.
-  fn call_ext(&mut self, context: Context<P>, handle: u64, ptr: u64) -> Result<(), P::Error> {
+  fn call_ext(&mut self, context: Context<P>, handle: u64, ptr: Ptr) -> Result<(), P::Error> {
     // get the target module
     let target = Source::from(handle);
     let module = P::unwrap_module(self.vm.loader.module(target))?;
@@ -639,13 +639,13 @@ pub(super) enum ControlFlow {
   /// Requests a garbage collection.
   GC,
   /// Requests to load a external module, with a pointer to the module name.
-  LoadModule(u64),
+  LoadModule(Ptr),
   /// Requests to load a external module, with a pointer to the module data
   /// and the size of the data.
-  LoadModuleMem(u64, u64),
+  LoadModuleMem(Ptr, u64),
   /// Requests an external call, with a module handle and
   /// a pointer to the function name.
-  CallExt(u64, u64),
+  CallExt(u64, Ptr),
   /// Requests a system call, with a system call number.
   Syscall(i64),
 }
