@@ -1,9 +1,8 @@
 use crate::bytecode::consts::{Const, ConstKind, Object, Raw, Str};
 use crate::bytecode::export::{Export, ExportInfo};
 use crate::bytecode::insts::{Inst, Opcode, Operand, OperandType};
-use crate::bytecode::module::Module;
+use crate::bytecode::module::StaticModule;
 use crate::bytecode::{MAGIC, VERSION};
-use crate::interpreter::heap::Heap;
 use crate::utils::{alloc_uninit, Unsized};
 use leb128::read::{signed, unsigned, Error as LebError};
 use std::alloc::LayoutError;
@@ -95,22 +94,6 @@ impl<R> Reader<R> {
   /// Returns a reference to the instruction list.
   pub fn insts(&self) -> &[Inst] {
     &self.insts
-  }
-
-  /// Converts the reader into a module.
-  pub fn into_module<H>(self, heap: &mut H) -> Module
-  where
-    H: Heap,
-  {
-    Module {
-      consts: self
-        .consts
-        .into_iter()
-        .map(|c| c.into_heap_const(heap))
-        .collect(),
-      exports: self.exports,
-      insts: self.insts.into_boxed_slice(),
-    }
   }
 }
 
@@ -215,6 +198,16 @@ impl<'a> From<&'a [u8]> for Reader<&'a [u8]> {
   /// Creates a new reader from the given byte array.
   fn from(bytes: &'a [u8]) -> Self {
     Self::new(bytes)
+  }
+}
+
+impl<R> From<Reader<R>> for StaticModule {
+  fn from(reader: Reader<R>) -> Self {
+    Self {
+      consts: reader.consts.into_boxed_slice(),
+      exports: reader.exports,
+      insts: reader.insts.into_boxed_slice(),
+    }
   }
 }
 
