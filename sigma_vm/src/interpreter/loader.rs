@@ -1,6 +1,3 @@
-use crate::bytecode::consts::Const;
-use crate::bytecode::export::ExportInfo;
-use crate::bytecode::insts::Inst;
 use crate::bytecode::module::{Module, StaticModule};
 use crate::bytecode::reader::{Error as ReaderError, Reader};
 use crate::interpreter::heap::{Heap, Meta, Ptr};
@@ -98,30 +95,13 @@ impl Loader {
     Ok(handle)
   }
 
-  /// Creates a module from the given constants and instructions.
-  pub fn new_module<H>(
-    &mut self,
-    heap: &mut H,
-    consts: Box<[Const]>,
-    exports: ExportInfo,
-    insts: Box<[Inst]>,
-  ) -> Result<Ptr, Error>
+  /// Creates a module from the given static module.
+  pub fn new_module<H>(&mut self, heap: &mut H, module: StaticModule) -> Result<Ptr, Error>
   where
     H: Heap,
   {
-    // create module
-    let module = Module {
-      consts: consts
-        .into_vec()
-        .into_iter()
-        .map(|c| c.into_heap_const(heap))
-        .collect(),
-      exports,
-      insts,
-    };
-    // add to loaded modules
     let handle = Self::new_handle(heap, Source::Other);
-    self.loaded_mods.insert(handle, module);
+    self.loaded_mods.insert(handle, module.into_module(heap));
     Ok(handle)
   }
 

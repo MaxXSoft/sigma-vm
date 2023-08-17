@@ -1,6 +1,6 @@
-use crate::bytecode::consts::{Const, HeapConst, Str};
-use crate::bytecode::export::{ExportInfo, NumArgs};
-use crate::bytecode::insts::Inst;
+use crate::bytecode::consts::{HeapConst, Str};
+use crate::bytecode::export::NumArgs;
+use crate::bytecode::module::StaticModule;
 use crate::interpreter::context::{Context, DestructorKind, GlobalContext};
 use crate::interpreter::gc::{GarbageCollector, ModuleRoots, Roots};
 use crate::interpreter::heap::{Heap, Meta, Obj, ObjKind, Ptr};
@@ -74,16 +74,9 @@ impl<P: Policy> VM<P> {
     self.loader.load_from_stdin(&mut self.global_heap.heap)
   }
 
-  /// Creates a module from the given constants and instructions.
-  pub fn new_module(
-    &mut self,
-    consts: Box<[Const]>,
-    exports: ExportInfo,
-    insts: Box<[Inst]>,
-  ) -> Result<Ptr, Error> {
-    self
-      .loader
-      .new_module(&mut self.global_heap.heap, consts, exports, insts)
+  /// Creates a module from the given static module.
+  pub fn new_module(&mut self, module: StaticModule) -> Result<Ptr, Error> {
+    self.loader.new_module(&mut self.global_heap.heap, module)
   }
 
   /// Returns a reference to the heap.
