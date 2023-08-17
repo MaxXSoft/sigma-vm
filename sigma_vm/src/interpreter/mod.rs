@@ -510,4 +510,61 @@ mod test {
       results: (),
     }
   }
+
+  #[test]
+  fn call_ext_self() {
+    fn fib(n: u64) -> u64 {
+      vm! {
+        modules: {
+          main: {
+            insts: [
+              StG(0),
+              Ret,
+
+            // main:
+              StA(0),
+              LdV(0),
+              PushU(2),
+              GtU,
+              Bnz(3), // fib_else
+              PushU(1),
+              Ret,
+            // fib_else:
+              LdV(0),
+              PushU(1),
+              Sub,
+              LdG(0),
+              CallExtC(0), // fib
+              LdV(0),
+              PushU(2),
+              Sub,
+              LdG(0),
+              CallExtC(0), // fib
+              Add,
+              Ret,
+            ],
+            consts: [
+              Str {
+                len: b"main".len() as u64,
+                bytes: *b"main",
+              },
+            ],
+            exports: ["main" => { pc: 2, num_args: 1, num_rets: 1 }],
+          },
+        },
+        main: main,
+        args: [u64: n],
+        results: (u64),
+      }
+    }
+
+    assert_eq!(fib(0), 1);
+    assert_eq!(fib(1), 1);
+    assert_eq!(fib(2), 1);
+    assert_eq!(fib(3), 2);
+    assert_eq!(fib(4), 3);
+    assert_eq!(fib(5), 5);
+    assert_eq!(fib(10), 55);
+    assert_eq!(fib(20), 6765);
+  }
 }
