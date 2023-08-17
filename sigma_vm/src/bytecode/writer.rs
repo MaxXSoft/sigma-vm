@@ -1,43 +1,90 @@
 use crate::bytecode::consts::{Const, ConstKind, Object, Raw, Str};
 use crate::bytecode::export::{CallSite, ExportInfo};
 use crate::bytecode::insts::{Inst, Operand};
+use crate::bytecode::module::StaticModule;
 use crate::bytecode::{MAGIC, VERSION};
 use leb128::write::{signed, unsigned};
 use std::fs::File;
-use std::io::{stderr, stdout, Result, Stderr, Stdout, Write};
+use std::io::{stderr, stdout, Result, Write};
 use std::path::Path;
 
 /// Bytecode file writer.
-pub struct Writer<'w, W> {
+pub struct Writer<'w> {
+  consts: &'w [Const],
+  exports: &'w ExportInfo,
+  insts: &'w [Inst],
+}
+
+impl<'w> Writer<'w> {
+  /// Creates a new writer.
+  pub fn new(module: &'w StaticModule) -> Self {
+    Self {
+      consts: &module.consts,
+      exports: &module.exports,
+      insts: &module.insts,
+    }
+  }
+
+  /// Writes the bytecode to file by the given path.
+  ///
+  /// The corresponding file will be overwritten.
+  /// If the file does not exist, a new file will be created.
+  pub fn write_to_file<P>(&self, path: P) -> Result<()>
+  where
+    P: AsRef<Path>,
+  {
+    WriterImpl::new(File::create(path)?, self).write()
+  }
+
+  /// Writes the bytecode to standard output.
+  pub fn write_to_stdout(&self) -> Result<()> {
+    WriterImpl::new(stdout(), self).write()
+  }
+
+  /// Writes the bytecode to standard error.
+  pub fn write_to_stderr(&self) -> Result<()> {
+    WriterImpl::new(stderr(), self).write()
+  }
+
+  /// Writes the bytecode to the given writer.
+  pub fn write_to<W>(&self, writer: W) -> Result<()>
+  where
+    W: Write,
+  {
+    WriterImpl::new(writer, self).write()
+  }
+}
+
+impl<'w> From<&'w StaticModule> for Writer<'w> {
+  fn from(module: &'w StaticModule) -> Self {
+    Self::new(module)
+  }
+}
+
+/// Implementation of writer.
+struct WriterImpl<'w, W> {
   writer: W,
   consts: &'w [Const],
   exports: &'w ExportInfo,
   insts: &'w [Inst],
 }
 
-impl<'w, W> Writer<'w, W> {
-  /// Creates a new writer.
-  pub fn new(writer: W, consts: &'w [Const], exports: &'w ExportInfo, insts: &'w [Inst]) -> Self {
-    Self {
-      writer,
-      consts,
-      exports,
-      insts,
-    }
-  }
-
-  /// Converts the current writer into the inner writer.
-  pub fn into_inner(self) -> W {
-    self.writer
-  }
-}
-
-impl<'w, W> Writer<'w, W>
+impl<'w, W> WriterImpl<'w, W>
 where
   W: Write,
 {
-  /// Writes the bytecode to file.
-  pub fn write(&mut self) -> Result<()> {
+  /// Create a new writer implementation from the given writer.
+  fn new(writer: W, w: &'w Writer<'w>) -> Self {
+    Self {
+      writer,
+      consts: w.consts,
+      exports: w.exports,
+      insts: w.insts,
+    }
+  }
+
+  /// Writes the bytecode.
+  fn write(&mut self) -> Result<()> {
     self.write_magic()?;
     self.write_version()?;
     self.write_consts()?;
@@ -89,38 +136,6 @@ where
       };
     }
     Ok(())
-  }
-}
-
-impl<'w> Writer<'w, File> {
-  /// Creates a new writer from the given path.
-  ///
-  /// The corresponding file will be overwritten.
-  /// If the file does not exist, a new file will be created.
-  pub fn from_path<P>(
-    path: P,
-    consts: &'w [Const],
-    exports: &'w ExportInfo,
-    insts: &'w [Inst],
-  ) -> Result<Self>
-  where
-    P: AsRef<Path>,
-  {
-    File::create(path).map(|f| Self::new(f, consts, exports, insts))
-  }
-}
-
-impl<'w> Writer<'w, Stdout> {
-  /// Creates a new writer from stdout.
-  pub fn from_stdout(consts: &'w [Const], exports: &'w ExportInfo, insts: &'w [Inst]) -> Self {
-    Self::new(stdout(), consts, exports, insts)
-  }
-}
-
-impl<'w> Writer<'w, Stderr> {
-  /// Creates a new writer from stderr.
-  pub fn from_stderr(consts: &'w [Const], exports: &'w ExportInfo, insts: &'w [Inst]) -> Self {
-    Self::new(stderr(), consts, exports, insts)
   }
 }
 
