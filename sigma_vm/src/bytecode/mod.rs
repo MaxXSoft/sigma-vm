@@ -1,3 +1,4 @@
+pub mod builder;
 pub mod consts;
 pub mod export;
 pub mod insts;
