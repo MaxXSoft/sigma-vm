@@ -7,7 +7,7 @@ use std::ptr::{self, Pointee};
 use std::{mem, slice};
 
 /// Constant.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Const {
   kind: ConstKind,
   data: Box<[u8]>,
@@ -240,7 +240,7 @@ macro_rules! const_kind {
   ($($(#[$a:meta])* $kind:ident),+ $(,)?) => {
     /// Kind of constant.
     #[repr(u8)]
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub enum ConstKind {
       $($(#[$a])* $kind),+
     }
