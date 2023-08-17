@@ -33,21 +33,21 @@ impl<'w> Writer<'w> {
   where
     P: AsRef<Path>,
   {
-    WriterImpl::new(File::create(path)?, self).write()
+    WriterImpl::new(&mut File::create(path)?, self).write()
   }
 
   /// Writes the bytecode to standard output.
   pub fn write_to_stdout(&self) -> Result<()> {
-    WriterImpl::new(stdout(), self).write()
+    WriterImpl::new(&mut stdout(), self).write()
   }
 
   /// Writes the bytecode to standard error.
   pub fn write_to_stderr(&self) -> Result<()> {
-    WriterImpl::new(stderr(), self).write()
+    WriterImpl::new(&mut stderr(), self).write()
   }
 
   /// Writes the bytecode to the given writer.
-  pub fn write_to<W>(&self, writer: W) -> Result<()>
+  pub fn write_to<W>(&self, writer: &mut W) -> Result<()>
   where
     W: Write,
   {
@@ -63,7 +63,7 @@ impl<'w> From<&'w StaticModule> for Writer<'w> {
 
 /// Implementation of writer.
 struct WriterImpl<'w, W> {
-  writer: W,
+  writer: &'w mut W,
   consts: &'w [Const],
   exports: &'w ExportInfo,
   insts: &'w [Inst],
@@ -74,7 +74,7 @@ where
   W: Write,
 {
   /// Create a new writer implementation from the given writer.
-  fn new(writer: W, w: &'w Writer<'w>) -> Self {
+  fn new(writer: &'w mut W, w: &'w Writer<'w>) -> Self {
     Self {
       writer,
       consts: w.consts,
