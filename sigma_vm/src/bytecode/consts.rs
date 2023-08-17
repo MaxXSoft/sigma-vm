@@ -203,6 +203,105 @@ impl_from!(Str<Bytes: Array<u8>>, Str);
 impl_from!(Object<Offsets: Array<u64>>, Object);
 impl_from!(Raw<Bytes: Array<u8>>, Raw);
 
+/// Helper macro for creating boxed values of [`Str`] or [`Raw`].
+macro_rules! new_bytes {
+  ($ty:ident, $bytes:expr) => {{
+    let len = $bytes.len() as u64;
+    let size = $ty::<[u8]>::size(len);
+    let mut data: Box<$ty<[u8]>> =
+      unsafe { alloc_uninit(size, $ty::<[u8]>::ALIGN, $bytes.len()) }.unwrap();
+    data.len = len;
+    unsafe { ptr::copy_nonoverlapping($bytes.as_ptr(), data.bytes.as_mut_ptr(), $bytes.len()) };
+    unsafe { Const::new(ConstKind::$ty, data, size) }
+  }};
+}
+
+/// Helper macro for creating boxed values of [`Object`].
+macro_rules! new_object {
+  {
+    size: $size:expr, align: $align:expr,
+    destructor: $destructor:expr, offsets: $offsets:expr $(,)?
+  } => {{
+    let len = $offsets.len() as u64;
+    let size = Object::<[u64]>::size(len);
+    let mut data: Box<Object<[u64]>> =
+      unsafe { alloc_uninit(size, Object::<[u64]>::ALIGN, $offsets.len()) }.unwrap();
+    data.size = $size;
+    data.align = $align;
+    data.destructor = $destructor;
+    data.managed_ptr.len = len;
+    unsafe {
+      ptr::copy_nonoverlapping(
+        $offsets.as_ptr(),
+        data.managed_ptr.offsets.as_mut_ptr(),
+        $offsets.len()
+      );
+      Const::new(ConstKind::Object, data, size)
+    }
+  }};
+}
+
+impl From<&Str<[u8]>> for Const {
+  fn from(s: &Str<[u8]>) -> Self {
+    new_bytes!(Str, s.bytes)
+  }
+}
+
+impl From<String> for Const {
+  fn from(s: String) -> Self {
+    Const::from(s.as_str())
+  }
+}
+
+impl From<&str> for Const {
+  fn from(s: &str) -> Self {
+    new_bytes!(Str, s.as_bytes())
+  }
+}
+
+impl From<&Object<[u64]>> for Const {
+  fn from(obj: &Object<[u64]>) -> Self {
+    new_object! {
+      size: obj.size,
+      align: obj.align,
+      destructor: obj.destructor,
+      offsets: obj.managed_ptr.offsets,
+    }
+  }
+}
+
+impl From<ObjectRef<'_>> for Const {
+  fn from(obj: ObjectRef) -> Self {
+    new_object! {
+      size: obj.size,
+      align: obj.align,
+      destructor: obj.destructor,
+      offsets: obj.offsets,
+    }
+  }
+}
+
+impl From<&Raw<[u8]>> for Const {
+  fn from(r: &Raw<[u8]>) -> Self {
+    new_bytes!(Raw, r.bytes)
+  }
+}
+
+impl<const N: usize> From<[u8; N]> for Const {
+  fn from(bytes: [u8; N]) -> Self {
+    Const::from(Raw {
+      len: N as u64,
+      bytes,
+    })
+  }
+}
+
+impl From<&[u8]> for Const {
+  fn from(bs: &[u8]) -> Self {
+    new_bytes!(Raw, bs)
+  }
+}
+
 /// Trait for constructing values from constant.
 pub trait FromConst: Sized {
   /// Constructs a value from the given constant.
@@ -387,6 +486,15 @@ impl<Offsets: ?Sized + Array<u64>> Unsized for ManagedPtr<Offsets> {
   fn size(metadata: Self::Metadata) -> usize {
     Self::SIZE + metadata as usize * mem::size_of::<u64>()
   }
+}
+
+/// Object reference, for constructing object metadata constant.
+#[derive(Debug)]
+pub struct ObjectRef<'ofs> {
+  pub size: u64,
+  pub align: u64,
+  pub destructor: u64,
+  pub offsets: &'ofs [u64],
 }
 
 /// Raw data.
