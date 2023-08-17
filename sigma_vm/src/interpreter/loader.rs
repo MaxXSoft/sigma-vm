@@ -1,7 +1,7 @@
 use crate::bytecode::consts::Const;
 use crate::bytecode::export::ExportInfo;
 use crate::bytecode::insts::Inst;
-use crate::bytecode::module::Module;
+use crate::bytecode::module::{Module, StaticModule};
 use crate::bytecode::reader::{Error as ReaderError, Reader};
 use crate::interpreter::heap::{Heap, Meta, Ptr};
 use std::alloc::Layout;
@@ -60,7 +60,9 @@ impl Loader {
     let handle = Self::new_handle(heap, Source::File);
     // add to loaded modules
     self.resolved_paths.insert(final_path, handle);
-    self.loaded_mods.insert(handle, reader.into_module(heap));
+    self
+      .loaded_mods
+      .insert(handle, StaticModule::from(reader).into_module(heap));
     Ok(handle)
   }
 
@@ -74,7 +76,9 @@ impl Loader {
     reader.read().map_err(Error::Reader)?;
     // add to loaded modules
     let handle = Self::new_handle(heap, Source::Other);
-    self.loaded_mods.insert(handle, reader.into_module(heap));
+    self
+      .loaded_mods
+      .insert(handle, StaticModule::from(reader).into_module(heap));
     Ok(handle)
   }
 
@@ -88,7 +92,9 @@ impl Loader {
     reader.read().map_err(Error::Reader)?;
     // add to loaded modules
     let handle = Self::new_handle(heap, Source::Other);
-    self.loaded_mods.insert(handle, reader.into_module(heap));
+    self
+      .loaded_mods
+      .insert(handle, StaticModule::from(reader).into_module(heap));
     Ok(handle)
   }
 
