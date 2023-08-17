@@ -13,6 +13,7 @@ mod test {
   use crate::bytecode::consts::{Const, ManagedPtr, Object, Str};
   use crate::bytecode::export::{CallSite, ExportInfo, NumArgs};
   use crate::bytecode::insts::Inst;
+  use crate::bytecode::module::StaticModule;
   use crate::interpreter::gc::MarkSweep;
   use crate::interpreter::heap::{Checked, System};
   use crate::interpreter::policy::{Policy, StrictAlign};
@@ -97,11 +98,11 @@ mod test {
       results: $($rs:tt)*
     } => {{
       let mut vm = VM::new(Sap::new(1024));
-      $(let $src = vm.new_module(
-        consts![$($consts)*],
-        exports![$($exports)*],
-        insts![$($insts)*],
-      ).unwrap();)*
+      $(let $src = vm.new_module(StaticModule {
+        consts: consts![$($consts)*],
+        exports: exports![$($exports)*],
+        insts: insts![$($insts)*],
+      }).unwrap();)*
       let _rets = vm.call($main, "main", [$(value!($aty: $ae)),*]).unwrap();
       vm.terminate().unwrap();
       vm!(@results vm, $main, _rets, $($rs)*)
