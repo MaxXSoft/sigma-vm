@@ -21,6 +21,7 @@ mod test {
   use crate::bytecode::consts::{Const, ManagedPtr, Object, Raw, Str};
   use crate::bytecode::export::{CallSite, ExportInfo};
   use crate::bytecode::insts::Inst;
+  use crate::bytecode::module::StaticModule;
   use crate::bytecode::reader::Reader;
   use crate::bytecode::writer::Writer;
   use std::io::Cursor;
@@ -92,20 +93,28 @@ mod test {
 
   #[test]
   fn identity() {
-    let consts = some_consts();
-    let exports = some_exports();
-    let insts = some_insts();
-    let mut w = Writer::new(Cursor::new(Vec::<u8>::new()), &consts, &exports, &insts);
-    w.write().unwrap();
-    let data = w.into_inner().into_inner();
+    let module = StaticModule {
+      consts: some_consts(),
+      exports: some_exports(),
+      insts: some_insts(),
+    };
+
+    // write to bytes
+    let mut writer = Cursor::new(Vec::<u8>::new());
+    Writer::new(&module).write_to(&mut writer).unwrap();
+    let data = writer.into_inner();
+
+    // read from bytes
     let mut r = Reader::new(data.as_slice());
     r.read().unwrap();
-    assert!(consts.iter().zip(r.consts().iter()).all(|(l, r)| l
+
+    // check identity
+    assert!(module.consts.iter().zip(r.consts().iter()).all(|(l, r)| l
       .data()
       .iter()
       .zip(r.data())
       .all(|(l, r)| l == r)));
-    assert_eq!(insts.as_ref(), r.insts());
-    assert_eq!(&exports, r.exports());
+    assert_eq!(module.insts.as_ref(), r.insts());
+    assert_eq!(&module.exports, r.exports());
   }
 }
