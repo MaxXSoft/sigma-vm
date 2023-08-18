@@ -4,6 +4,8 @@ use crate::interpreter::native::NativeLoader;
 use crate::interpreter::policy::Policy;
 use crate::interpreter::vm::Vars;
 use std::collections::HashMap;
+use std::io::{stderr, stdin, stdout, Read, Write};
+use std::slice;
 
 /// System call handler.
 pub trait Handler<P, H>
@@ -79,6 +81,9 @@ where
       5 => Self::stack_length(state),
       6 => Self::del(state),
       7 => Self::unload(state),
+      8 => Self::read(state),
+      9 => Self::write(state, stdout()),
+      10 => Self::write(state, stderr()),
       _ => match self.handlers.get_mut(&syscall) {
         Some(handler) => handler.handle(state),
         None => P::report_invalid_syscall().map(|_| ControlFlow::Continue),
@@ -189,6 +194,49 @@ where
     let handle = P::get_ptr(&s0)?;
     state.loader.unload(state.heap, handle);
     state.module_globals.remove(&handle);
+    Ok(ControlFlow::Continue)
+  }
+
+  /// Reads bytes from the standard input.
+  ///
+  /// Stack layout:
+  /// * s0 (TOS): length of array.
+  /// * s1: array.
+  ///
+  /// Stack layout after call:
+  /// * s0 (TOS): length read, negative if error.
+  fn read(state: VmState<P, H>) -> Result<ControlFlow, P::Error> {
+    // get byte array
+    let len = P::get_int_ptr(&P::unwrap_val(state.value_stack.pop())?)? as usize;
+    let array = P::get_ptr(&P::unwrap_val(state.value_stack.pop())?)?;
+    P::check_access(state.heap, array, len, 1)?;
+    let buf = unsafe { slice::from_raw_parts_mut(state.heap.addr_mut(array) as *mut u8, len) };
+    // read to array
+    let result = stdin().read(buf).unwrap_or(usize::MAX);
+    state.value_stack.push(P::int_val(result as u64));
+    Ok(ControlFlow::Continue)
+  }
+
+  /// Writes bytes to the given writer.
+  ///
+  /// Stack layout:
+  /// * s0 (TOS): length to write.
+  /// * s1: array.
+  ///
+  /// Stack layout after call:
+  /// * s0 (TOS): length wrote, negative if error.
+  fn write<W>(state: VmState<P, H>, mut w: W) -> Result<ControlFlow, P::Error>
+  where
+    W: Write,
+  {
+    // get byte array
+    let len = P::get_int_ptr(&P::unwrap_val(state.value_stack.pop())?)? as usize;
+    let array = P::get_ptr(&P::unwrap_val(state.value_stack.pop())?)?;
+    P::check_access(state.heap, array, len, 1)?;
+    let buf = unsafe { slice::from_raw_parts(state.heap.addr(array) as *const u8, len) };
+    // write to writer
+    let result = w.write(buf).unwrap_or(usize::MAX);
+    state.value_stack.push(P::int_val(result as u64));
     Ok(ControlFlow::Continue)
   }
 }
