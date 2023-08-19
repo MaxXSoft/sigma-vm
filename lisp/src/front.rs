@@ -131,7 +131,7 @@ struct Quote {
   elem: Box<Elem>,
 }
 
-/// S-expression.
+/// List.
 #[derive(Debug, Parse, Spanned)]
 #[token(Token)]
 struct List {
