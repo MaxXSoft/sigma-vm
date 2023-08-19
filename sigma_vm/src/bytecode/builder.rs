@@ -45,12 +45,16 @@ impl Builder {
     self.insts.len() as u64
   }
 
-  /// Inserts a new label at the current PC, returns the handle of the label.
+  /// Declares a new label, returns the handle of the label.
   pub fn label(&mut self) -> u64 {
     let label = self.next_label;
     self.next_label += 1;
-    self.labels.insert(label, self.pc());
     label
+  }
+
+  /// Inserts the given label at the current PC.
+  pub fn insert_label(&mut self, label: u64) {
+    self.labels.insert(label, self.pc());
   }
 
   /// Inserts a new exported function, with the given name, label, and number
