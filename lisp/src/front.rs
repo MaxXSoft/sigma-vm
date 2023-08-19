@@ -20,29 +20,29 @@ enum TokenKind {
   /// String.
   #[regex(r#""([^\x00-\x1f"\\]|\\(["\\/bfnrt]|u[0-9a-fA-F]{4}))*""#, str_literal)]
   Str(String),
-  /// Atom.
+  /// Symbol.
   #[regex(r"[^\s()]+")]
-  Atom(Atom),
+  Sym(Sym),
   /// End-of-file.
   #[eof]
   Eof,
 }
 
-/// Atom.
+/// Symbol.
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct Atom(String);
+struct Sym(String);
 
-impl fmt::Display for Atom {
+impl fmt::Display for Sym {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     self.0.fmt(f)
   }
 }
 
-impl str::FromStr for Atom {
+impl str::FromStr for Sym {
   type Err = <String as str::FromStr>::Err;
 
   fn from_str(s: &str) -> Result<Self, Self::Err> {
-    String::from_str(s).map(Atom)
+    String::from_str(s).map(Sym)
   }
 }
 
@@ -99,7 +99,7 @@ token_ast! {
     [rpr] => { kind: TokenKind::Paren(')') },
     [num] => { kind: TokenKind::Num(_), prompt: "number" },
     [str] => { kind: TokenKind::Str(_), prompt: "string" },
-    [atom] => { kind: TokenKind::Atom(_), prompt: "atom" },
+    [sym] => { kind: TokenKind::Sym(_), prompt: "symbol" },
     [eof] => { kind: TokenKind::Eof },
   }
 }
@@ -118,7 +118,7 @@ enum Statement {
 enum Elem {
   Num(Token![num]),
   Str(Token![str]),
-  Atom(Token![atom]),
+  Sym(Token![sym]),
   Quote(Quote),
   SExp(SExp),
 }
@@ -173,7 +173,7 @@ impl<R> Parser<R> {
     let kind = match elem {
       Elem::Num(num) => ElemKind::Num(num.unwrap()),
       Elem::Str(str) => ElemKind::Str(str.unwrap()),
-      Elem::Atom(atom) => ElemKind::Atom(atom.unwrap::<Atom, _>().0),
+      Elem::Sym(sym) => ElemKind::Sym(sym.unwrap::<Sym, _>().0),
       Elem::Quote(quote) => ElemKind::Quote(Box::new(Self::elem_to_element(*quote.elem))),
       Elem::SExp(sexp) => {
         ElemKind::SExp(sexp.elems.into_iter().map(Self::elem_to_element).collect())
@@ -184,21 +184,21 @@ impl<R> Parser<R> {
 }
 
 /// Element.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Element {
   pub kind: ElemKind,
   pub span: Span,
 }
 
 /// Kind of element.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ElemKind {
   /// Number.
   Num(f64),
   /// String.
   Str(String),
-  /// Atom.
-  Atom(String),
+  /// Symbol.
+  Sym(String),
   /// Quoted element.
   Quote(Box<Element>),
   /// S-expression.
