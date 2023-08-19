@@ -153,17 +153,14 @@ impl<R> Parser<R> {
     }
   }
 
-  /// Parses the next element from the reader.
-  pub fn parse(&mut self) -> laps::span::Result<Element>
+  /// Parses the next element from the reader. Returns [`Ok(None)`] on EOF.
+  pub fn parse(&mut self) -> laps::span::Result<Option<Element>>
   where
     R: io::Read,
   {
     Ok(match self.tokens.parse::<Statement>()? {
-      Statement::Elem(elem) => Self::elem_to_element(elem),
-      Statement::End(eof) => Element {
-        kind: ElemKind::Eof,
-        span: eof.span(),
-      },
+      Statement::Elem(elem) => Some(Self::elem_to_element(elem)),
+      Statement::End(_) => None,
     })
   }
 
