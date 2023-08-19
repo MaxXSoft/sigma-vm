@@ -4,4 +4,5 @@ members = [
   "sigma_vm",
   "sigma",
   "xeno",
+  "lisp",
 ]
