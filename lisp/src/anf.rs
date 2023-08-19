@@ -104,8 +104,8 @@ impl Generator {
   /// Generates a symbol.
   fn gen_sym(&mut self, sym: String, span: Span) -> Result<Value> {
     match self.env.get(&sym) {
-      Some(VarKind::Var(id, _)) => Ok(Value::Var(id)),
-      Some(VarKind::OuterVar(id, _)) => Ok(Value::OuterVar(id)),
+      Some(VarKind::Var(id)) => Ok(Value::Var(id)),
+      Some(VarKind::OuterVar(id)) => Ok(Value::OuterVar(id)),
       None => return_error!(span, "symbol {sym} not found"),
     }
   }
@@ -146,19 +146,19 @@ impl Env {
   }
 
   /// Defines a new variable. Returns the variable number.
-  fn define(&mut self, name: String, ty: Type) -> u64 {
-    self.scopes.last_mut().unwrap().define(name, ty)
+  fn define(&mut self, name: String) -> u64 {
+    self.scopes.last_mut().unwrap().define(name)
   }
 
   /// Finds the given variable in all scopes.
   fn get(&mut self, name: &str) -> Option<VarKind> {
     let mut iter = self.scopes.iter();
-    if let Some((id, ty)) = iter.next().unwrap().get(name) {
-      Some(VarKind::Var(*id, ty))
+    if let Some(id) = iter.next().unwrap().get(name) {
+      Some(VarKind::Var(id))
     } else {
       for scope in iter {
-        if let Some((id, ty)) = scope.get(name) {
-          return Some(VarKind::OuterVar(*id, ty));
+        if let Some(id) = scope.get(name) {
+          return Some(VarKind::OuterVar(id));
         }
       }
       None
@@ -168,7 +168,7 @@ impl Env {
 
 /// Scope of environment.
 struct Scope {
-  vars: HashMap<String, (u64, Type)>,
+  vars: HashMap<String, u64>,
 }
 
 impl Scope {
@@ -180,42 +180,19 @@ impl Scope {
   }
 
   /// Defines a new variable. Returns the variable number.
-  fn define(&mut self, name: String, ty: Type) -> u64 {
-    if let Some((id, t)) = self.vars.get_mut(&name) {
-      *t = ty;
-      *id
-    } else {
-      let id = self.vars.len() as u64;
-      self.vars.insert(name, (id, ty));
-      id
-    }
+  fn define(&mut self, name: String) -> u64 {
+    let id = self.vars.len() as u64;
+    *self.vars.entry(name).or_insert(id)
   }
 
   /// Finds the given variable.
-  fn get(&self, name: &str) -> Option<&(u64, Type)> {
-    self.vars.get(name)
+  fn get(&self, name: &str) -> Option<u64> {
+    self.vars.get(name).copied()
   }
 }
 
 /// Kind of variable.
-enum VarKind<'t> {
-  Var(u64, &'t Type),
-  OuterVar(u64, &'t Type),
-}
-
-/// Type of value.
-#[derive(Debug, Clone)]
-enum Type {
-  /// Number.
-  Num,
-  /// String.
-  Str,
-  /// Symbol.
-  Sym,
-  /// List.
-  List(Vec<Type>),
-  /// Lambda, with parameter types and return type.
-  Lambda(Vec<Type>, Box<Type>),
-  /// Unknown.
-  Unknown,
+enum VarKind {
+  Var(u64),
+  OuterVar(u64),
 }
