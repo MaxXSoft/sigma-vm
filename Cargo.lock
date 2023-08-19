@@ -245,6 +245,7 @@ name = "lisp"
 version = "0.0.1"
 dependencies = [
  "laps",
+ "sigma_vm",
 ]
 
 [[package]]
