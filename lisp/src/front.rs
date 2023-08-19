@@ -1,12 +1,12 @@
-use laps::{lexer::Lexer, prelude::*, reader::Reader, token::TokenBuffer};
+use laps::{lexer::Lexer, prelude::*, reader::Reader, span::Span, token::TokenBuffer};
 use std::{fmt, io, str};
 
 /// Kind of tokens.
 #[token_kind]
 #[derive(Debug, Tokenize)]
 enum TokenKind {
-  /// Spaces
-  #[skip(r"\s+")]
+  /// Spaces and comments.
+  #[skip(r"\s+|;.*\n|;.*")]
   _Skip,
   /// Quote.
   #[regex(r"'")]
@@ -105,7 +105,7 @@ token_ast! {
 }
 
 /// Statement.
-#[derive(Parse, Debug)]
+#[derive(Debug, Parse, Spanned)]
 #[token(Token)]
 enum Statement {
   Elem(Elem),
@@ -113,7 +113,7 @@ enum Statement {
 }
 
 /// Element.
-#[derive(Parse, Debug)]
+#[derive(Debug, Parse, Spanned)]
 #[token(Token)]
 enum Elem {
   Num(Token![num]),
@@ -124,7 +124,7 @@ enum Elem {
 }
 
 /// Quoted element.
-#[derive(Parse, Debug)]
+#[derive(Debug, Parse, Spanned)]
 #[token(Token)]
 struct Quote {
   _quote: Token![quote],
@@ -132,7 +132,7 @@ struct Quote {
 }
 
 /// S-expression.
-#[derive(Parse, Debug)]
+#[derive(Debug, Parse, Spanned)]
 #[token(Token)]
 struct SExp {
   _lpr: Token![lpr],
@@ -160,27 +160,39 @@ impl<R> Parser<R> {
   {
     Ok(match self.tokens.parse::<Statement>()? {
       Statement::Elem(elem) => Self::elem_to_element(elem),
-      Statement::End(_) => Element::Eof,
+      Statement::End(eof) => Element {
+        kind: ElemKind::Eof,
+        span: eof.span(),
+      },
     })
   }
 
   /// Converts [`Elem`] to [`Element`].
   fn elem_to_element(elem: Elem) -> Element {
-    match elem {
-      Elem::Num(num) => Element::Num(num.unwrap()),
-      Elem::Str(str) => Element::Str(str.unwrap()),
-      Elem::Atom(atom) => Element::Atom(atom.unwrap::<Atom, _>().0),
-      Elem::Quote(quote) => Element::Quote(Box::new(Self::elem_to_element(*quote.elem))),
+    let span = elem.span();
+    let kind = match elem {
+      Elem::Num(num) => ElemKind::Num(num.unwrap()),
+      Elem::Str(str) => ElemKind::Str(str.unwrap()),
+      Elem::Atom(atom) => ElemKind::Atom(atom.unwrap::<Atom, _>().0),
+      Elem::Quote(quote) => ElemKind::Quote(Box::new(Self::elem_to_element(*quote.elem))),
       Elem::SExp(sexp) => {
-        Element::SExp(sexp.elems.into_iter().map(Self::elem_to_element).collect())
+        ElemKind::SExp(sexp.elems.into_iter().map(Self::elem_to_element).collect())
       }
-    }
+    };
+    Element { kind, span }
   }
 }
 
 /// Element.
 #[derive(Debug)]
-pub enum Element {
+pub struct Element {
+  pub kind: ElemKind,
+  pub span: Span,
+}
+
+/// Kind of element.
+#[derive(Debug)]
+pub enum ElemKind {
   /// Number.
   Num(f64),
   /// String.
@@ -188,9 +200,9 @@ pub enum Element {
   /// Atom.
   Atom(String),
   /// Quoted element.
-  Quote(Box<Self>),
+  Quote(Box<Element>),
   /// S-expression.
-  SExp(Vec<Self>),
+  SExp(Vec<Element>),
   /// End-of-file.
   Eof,
 }
