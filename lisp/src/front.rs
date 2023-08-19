@@ -120,7 +120,7 @@ enum Elem {
   Str(Token![str]),
   Sym(Token![sym]),
   Quote(Quote),
-  SExp(SExp),
+  List(List),
 }
 
 /// Quoted element.
@@ -134,7 +134,7 @@ struct Quote {
 /// S-expression.
 #[derive(Debug, Parse, Spanned)]
 #[token(Token)]
-struct SExp {
+struct List {
   _lpr: Token![lpr],
   elems: Vec<Elem>,
   _rpr: Token![rpr],
@@ -175,8 +175,8 @@ impl<R> Parser<R> {
       Elem::Str(str) => ElemKind::Str(str.unwrap()),
       Elem::Sym(sym) => ElemKind::Sym(sym.unwrap::<Sym, _>().0),
       Elem::Quote(quote) => ElemKind::Quote(Box::new(Self::elem_to_element(*quote.elem))),
-      Elem::SExp(sexp) => {
-        ElemKind::SExp(sexp.elems.into_iter().map(Self::elem_to_element).collect())
+      Elem::List(list) => {
+        ElemKind::List(list.elems.into_iter().map(Self::elem_to_element).collect())
       }
     };
     Element { kind, span }
@@ -201,8 +201,6 @@ pub enum ElemKind {
   Sym(String),
   /// Quoted element.
   Quote(Box<Element>),
-  /// S-expression.
-  SExp(Vec<Element>),
-  /// End-of-file.
-  Eof,
+  /// List.
+  List(Vec<Element>),
 }
