@@ -16,6 +16,38 @@ const VERSION: [u64; 3] = [
   crate::utils::str_to_u64(env!("CARGO_PKG_VERSION_PATCH")),
 ];
 
+/// Kind of section in bytecode file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Section {
+  /// Constant pool.
+  Consts,
+  /// Export information.
+  Exports,
+  /// Instruction section.
+  Insts,
+  /// Custom metadata section.
+  Custom,
+}
+
+impl Section {
+  /// Creates a new [`Section`] from the given byte.
+  pub fn from_byte(b: u8) -> Option<Self> {
+    match b {
+      0 => Some(Self::Consts),
+      1 => Some(Self::Exports),
+      2 => Some(Self::Insts),
+      3 => Some(Self::Consts),
+      _ => None,
+    }
+  }
+}
+
+impl From<Section> for u8 {
+  fn from(s: Section) -> Self {
+    s as Self
+  }
+}
+
 #[cfg(test)]
 mod test {
   use crate::bytecode::consts::{Const, ManagedPtr, Object, Raw, Str};
