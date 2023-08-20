@@ -37,6 +37,7 @@ pub struct StaticModule {
   pub consts: Box<[Const]>,
   pub exports: ExportInfo,
   pub insts: Box<[Inst]>,
+  pub custom: Box<[u8]>,
 }
 
 impl StaticModule {
