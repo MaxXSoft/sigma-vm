@@ -16,6 +16,7 @@ pub struct Builder {
   /// Mapping between label handle and label kinds.
   pending_labels: HashMap<u64, Vec<LabelKind>>,
   next_label: u64,
+  custom: Vec<u8>,
 }
 
 impl Builder {
@@ -28,6 +29,7 @@ impl Builder {
       labels: HashMap::new(),
       pending_labels: HashMap::new(),
       next_label: 0,
+      custom: vec![],
     }
   }
 
@@ -123,6 +125,14 @@ impl Builder {
     self.inst(Inst::PushU(unsafe { *(&value as *const _ as *const u64) }))
   }
 
+  /// Adds the given bytes to custom metadata.
+  pub fn custom<I>(&mut self, bytes: I)
+  where
+    I: IntoIterator<Item = u8>,
+  {
+    self.custom.extend(bytes)
+  }
+
   /// Consumes the current builder and builds a static module.
   pub fn build(mut self) -> Result<StaticModule, Error> {
     // create constant pool
@@ -143,6 +153,7 @@ impl Builder {
       consts: consts.into_iter().map(|(_, c)| c).collect(),
       exports: self.exports,
       insts: self.insts.into_boxed_slice(),
+      custom: self.custom.into_boxed_slice(),
     })
   }
 }
