@@ -241,6 +241,7 @@ impl<R> From<Reader<R>> for StaticModule {
       consts: reader.consts.into_boxed_slice(),
       exports: reader.exports,
       insts: reader.insts.into_boxed_slice(),
+      custom: reader.custom.into_boxed_slice(),
     }
   }
 }
