@@ -10,7 +10,7 @@ use std::{env, fmt, process};
 #[derive(Parser, Debug)]
 #[command(version, about)]
 struct CommandLineArgs {
-  /// Path to the bytecode file.
+  /// Path to the bytecode file, default to standard input.
   bytecode: Option<String>,
 
   /// Add directory to search path of module loader.
