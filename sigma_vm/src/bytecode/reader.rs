@@ -2,12 +2,12 @@ use crate::bytecode::consts::{Const, ConstKind, Object, Raw, Str};
 use crate::bytecode::export::{Export, ExportInfo};
 use crate::bytecode::insts::{Inst, Opcode, Operand, OperandType};
 use crate::bytecode::module::StaticModule;
-use crate::bytecode::{MAGIC, VERSION};
+use crate::bytecode::{Section, MAGIC, VERSION};
 use crate::utils::{alloc_uninit, Unsized};
 use leb128::read::{signed, unsigned, Error as LebError};
 use std::alloc::LayoutError;
 use std::fs::File;
-use std::io::{stdin, Error as IoError, Read, Result as IoResult, Stdin};
+use std::io::{stdin, Error as IoError, ErrorKind, Read, Result as IoResult, Stdin};
 use std::path::Path;
 use std::{fmt, mem};
 
@@ -20,6 +20,8 @@ pub enum Error {
   InvalidMagic,
   /// Incompatible version.
   IncompatibleVersion,
+  /// Unknown section.
+  UnknownSection,
   /// Integer overflow.
   Overflow,
   /// Unknown constant kind.
@@ -49,6 +51,7 @@ impl fmt::Display for Error {
       Self::IO(io) => write!(f, "{io}"),
       Self::InvalidMagic => write!(f, "invalid magic number"),
       Self::IncompatibleVersion => write!(f, "incompatible version"),
+      Self::UnknownSection => write!(f, "unknown section"),
       Self::Overflow => write!(f, "integer overflow when reading bytecode"),
       Self::UnknownConstKind(k) => write!(f, "unknown constant kind: {k}"),
       Self::Layout(l) => write!(f, "{l}"),
@@ -68,6 +71,7 @@ pub struct Reader<R> {
   consts: Vec<Const>,
   exports: ExportInfo,
   insts: Vec<Inst>,
+  custom: Vec<u8>,
 }
 
 impl<R> Reader<R> {
@@ -78,6 +82,7 @@ impl<R> Reader<R> {
       consts: vec![],
       exports: ExportInfo::new(),
       insts: vec![],
+      custom: vec![],
     }
   }
 
@@ -95,6 +100,11 @@ impl<R> Reader<R> {
   pub fn insts(&self) -> &[Inst] {
     &self.insts
   }
+
+  /// Returns a reference to the custom metadata.
+  pub fn custom(&self) -> &[u8] {
+    &self.custom
+  }
 }
 
 impl<R> Reader<R>
@@ -105,9 +115,7 @@ where
   pub fn read(&mut self) -> Result<()> {
     self.check_magic()?;
     self.check_version()?;
-    self.read_consts()?;
-    self.read_exports()?;
-    self.read_insts()
+    self.read_sections()
   }
 
   /// Checks the magic number.
@@ -135,10 +143,30 @@ where
     }
   }
 
+  /// Reads sections.
+  fn read_sections(&mut self) -> Result<()> {
+    loop {
+      // read section kind
+      let mut buf = [0];
+      match self.reader.read_exact(&mut buf) {
+        Ok(_) => {}
+        Err(e) if e.kind() == ErrorKind::UnexpectedEof => break Ok(()),
+        Err(e) => return Err(Error::IO(e)),
+      }
+      // read by kind
+      match Section::from_byte(buf[0]) {
+        Some(Section::Consts) => self.read_consts()?,
+        Some(Section::Exports) => self.read_exports()?,
+        Some(Section::Insts) => self.read_insts()?,
+        Some(Section::Custom) => self.read_custom()?,
+        None => return Err(Error::UnknownSection),
+      }
+    }
+  }
+
   /// Reads constants.
   fn read_consts(&mut self) -> Result<()> {
     let len: u64 = self.reader.read_leb128()?;
-    self.consts.clear();
     self.consts.reserve_exact(len as usize);
     for _ in 0..len {
       self.consts.push(self.reader.read_const()?);
@@ -149,7 +177,6 @@ where
   /// Reads export information.
   fn read_exports(&mut self) -> Result<()> {
     let len: u64 = self.reader.read_leb128()?;
-    self.exports.clear();
     self.exports.reserve(len as usize);
     for _ in 0..len {
       let export = self.reader.read_export()?;
@@ -168,12 +195,19 @@ where
   /// Reads instructions.
   fn read_insts(&mut self) -> Result<()> {
     let len: u64 = self.reader.read_leb128()?;
-    self.insts.clear();
     self.insts.reserve_exact(len as usize);
     for _ in 0..len {
       self.insts.push(self.reader.read_inst()?);
     }
     Ok(())
+  }
+
+  /// Reads custom metadata.
+  fn read_custom(&mut self) -> Result<()> {
+    let len: u64 = self.reader.read_leb128()?;
+    let prev_len = self.custom.len();
+    self.custom.resize(prev_len + len as usize, 0);
+    self.reader.fill(&mut self.custom[prev_len..])
   }
 }
 
