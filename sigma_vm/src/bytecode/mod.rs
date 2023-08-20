@@ -129,6 +129,7 @@ mod test {
       consts: some_consts(),
       exports: some_exports(),
       insts: some_insts(),
+      custom: Box::new([]),
     };
 
     // write to bytes
