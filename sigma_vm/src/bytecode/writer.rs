@@ -2,7 +2,7 @@ use crate::bytecode::consts::{Const, ConstKind, Object, Raw, Str};
 use crate::bytecode::export::{CallSite, ExportInfo};
 use crate::bytecode::insts::{Inst, Operand};
 use crate::bytecode::module::StaticModule;
-use crate::bytecode::{MAGIC, VERSION};
+use crate::bytecode::{Section, MAGIC, VERSION};
 use leb128::write::{signed, unsigned};
 use std::fs::File;
 use std::io::{stderr, stdout, Result, Write};
@@ -13,15 +13,17 @@ pub struct Writer<'w> {
   consts: &'w [Const],
   exports: &'w ExportInfo,
   insts: &'w [Inst],
+  custom: &'w [u8],
 }
 
 impl<'w> Writer<'w> {
-  /// Creates a new writer.
+  /// Creates a new writer from the given module.
   pub fn new(module: &'w StaticModule) -> Self {
     Self {
       consts: &module.consts,
       exports: &module.exports,
       insts: &module.insts,
+      custom: &module.custom,
     }
   }
 
@@ -67,6 +69,7 @@ struct WriterImpl<'w, W> {
   consts: &'w [Const],
   exports: &'w ExportInfo,
   insts: &'w [Inst],
+  custom: &'w [u8],
 }
 
 impl<'w, W> WriterImpl<'w, W>
@@ -80,6 +83,7 @@ where
       consts: w.consts,
       exports: w.exports,
       insts: w.insts,
+      custom: w.custom,
     }
   }
 
@@ -89,7 +93,8 @@ where
     self.write_version()?;
     self.write_consts()?;
     self.write_exports()?;
-    self.write_insts()
+    self.write_insts()?;
+    self.write_custom()
   }
 
   /// Writes the magic number.
@@ -107,33 +112,52 @@ where
 
   /// Writes constants.
   fn write_consts(&mut self) -> Result<()> {
-    unsigned(&mut self.writer, self.consts.len() as u64)?;
-    for c in self.consts {
-      c.write(&mut self.writer)?;
+    if !self.consts.is_empty() {
+      (Section::Consts as u8).write(self.writer)?;
+      unsigned(&mut self.writer, self.consts.len() as u64)?;
+      for c in self.consts {
+        c.write(&mut self.writer)?;
+      }
     }
     Ok(())
   }
 
   /// Writes exports.
   fn write_exports(&mut self) -> Result<()> {
-    unsigned(&mut self.writer, self.exports.len() as u64)?;
-    for (name, call_site) in self.exports {
-      call_site.write(&mut self.writer)?;
-      name.write(&mut self.writer)?;
+    if !self.exports.is_empty() {
+      (Section::Exports as u8).write(self.writer)?;
+      unsigned(&mut self.writer, self.exports.len() as u64)?;
+      for (name, call_site) in self.exports {
+        call_site.write(&mut self.writer)?;
+        name.write(&mut self.writer)?;
+      }
     }
     Ok(())
   }
 
   /// Writes instructions.
   fn write_insts(&mut self) -> Result<()> {
-    unsigned(&mut self.writer, self.insts.len() as u64)?;
-    for inst in self.insts {
-      (inst.opcode() as u8).write(&mut self.writer)?;
-      match inst.operand() {
-        Some(Operand::Signed(opr)) => signed(&mut self.writer, opr)?,
-        Some(Operand::Unsigned(opr)) => unsigned(&mut self.writer, opr)?,
-        None => 0,
-      };
+    if !self.insts.is_empty() {
+      (Section::Insts as u8).write(self.writer)?;
+      unsigned(&mut self.writer, self.insts.len() as u64)?;
+      for inst in self.insts {
+        (inst.opcode() as u8).write(&mut self.writer)?;
+        match inst.operand() {
+          Some(Operand::Signed(opr)) => signed(&mut self.writer, opr)?,
+          Some(Operand::Unsigned(opr)) => unsigned(&mut self.writer, opr)?,
+          None => 0,
+        };
+      }
+    }
+    Ok(())
+  }
+
+  /// Writes custom metadata.
+  fn write_custom(&mut self) -> Result<()> {
+    if !self.custom.is_empty() {
+      (Section::Custom as u8).write(self.writer)?;
+      unsigned(self.writer, self.custom.len() as u64)?;
+      self.writer.write_all(self.custom)?;
     }
     Ok(())
   }
