@@ -356,7 +356,7 @@ impl Generator {
       }
       ElemKind::Sym(s) => match s.as_str() {
         "define" => return_error!(span, "invalid definition"),
-        "lambda" => return self.gen_lambda(elems, span),
+        "lambda" => return self.gen_lambda(&elems[1..], span),
         "cond" => return self.gen_cond(&elems[1..], span),
         _ => {}
       },
@@ -429,14 +429,14 @@ impl Env {
 
   /// Finds the given variable in all scopes.
   fn get(&mut self, name: &str) -> Option<VarKind> {
-    let mut iter = self.scopes.iter().enumerate();
+    let mut iter = self.scopes.iter().enumerate().rev();
     if let Some(id) = iter.next().unwrap().1.get(name) {
       Some(VarKind::Var(id))
     } else {
       // find in outer scopes
       for (i, scope) in iter {
         if let Some(id) = scope.get(name) {
-          return if i == self.scopes.len() - 1 {
+          return if i == 0 {
             Some(VarKind::GlobalVar(id))
           } else {
             Some(VarKind::OuterVar(id))
