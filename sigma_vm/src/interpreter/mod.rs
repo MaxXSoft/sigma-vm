@@ -102,6 +102,7 @@ mod test {
         consts: consts![$($consts)*],
         exports: exports![$($exports)*],
         insts: insts![$($insts)*],
+        custom: Box::new([]),
       }).unwrap();)*
       let _rets = vm.call($main, "main", [$(value!($aty: $ae)),*]).unwrap();
       vm.terminate().unwrap();
