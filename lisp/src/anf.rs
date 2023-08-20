@@ -48,6 +48,8 @@ pub enum Value {
   OuterVar(u64),
   /// Variable reference from the global scope.
   GlobalVar(u64),
+  /// Builtin function.
+  Builtin(Builtin),
   /// Lambda.
   Lambda(Lambda),
 }
@@ -91,6 +93,43 @@ pub struct If {
   pub else_then: Box<Expr>,
 }
 
+/// Builtin functions.
+#[derive(Debug)]
+pub enum Builtin {
+  /// atom?
+  Atom,
+  /// number?
+  Number,
+  /// eq?
+  Equal,
+  /// car
+  Car,
+  /// cdr
+  Cdr,
+  /// cons
+  Cons,
+  /// list
+  List,
+  /// +
+  Add,
+  /// -
+  Sub,
+  /// *
+  Mul,
+  /// /
+  Div,
+  /// >
+  Gt,
+  /// <
+  Lt,
+  /// >=
+  Ge,
+  /// <=
+  Le,
+  /// =
+  Eq,
+}
+
 /// A-normal form generator.
 pub struct Generator {
   env: Env,
@@ -125,17 +164,13 @@ impl Generator {
             "lambda" => {}
             "cond" => {
               return self
-                .gen_cond(&es[1..], elem.span)
-                .map(|a| Some(Statement::Expr(Expr::CompExpr(CompExpr::If(a)))))
+                .gen_cond(&es[1..], &elem.span)
+                .map(|e| Some(Statement::Expr(e)))
             }
-            _ => {}
+            _ => return self.gen_apply(&es).map(|e| Some(Statement::Expr(e))),
           },
-          _ => {}
+          _ => return self.gen_apply(&es).map(|e| Some(Statement::Expr(e))),
         };
-        // generate apply
-        return self
-          .gen_apply(&es)
-          .map(|a| Some(Statement::Expr(Expr::CompExpr(CompExpr::Apply(a)))));
       }
       _ => {}
     }
@@ -163,8 +198,176 @@ impl Generator {
     Ok(Define { name, var, expr })
   }
 
+  /// Generates a conditional expression.
+  fn gen_cond(&mut self, elems: &[Element], span: &Span) -> Result<Expr> {
+    if elems.is_empty() {
+      return_error!(span, "expected at least 1 argument")
+    }
+    // check all conditions
+    let mut conds = vec![];
+    let mut else_then = None;
+    for elem in elems {
+      // check if should be skipped
+      if else_then.is_some() {
+        log_warning!(elem.span, "this branch will never be evaluated");
+        continue;
+      }
+      // get condition and expression
+      let (cond, expr) = match &elem.kind {
+        ElemKind::List(es) => match &es[..] {
+          [cond, expr] => (self.gen_expr(cond)?, self.gen_expr(expr)?),
+          _ => return_error!(elem.span, "expected exactly 2 elements"),
+        },
+        _ => return_error!(elem.span, "expected list"),
+      };
+      // generate condition or else branch
+      if matches!(&cond, Expr::Value(Value::Sym(s)) if s == "t") {
+        else_then = Some(expr);
+      } else {
+        let (bs, v) = self.extract(cond);
+        conds.push((bs, v, expr));
+      }
+    }
+    // generate if
+    if let Some(else_then) = else_then {
+      Ok(conds.into_iter().rev().fold(else_then, |e, (bs, cond, t)| {
+        Self::gen_let(
+          bs,
+          Expr::CompExpr(CompExpr::If(If {
+            cond,
+            then: Box::new(t),
+            else_then: Box::new(e),
+          })),
+        )
+      }))
+    } else {
+      return_error!(span, "missing else branch")
+    }
+  }
+
+  /// Generates a function application.
+  ///
+  /// The element list must not empty.
+  fn gen_apply(&mut self, elems: &[Element]) -> Result<Expr> {
+    // collect bindings and elements
+    let mut bindings = vec![];
+    let mut new_elems = vec![];
+    for elem in elems {
+      let expr = self.gen_expr(elem)?;
+      let (bs, v) = self.extract(expr);
+      bindings.extend(bs);
+      new_elems.push(v);
+    }
+    // generate expression
+    Ok(Self::gen_let(
+      bindings,
+      Expr::CompExpr(CompExpr::Apply(Apply {
+        func: new_elems.remove(0),
+        args: new_elems,
+      })),
+    ))
+  }
+
+  /// Extracts bindings and the final value from the given expression.
+  fn extract(&mut self, expr: Expr) -> (Vec<(u64, CompExpr)>, Value) {
+    match expr {
+      Expr::Value(v) => (vec![], v),
+      Expr::CompExpr(c) => {
+        let temp = self.env.define_temp();
+        (vec![(temp, c)], Value::Var(temp))
+      }
+      Expr::Let(l) => self.extract_let(l),
+    }
+  }
+
+  /// Extracts bindings and the final value from the given let expression.
+  fn extract_let(&mut self, l: Let) -> (Vec<(u64, CompExpr)>, Value) {
+    let mut bindings = vec![(l.var, l.def)];
+    let value = match *l.expr {
+      Expr::Value(v) => v,
+      Expr::CompExpr(c) => {
+        let temp = self.env.define_temp();
+        bindings.push((temp, c));
+        Value::Var(temp)
+      }
+      Expr::Let(l) => {
+        let (bs, v) = self.extract_let(l);
+        bindings.extend(bs);
+        v
+      }
+    };
+    (bindings, value)
+  }
+
+  /// Generates a let expression by the given bindings and expression.
+  fn gen_let(bindings: Vec<(u64, CompExpr)>, expr: Expr) -> Expr {
+    bindings.into_iter().rev().fold(expr, |e, (var, def)| {
+      Expr::Let(Let {
+        var,
+        def,
+        expr: Box::new(e),
+      })
+    })
+  }
+
+  /// Generates an expression.
+  fn gen_expr(&mut self, elem: &Element) -> Result<Expr> {
+    match &elem.kind {
+      ElemKind::Num(n) => Ok(Expr::Value(Value::Num(*n))),
+      ElemKind::Str(s) => Ok(Expr::Value(Value::Str(s.clone()))),
+      ElemKind::Sym(s) => self.gen_sym(s, &elem.span).map(Expr::Value),
+      ElemKind::Quote(e) => Ok(Expr::Value(self.gen_quote(&e))),
+      ElemKind::List(es) => self.gen_list(es, &elem.span),
+    }
+  }
+
+  /// Generates a symbol.
+  fn gen_sym(&mut self, sym: &str, span: &Span) -> Result<Value> {
+    match self.env.get(sym) {
+      Some(VarKind::Var(id)) => Ok(Value::Var(id)),
+      Some(VarKind::OuterVar(id)) => Ok(Value::OuterVar(id)),
+      Some(VarKind::GlobalVar(id)) => Ok(Value::GlobalVar(id)),
+      Some(VarKind::Builtin(b)) => Ok(Value::Builtin(b)),
+      None => return_error!(span, "symbol {sym} not found"),
+    }
+  }
+
+  /// Generates a quotation.
+  fn gen_quote(&mut self, elem: &Element) -> Value {
+    match &elem.kind {
+      ElemKind::Num(n) => Value::Num(*n),
+      ElemKind::Str(s) => Value::Str(s.clone()),
+      ElemKind::Sym(s) => Value::Sym(s.clone()),
+      ElemKind::Quote(e) => Value::List(vec![Value::Sym("quote".into()), self.gen_quote(&e)]),
+      ElemKind::List(es) => Value::List(es.iter().map(|e| self.gen_quote(e)).collect()),
+    }
+  }
+
+  /// Generates on the given list.
+  fn gen_list(&mut self, elems: &[Element], span: &Span) -> Result<Expr> {
+    // get the first element
+    let first = elems
+      .first()
+      .ok_or_else(|| return_error!(span, "list can not be empty"))?;
+    // handle by kind
+    match &first.kind {
+      ElemKind::Num(_) | ElemKind::Str(_) => {
+        return_error!(first.span, "element is not callable")
+      }
+      ElemKind::Sym(s) => match s.as_str() {
+        "define" => return_error!(span, "invalid definition"),
+        "lambda" => return self.gen_lambda(elems, span),
+        "cond" => return self.gen_cond(&elems[1..], span),
+        _ => {}
+      },
+      _ => {}
+    };
+    // generate apply
+    self.gen_apply(elems)
+  }
+
   /// Generates a lambda function.
-  fn gen_lambda(&mut self, elems: &[Element], span: Span) -> Result<Lambda> {
+  fn gen_lambda(&mut self, elems: &[Element], span: &Span) -> Result<Expr> {
     if elems.len() != 2 {
       return_error!(span, "expected exactly 2 arguments")
     }
@@ -182,68 +385,7 @@ impl Generator {
     // generate body
     let expr = Box::new(self.gen_expr(&elems[1])?);
     self.env.exit();
-    Ok(Lambda { params, expr })
-  }
-
-  /// Generates a conditional expression.
-  fn gen_cond(&mut self, elems: &[Element], span: Span) -> Result<If> {
-    if elems.is_empty() {
-      return_error!(span, "expected at least 1 argument")
-    }
-    // check all conditions
-    for elem in elems {
-      // get condition and expression
-      let (cond, expr) = match &elem.kind {
-        ElemKind::List(es) => match &es[..] {
-          [cond, expr] => (cond, expr),
-          _ => return_error!(elem.span, "expected exactly 2 elements"),
-        },
-        _ => return_error!(elem.span, "expected list"),
-      };
-      //
-    }
-    todo!()
-  }
-
-  /// Generates a function application.
-  fn gen_apply(&mut self, elems: &[Element]) -> Result<Apply> {
-    todo!()
-  }
-
-  /// Generates an expression.
-  fn gen_expr(&mut self, elem: &Element) -> Result<Expr> {
-    match &elem.kind {
-      ElemKind::Num(n) => Ok(Expr::Value(Value::Num(*n))),
-      ElemKind::Str(s) => Ok(Expr::Value(Value::Str(s.clone()))),
-      ElemKind::Sym(s) => self.gen_sym(s, &elem.span).map(Expr::Value),
-      ElemKind::Quote(e) => Ok(Expr::Value(self.gen_quote(&e))),
-      ElemKind::List(_) => return_error!(elem.span, "invalid value"),
-    }
-  }
-
-  /// Generates a symbol.
-  fn gen_sym(&mut self, sym: &str, span: &Span) -> Result<Value> {
-    match self.env.get(sym) {
-      Some(VarKind::Var(id)) => Ok(Value::Var(id)),
-      Some(VarKind::OuterVar(id)) => Ok(Value::OuterVar(id)),
-      None => return_error!(span, "symbol {sym} not found"),
-    }
-  }
-
-  /// Generates a quotation.
-  fn gen_quote(&mut self, elem: &Element) -> Value {
-    match &elem.kind {
-      ElemKind::Num(n) => Value::Num(*n),
-      ElemKind::Str(s) => Value::Str(s.clone()),
-      ElemKind::Sym(s) => Value::Sym(s.clone()),
-      ElemKind::Quote(e) => Value::List(vec![Value::Sym("quote".into()), self.gen_quote(&e)]),
-      ElemKind::List(es) => Value::List(es.iter().map(|e| self.gen_quote(e)).collect()),
-    }
-  }
-
-  /// Generates on the given list.
-  fn gen_list(&mut self, elems: Vec<Element>, span: Span) -> Result<Expr> {
-    todo!()
+    Ok(Expr::Value(Value::Lambda(Lambda { params, expr })))
   }
 }
 
@@ -280,18 +422,47 @@ impl Env {
     self.scopes.last_mut().unwrap().define_arg(name, i)
   }
 
+  /// Defines a new temporary variable. Returns the variable number.
+  fn define_temp(&mut self) -> u64 {
+    self.scopes.last_mut().unwrap().define_temp()
+  }
+
   /// Finds the given variable in all scopes.
   fn get(&mut self, name: &str) -> Option<VarKind> {
-    let mut iter = self.scopes.iter();
-    if let Some(id) = iter.next().unwrap().get(name) {
+    let mut iter = self.scopes.iter().enumerate();
+    if let Some(id) = iter.next().unwrap().1.get(name) {
       Some(VarKind::Var(id))
     } else {
-      for scope in iter {
+      // find in outer scopes
+      for (i, scope) in iter {
         if let Some(id) = scope.get(name) {
-          return Some(VarKind::OuterVar(id));
+          return if i == self.scopes.len() - 1 {
+            Some(VarKind::GlobalVar(id))
+          } else {
+            Some(VarKind::OuterVar(id))
+          };
         }
       }
-      None
+      // check if is a builtin function
+      match name {
+        "atom?" => Some(VarKind::Builtin(Builtin::Atom)),
+        "number?" => Some(VarKind::Builtin(Builtin::Number)),
+        "eq?" => Some(VarKind::Builtin(Builtin::Equal)),
+        "car" => Some(VarKind::Builtin(Builtin::Car)),
+        "cdr" => Some(VarKind::Builtin(Builtin::Cdr)),
+        "cons" => Some(VarKind::Builtin(Builtin::Cons)),
+        "list" => Some(VarKind::Builtin(Builtin::List)),
+        "+" => Some(VarKind::Builtin(Builtin::Add)),
+        "-" => Some(VarKind::Builtin(Builtin::Sub)),
+        "*" => Some(VarKind::Builtin(Builtin::Mul)),
+        "/" => Some(VarKind::Builtin(Builtin::Div)),
+        ">" => Some(VarKind::Builtin(Builtin::Gt)),
+        "<" => Some(VarKind::Builtin(Builtin::Lt)),
+        ">=" => Some(VarKind::Builtin(Builtin::Ge)),
+        "<=" => Some(VarKind::Builtin(Builtin::Le)),
+        "=" => Some(VarKind::Builtin(Builtin::Eq)),
+        _ => None,
+      }
     }
   }
 }
@@ -299,6 +470,7 @@ impl Env {
 /// Scope of environment.
 struct Scope {
   vars: HashMap<String, u64>,
+  next_var_id: u64,
 }
 
 impl Scope {
@@ -306,18 +478,28 @@ impl Scope {
   fn new() -> Self {
     Self {
       vars: HashMap::new(),
+      next_var_id: 0,
     }
   }
 
   /// Defines a new variable. Returns the variable number.
   fn define(&mut self, name: String) -> u64 {
-    let id = self.vars.len() as u64;
+    let id = self.next_var_id;
+    self.next_var_id += 1;
     *self.vars.entry(name).or_insert(id)
   }
 
   /// Defines a new argument. Returns the variable number.
   fn define_arg(&mut self, name: String, i: u64) -> u64 {
+    self.next_var_id = std::cmp::max(self.next_var_id, i + 1);
     *self.vars.entry(name).or_insert(i)
+  }
+
+  /// Defines a new temporary variable. Returns the variable number.
+  fn define_temp(&mut self) -> u64 {
+    let id = self.next_var_id;
+    self.next_var_id += 1;
+    id
   }
 
   /// Finds the given variable.
@@ -330,4 +512,6 @@ impl Scope {
 enum VarKind {
   Var(u64),
   OuterVar(u64),
+  GlobalVar(u64),
+  Builtin(Builtin),
 }
