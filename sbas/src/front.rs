@@ -1,7 +1,9 @@
 use laps::ast::NonEmptySepSeq;
-use laps::lexer::{int_literal, str_literal};
+use laps::lexer::{int_literal, str_literal, Lexer};
 use laps::prelude::*;
-use std::{fmt, str};
+use laps::reader::Reader;
+use laps::token::TokenBuffer;
+use std::{fmt, io, str};
 
 /// Kind of token.
 #[token_kind]
@@ -572,7 +574,7 @@ token_ast! {
 /// Statement.
 #[derive(Debug, Parse)]
 #[token(Token)]
-enum Statement {
+pub enum Statement {
   SectionDecl(SectionDecl),
   Export(Export),
   IntConst(IntConst),
@@ -587,7 +589,7 @@ enum Statement {
 /// Section declaraction.
 #[derive(Debug, Parse)]
 #[token(Token)]
-struct SectionDecl {
+pub struct SectionDecl {
   _section: Token![section],
   sec: Token![sec],
 }
@@ -595,7 +597,7 @@ struct SectionDecl {
 /// Export information.
 #[derive(Debug, Parse)]
 #[token(Token)]
-struct Export {
+pub struct Export {
   _export: Token![export],
   name: Token![string],
   _comma1: Token![,],
@@ -609,7 +611,7 @@ struct Export {
 /// Number of arguments.
 #[derive(Debug, Parse)]
 #[token(Token)]
-enum NumArgs {
+pub enum NumArgs {
   Variadic(Token![va]),
   Num(Token![int]),
 }
@@ -617,7 +619,7 @@ enum NumArgs {
 /// Integer constant.
 #[derive(Debug, Parse)]
 #[token(Token)]
-struct IntConst {
+pub struct IntConst {
   kind: IntConstKind,
   value: Token![int],
 }
@@ -625,7 +627,7 @@ struct IntConst {
 /// Kind of integer constant.
 #[derive(Debug, Parse)]
 #[token(Token)]
-enum IntConstKind {
+pub enum IntConstKind {
   I8(Token![i8]),
   U8(Token![u8]),
   I16(Token![i16]),
@@ -639,7 +641,7 @@ enum IntConstKind {
 /// Floating point constant.
 #[derive(Debug, Parse)]
 #[token(Token)]
-struct FloatConst {
+pub struct FloatConst {
   kind: FloatConstKind,
   value: Token![float],
 }
@@ -647,7 +649,7 @@ struct FloatConst {
 /// Kind of floating point constant.
 #[derive(Debug, Parse)]
 #[token(Token)]
-enum FloatConstKind {
+pub enum FloatConstKind {
   F32(Token![f32]),
   F64(Token![f64]),
 }
@@ -655,7 +657,7 @@ enum FloatConstKind {
 /// String constant.
 #[derive(Debug, Parse)]
 #[token(Token)]
-struct StrConst {
+pub struct StrConst {
   _str: Token![str],
   value: Token![string],
 }
@@ -663,7 +665,7 @@ struct StrConst {
 /// Raw constant.
 #[derive(Debug, Parse)]
 #[token(Token)]
-struct RawConst {
+pub struct RawConst {
   _raw: Token![raw],
   values: NonEmptySepSeq<RawValue, Token![,]>,
 }
@@ -671,7 +673,7 @@ struct RawConst {
 /// Raw constant value.
 #[derive(Debug, Parse)]
 #[token(Token)]
-enum RawValue {
+pub enum RawValue {
   Str(Token![string]),
   Byte(Token![int]),
 }
@@ -679,7 +681,7 @@ enum RawValue {
 /// Byte sequence.
 #[derive(Debug, Parse)]
 #[token(Token)]
-struct Bytes {
+pub struct Bytes {
   _bytes: Token![bytes],
   values: NonEmptySepSeq<RawValue, Token![,]>,
 }
@@ -687,14 +689,36 @@ struct Bytes {
 /// Label definition.
 #[derive(Debug, Parse)]
 #[token(Token)]
-struct LabelDef {
+pub struct LabelDef {
   label: Token![label],
 }
 
 /// Instruction.
 #[derive(Debug, Parse)]
 #[token(Token)]
-struct Instruction {
+pub struct Instruction {
   inst: Token![inst],
   opr: Option<Token![int]>,
+}
+
+/// Bytecode assembly parser.
+pub struct Parser<R> {
+  tokens: TokenBuffer<Lexer<Reader<R>, TokenKind>, Token>,
+}
+
+impl<R> Parser<R> {
+  /// Creates a new parser from the given reader.
+  pub fn new(reader: Reader<R>) -> Self {
+    Self {
+      tokens: TokenBuffer::new(TokenKind::lexer(reader)),
+    }
+  }
+
+  /// Parses the next statement.
+  pub fn parse(&mut self) -> laps::span::Result<Statement>
+  where
+    R: io::Read,
+  {
+    self.tokens.parse()
+  }
 }
