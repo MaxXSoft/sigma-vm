@@ -1,3 +1,4 @@
+mod assembler;
 mod front;
 
 fn main() {
