@@ -28,14 +28,15 @@ pub enum TokenKind {
   #[regex(r"([0-9]|[1-9][0-9]+|0x[0-9a-fA-F]+|0b[01]+|0o[0-7]+)(f|b)")]
   TempLabelRef(TempLabelRef),
   /// Integer.
-  #[regex(r"[0-9]|[1-9][0-9]+|0x[0-9a-fA-F]+|0b[01]+|0o[0-7]+", int_literal)]
+  // TODO: handle sign
+  #[regex(r"-?([0-9]|[1-9][0-9]+|0x[0-9a-fA-F]+|0b[01]+|0o[0-7]+)", int_literal)]
   Int(u64),
   /// Floating point.
   #[regex(r"-?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?")]
   Float(f64),
   /// String.
   #[regex(
-    r#""([^"\\]|\\([rnt0\\'"]|x[0-9a-fA-F]{2}|u\{[0-9a-fA-F]+\}))*""#,
+    r#""([^\x00-\x1f"\\]|\\([rnt0\\'"]|x[0-9a-fA-F]{2}|u\{[0-9a-fA-F]+\}))*""#,
     str_literal
   )]
   Str(String),
