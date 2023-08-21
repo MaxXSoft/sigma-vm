@@ -140,7 +140,7 @@ impl Builder {
     consts.sort_unstable_by_key(|(i, _)| *i);
     // handle pending labels
     for (label, kinds) in self.pending_labels {
-      let pc = *self.labels.get(&label).ok_or(Error::LabelNotFound)?;
+      let pc = *self.labels.get(&label).ok_or(Error::LabelNotFound(label))?;
       for kind in kinds {
         match kind {
           LabelKind::Inst(i, cfi) => self.insts[i as usize] = cfi(pc as i64 - i as i64),
@@ -175,13 +175,13 @@ pub type CfInstConstructor = fn(i64) -> Inst;
 #[derive(Debug)]
 pub enum Error {
   /// Label not found.
-  LabelNotFound,
+  LabelNotFound(u64),
 }
 
 impl fmt::Display for Error {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     match self {
-      Self::LabelNotFound => write!(f, "label not found"),
+      Self::LabelNotFound(id) => write!(f, "label {id} not found"),
     }
   }
 }
