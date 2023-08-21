@@ -1,4 +1,5 @@
-use laps::{lexer::Lexer, prelude::*, reader::Reader, span::Span, token::TokenBuffer};
+use laps::lexer::{str_literal, Lexer};
+use laps::{prelude::*, reader::Reader, span::Span, token::TokenBuffer};
 use std::{fmt, io, str};
 
 /// Kind of tokens.
@@ -18,7 +19,10 @@ enum TokenKind {
   #[regex(r"-?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?")]
   Num(f64),
   /// String.
-  #[regex(r#""([^\x00-\x1f"\\]|\\(["\\/bfnrt]|u[0-9a-fA-F]{4}))*""#, str_literal)]
+  #[regex(
+    r#""([^\x00-\x1f"\\]|\\([rnt0\\'"]|x[0-9a-fA-F]{2}|u\{[0-9a-fA-F]+\}))*""#,
+    str_literal
+  )]
   Str(String),
   /// Symbol.
   #[regex(r"[^\s()']+")]
@@ -44,48 +48,6 @@ impl str::FromStr for Sym {
   fn from_str(s: &str) -> Result<Self, Self::Err> {
     String::from_str(s).map(Sym)
   }
-}
-
-/// Parses the given string literal.
-fn str_literal(s: &str) -> Option<String> {
-  let mut buf = String::new();
-  let mut escape = false;
-  let mut hex_num = 0;
-  let mut hex = 0;
-  for c in s[1..s.len() - 1].chars() {
-    if escape {
-      if hex_num > 0 && c.is_ascii_digit() {
-        hex = hex * 16 + c.to_digit(16)?;
-        hex_num -= 1;
-        if hex_num == 0 {
-          buf.push(char::from_u32(hex)?);
-          hex = 0;
-          escape = false;
-        }
-      } else if c == 'u' {
-        hex_num = 4;
-      } else {
-        match c {
-          '"' => buf.push('"'),
-          '\\' => buf.push('\\'),
-          '/' => buf.push('/'),
-          'b' => buf.push('\x08'),
-          'f' => buf.push('\x0c'),
-          'n' => buf.push('\n'),
-          'r' => buf.push('\r'),
-          't' => buf.push('\t'),
-          _ => return None,
-        }
-        escape = false;
-      }
-    } else {
-      match c {
-        '\\' => escape = true,
-        c => buf.push(c),
-      }
-    }
-  }
-  Some(buf)
 }
 
 /// Type of token.
