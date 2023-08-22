@@ -82,7 +82,7 @@ impl Builder {
     // create call site
     let call_site = CallSite {
       pc,
-      num_args: num_args.map(|n| n + 1).unwrap_or(0).into(),
+      num_args: num_args.into(),
       num_rets,
     };
     // add to exports
