@@ -58,6 +58,13 @@ impl From<u64> for NumArgs {
   }
 }
 
+impl From<Option<u64>> for NumArgs {
+  /// Converts to [`NumArgs`], [`None`] if is variadic.
+  fn from(na: Option<u64>) -> Self {
+    na.map(|n| n + 1).unwrap_or(0).into()
+  }
+}
+
 impl From<NumArgs> for u64 {
   fn from(num_args: NumArgs) -> Self {
     match num_args {
