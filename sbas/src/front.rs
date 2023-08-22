@@ -233,7 +233,7 @@ token_ast! {
 }
 
 /// Statement.
-#[derive(Debug, Parse)]
+#[derive(Debug, Parse, Spanned)]
 #[token(Token)]
 pub enum Statement {
   SectionDecl(SectionDecl),
@@ -248,7 +248,7 @@ pub enum Statement {
 }
 
 /// Section declaration.
-#[derive(Debug, Parse)]
+#[derive(Debug, Parse, Spanned)]
 #[token(Token)]
 pub struct SectionDecl {
   pub _section: Token![section],
@@ -256,7 +256,7 @@ pub struct SectionDecl {
 }
 
 /// Export information.
-#[derive(Debug, Parse)]
+#[derive(Debug, Parse, Spanned)]
 #[token(Token)]
 pub struct Export {
   pub _export: Token![export],
@@ -270,7 +270,7 @@ pub struct Export {
 }
 
 /// Number of arguments.
-#[derive(Debug, Parse)]
+#[derive(Debug, Parse, Spanned)]
 #[token(Token)]
 pub enum NumArgs {
   Variadic(Token![va]),
@@ -278,7 +278,7 @@ pub enum NumArgs {
 }
 
 /// Integer constant.
-#[derive(Debug, Parse)]
+#[derive(Debug, Parse, Spanned)]
 #[token(Token)]
 pub struct IntConst {
   pub kind: IntConstKind,
@@ -286,7 +286,7 @@ pub struct IntConst {
 }
 
 /// Kind of integer constant.
-#[derive(Debug, Parse)]
+#[derive(Debug, Parse, Spanned)]
 #[token(Token)]
 pub enum IntConstKind {
   I8(Token![i8]),
@@ -300,7 +300,7 @@ pub enum IntConstKind {
 }
 
 /// Floating point constant.
-#[derive(Debug, Parse)]
+#[derive(Debug, Parse, Spanned)]
 #[token(Token)]
 pub struct FloatConst {
   pub kind: FloatConstKind,
@@ -308,7 +308,7 @@ pub struct FloatConst {
 }
 
 /// Kind of floating point constant.
-#[derive(Debug, Parse)]
+#[derive(Debug, Parse, Spanned)]
 #[token(Token)]
 pub enum FloatConstKind {
   F32(Token![f32]),
@@ -316,7 +316,7 @@ pub enum FloatConstKind {
 }
 
 /// String constant.
-#[derive(Debug, Parse)]
+#[derive(Debug, Parse, Spanned)]
 #[token(Token)]
 pub struct StrConst {
   pub _str: Token![str],
@@ -324,7 +324,7 @@ pub struct StrConst {
 }
 
 /// Raw constant.
-#[derive(Debug, Parse)]
+#[derive(Debug, Parse, Spanned)]
 #[token(Token)]
 pub struct RawConst {
   pub _raw: Token![raw],
@@ -332,7 +332,7 @@ pub struct RawConst {
 }
 
 /// Raw constant value.
-#[derive(Debug, Parse)]
+#[derive(Debug, Parse, Spanned)]
 #[token(Token)]
 pub enum RawValue {
   Str(Token![string]),
@@ -340,7 +340,7 @@ pub enum RawValue {
 }
 
 /// Byte sequence.
-#[derive(Debug, Parse)]
+#[derive(Debug, Parse, Spanned)]
 #[token(Token)]
 pub struct Bytes {
   pub _bytes: Token![bytes],
@@ -355,8 +355,18 @@ pub struct Instruction {
   pub opr: Option<Token![int]>,
 }
 
+impl Spanned for Instruction {
+  fn span(&self) -> laps::span::Span {
+    let mut span = self.inst.span();
+    if let Some(opr) = self.opr.as_ref() {
+      span.update_end(opr.span());
+    }
+    span
+  }
+}
+
 /// Label definition.
-#[derive(Debug, Parse)]
+#[derive(Debug, Parse, Spanned)]
 #[token(Token)]
 pub struct LabelDef {
   pub label: Token![il],
@@ -364,7 +374,7 @@ pub struct LabelDef {
 }
 
 /// Label reference.
-#[derive(Debug, Parse)]
+#[derive(Debug, Parse, Spanned)]
 #[token(Token)]
 pub enum LabelRef {
   Named(Token![il]),
