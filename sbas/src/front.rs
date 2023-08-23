@@ -1,4 +1,4 @@
-use laps::ast::NonEmptySepSeq;
+use laps::ast::{NonEmptySepSeq, SepSeq};
 use laps::lexer::{int_literal, str_literal, Lexer};
 use laps::prelude::*;
 use laps::reader::Reader;
@@ -228,6 +228,8 @@ token_ast! {
     [float] => { kind: TokenKind::Float(_), prompt: "floating point" },
     [string] => { kind: TokenKind::Str(_), prompt: "string" },
     [,] => { kind: TokenKind::Other(',') },
+    [lbc] => { kind: TokenKind::Other('[') },
+    [rbc] => { kind: TokenKind::Other(']') },
     [:] => { kind: TokenKind::Other(':') },
   }
 }
@@ -241,6 +243,7 @@ pub enum Statement {
   IntConst(IntConst),
   FloatConst(FloatConst),
   StrConst(StrConst),
+  Object(Object),
   RawConst(RawConst),
   Bytes(Bytes),
   Instruction(Instruction),
@@ -321,6 +324,22 @@ pub enum FloatConstKind {
 pub struct StrConst {
   pub _str: Token![str],
   pub value: Token![string],
+}
+
+/// Object metadata.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub struct Object {
+  pub _object: Token![object],
+  pub size: Token![int],
+  pub _comma1: Token![,],
+  pub align: Token![int],
+  pub _comma2: Token![,],
+  pub destructor: LabelRef,
+  pub _comma3: Token![,],
+  pub _lbc: Token![lbc],
+  pub offsets: SepSeq<Token![int], Token![,]>,
+  pub _rbc: Token![rbc],
 }
 
 /// Raw constant.
