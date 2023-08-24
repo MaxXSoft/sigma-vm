@@ -344,11 +344,18 @@ pub struct Object {
   pub _comma1: Token![,],
   pub align: Token![int],
   pub _comma2: Token![,],
-  pub destructor: LabelRef,
-  pub _comma3: Token![,],
+  pub destructor: Option<Destructor>,
   pub _lbc: Token![lbc],
   pub offsets: SepSeq<Token![int], Token![,]>,
   pub _rbc: Token![rbc],
+}
+
+/// Destructor of an object metadata.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub struct Destructor {
+  pub destructor: LabelRef,
+  pub _comma: Token![,],
 }
 
 /// Raw constant.
