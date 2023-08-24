@@ -92,6 +92,21 @@ impl Const {
     }
   }
 
+  /// Returns a mutable reference of object metadata, or [`None`] if
+  /// the current constant is not an object metadata.
+  ///
+  /// # Safety
+  ///
+  /// The kind must match the data.
+  pub unsafe fn object_mut(&self) -> Option<&mut Object<[u64]>> {
+    if self.kind == ConstKind::Object {
+      let len = Object::<[u64]>::metadata(self.addr()) as usize;
+      Some(&mut *ptr::from_raw_parts_mut(self.addr() as *mut _, len))
+    } else {
+      None
+    }
+  }
+
   /// Returns a reference of raw data, or [`None`] if
   /// the current constant is not a raw data.
   ///
