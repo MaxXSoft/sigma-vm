@@ -396,8 +396,16 @@ pub enum InstOperand {
 #[derive(Debug, Parse, Spanned)]
 #[token(Token)]
 pub struct LabelDef {
-  pub label: Token![il],
+  pub kind: LabelDefKind,
   pub _colon: Token![:],
+}
+
+/// Kind of label definition.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub enum LabelDefKind {
+  Named(Token![il]),
+  Temp(Token![int]),
 }
 
 /// Label reference.
