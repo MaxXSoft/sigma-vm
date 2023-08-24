@@ -462,7 +462,6 @@ struct LabelInfo {
 }
 
 /// Kind of label.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum LabelKind {
   /// Constant label, with an optional index.
   /// If index is [`None`], the label is undefined.
