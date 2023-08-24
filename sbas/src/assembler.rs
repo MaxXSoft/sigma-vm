@@ -19,6 +19,22 @@ pub struct Assembler {
   pending_const_labels: HashMap<String, PendingLabelInfo>,
 }
 
+/// Helper macro for unwrapping a label.
+macro_rules! unwrap_label {
+  ($l:ident) => {
+    match $l.unwrap::<OpcOrLabel, _>() {
+      OpcOrLabel::Label(name) => name,
+      _ => unreachable!(),
+    }
+  };
+  (&$l:ident) => {
+    match $l.unwrap_ref::<&OpcOrLabel, _>() {
+      OpcOrLabel::Label(name) => name,
+      _ => unreachable!(),
+    }
+  };
+}
+
 impl Assembler {
   /// Creates a new assembler.
   pub fn new() -> Self {
@@ -443,14 +459,6 @@ impl Assembler {
   /// Generates on the given label definition.
   fn gen_label_def(&mut self, label_def: LabelDef) -> Result<()> {
     let span = label_def.span();
-    macro_rules! unwrap_label {
-      ($l:expr) => {
-        match $l.unwrap::<OpcOrLabel, _>() {
-          OpcOrLabel::Label(name) => name,
-          _ => unreachable!(),
-        }
-      };
-    }
     // insert to section
     match self.cur_sec {
       Section::Consts => match label_def.kind {
@@ -521,7 +529,7 @@ impl Assembler {
   fn gen_const_label_ref(&mut self, ci: ConstInst, label_ref: LabelRef) -> Result<u64> {
     let span = label_ref.span();
     match label_ref {
-      LabelRef::Named(l) => match self.labels.get(l.unwrap_ref::<&String, _>()) {
+      LabelRef::Named(l) => match self.labels.get(unwrap_label!(&l)) {
         Some(LabelInfo { kind, span: s }) => match kind {
           LabelKind::Const(Some(index)) => Ok(*index),
           LabelKind::Const(None) => return_error!(s, "label references an invalid constant"),
@@ -532,7 +540,7 @@ impl Assembler {
           // insert to pending labels
           let info = self
             .pending_const_labels
-            .entry(l.unwrap())
+            .entry(unwrap_label!(l))
             .or_insert_with(|| PendingLabelInfo {
               pc_consts: vec![],
               span,
@@ -550,7 +558,7 @@ impl Assembler {
   fn gen_inst_label_ref(&mut self, label_ref: LabelRef) -> Result<u64> {
     let span = label_ref.span();
     match label_ref {
-      LabelRef::Named(l) => match self.labels.get(l.unwrap_ref::<&String, _>()) {
+      LabelRef::Named(l) => match self.labels.get(unwrap_label!(&l)) {
         Some(LabelInfo { kind, .. }) => match kind {
           LabelKind::Inst(id, _) => Ok(*id),
           _ => return_error!(span, "expected an instruction label"),
@@ -558,7 +566,7 @@ impl Assembler {
         None => {
           let id = self.builder.label();
           self.labels.insert(
-            l.unwrap(),
+            unwrap_label!(l),
             LabelInfo {
               kind: LabelKind::Inst(id, false),
               span,
@@ -620,7 +628,7 @@ impl Assembler {
   fn handle_const_label(&mut self, index: u64) {
     if let Some(last_const_label) = self.last_const_label.take() {
       match &mut self.labels.get_mut(&last_const_label).unwrap().kind {
-        LabelKind::Const(Some(c)) => *c = index,
+        LabelKind::Const(c) if c.is_none() => *c = Some(index),
         _ => unreachable!(),
       }
     }
