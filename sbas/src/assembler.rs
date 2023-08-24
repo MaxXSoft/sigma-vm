@@ -12,6 +12,7 @@ pub struct Assembler {
   builder: Builder,
   cur_sec: Section,
   labels: HashMap<String, LabelInfo>,
+  temp_labels: HashMap<u64, TempLabelInfo>,
   last_const_label: Option<String>,
 }
 
@@ -22,6 +23,7 @@ impl Assembler {
       builder: Builder::new(),
       cur_sec: Section::Consts,
       labels: HashMap::new(),
+      temp_labels: HashMap::new(),
       last_const_label: None,
     }
   }
@@ -394,7 +396,14 @@ impl Assembler {
             );
           }
         }
-        LabelDefKind::Temp(t) => todo!(),
+        LabelDefKind::Temp(t) => {
+          let id = self.builder.label();
+          let info = self.temp_labels.entry(t.unwrap()).or_default();
+          info.prev = Some(id);
+          if let Some(id) = info.next.take() {
+            self.builder.insert_label(id);
+          }
+        }
       },
       _ => return_error!(span, "label definition can not appear here"),
     }
@@ -419,7 +428,45 @@ impl Assembler {
 
   /// Generates on the given instruction label reference.
   fn gen_inst_label_ref(&mut self, label_ref: LabelRef) -> Result<u64> {
-    todo!()
+    let span = label_ref.span();
+    match label_ref {
+      LabelRef::Named(l) => match self.labels.get(l.unwrap_ref::<&String, _>()) {
+        Some(LabelInfo { kind, .. }) => match kind {
+          LabelKind::Inst(id, _) => Ok(*id),
+          _ => return_error!(span, "expected an instruction label"),
+        },
+        None => {
+          let id = self.builder.label();
+          self.labels.insert(
+            l.unwrap(),
+            LabelInfo {
+              kind: LabelKind::Inst(id, false),
+              span,
+            },
+          );
+          Ok(id)
+        }
+      },
+      LabelRef::Temp(t) => {
+        let TempLabelRef { label, front } = t.unwrap();
+        let info = self.temp_labels.entry(label).or_default();
+        if front {
+          match info.next {
+            Some(id) => Ok(id),
+            None => {
+              let id = self.builder.label();
+              info.next = Some(id);
+              Ok(id)
+            }
+          }
+        } else {
+          match info.prev {
+            Some(id) => Ok(id),
+            None => return_error!(span, "referencing an invalid temporary label"),
+          }
+        }
+      }
+    }
   }
 
   /// Generates on the given raw value.
@@ -469,4 +516,11 @@ enum LabelKind {
   /// Instruction label, with label id and a flag that indicates
   /// whether the label has been inserted.
   Inst(u64, bool),
+}
+
+/// Temporary label information.
+#[derive(Default)]
+struct TempLabelInfo {
+  prev: Option<u64>,
+  next: Option<u64>,
 }
