@@ -3,6 +3,7 @@ use laps::lexer::{int_literal, str_literal, Lexer};
 use laps::prelude::*;
 use laps::reader::Reader;
 use laps::token::TokenBuffer;
+use laps::token::TokenStream;
 use std::{fmt, io, str};
 
 /// Kind of token.
@@ -255,8 +256,8 @@ pub enum Statement {
   Object(Object),
   RawConst(RawConst),
   Bytes(Bytes),
-  Instruction(Instruction),
   LabelDef(LabelDef),
+  Instruction(Instruction),
 }
 
 /// Section declaration.
@@ -409,11 +410,33 @@ pub enum InstOperand {
 }
 
 /// Label definition.
-#[derive(Debug, Parse, Spanned)]
-#[token(Token)]
+#[derive(Debug, Spanned)]
 pub struct LabelDef {
   pub kind: LabelDefKind,
   pub _colon: Token![:],
+}
+
+impl<TS> Parse<TS> for LabelDef
+where
+  TS: TokenStream<Token = Token>,
+{
+  fn parse(tokens: &mut TS) -> laps::span::Result<Self> {
+    Ok(Self {
+      kind: tokens.parse()?,
+      _colon: tokens.parse()?,
+    })
+  }
+
+  fn maybe(tokens: &mut TS) -> laps::span::Result<bool> {
+    Ok(
+      tokens
+        .lookahead()
+        .maybe(Token![il])?
+        .maybe(Token![:])?
+        .result()?
+        || tokens.lookahead().maybe(Token![int])?.result()?,
+    )
+  }
 }
 
 /// Kind of label definition.
