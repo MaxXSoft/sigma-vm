@@ -164,7 +164,7 @@ where
 }
 
 /// Helper trait for writing data to the given writer.
-trait WriteData {
+pub trait WriteData {
   fn write<W>(&self, writer: &mut W) -> Result<()>
   where
     W: Write;
