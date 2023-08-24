@@ -1,7 +1,7 @@
 use crate::front::*;
 use laps::return_error;
 use laps::span::{Result, Span, Spanned};
-use sigma_vm::bytecode::builder::Builder;
+use sigma_vm::bytecode::builder::{Builder, CfInstConstructor};
 use sigma_vm::bytecode::consts::{Const, ObjectRef};
 use sigma_vm::bytecode::export::CallSite;
 use sigma_vm::bytecode::insts::{Inst, Opcode, Operand, OperandType};
@@ -11,7 +11,8 @@ use std::collections::HashMap;
 pub struct Assembler {
   builder: Builder,
   cur_sec: Section,
-  labels: HashMap<String, u64>,
+  labels: HashMap<String, LabelInfo>,
+  last_const_label: Option<String>,
 }
 
 impl Assembler {
@@ -21,6 +22,7 @@ impl Assembler {
       builder: Builder::new(),
       cur_sec: Section::Consts,
       labels: HashMap::new(),
+      last_const_label: None,
     }
   }
 
@@ -50,7 +52,7 @@ impl Assembler {
     // get export information
     let span = export.span();
     let name = export.name.unwrap();
-    let label = self.gen_label_ref(export.label);
+    let label = self.gen_inst_label_ref(export.label)?;
     let num_args = match export.num_args {
       NumArgs::Variadic(_) => None,
       NumArgs::Num(n) => Some(n.unwrap()),
@@ -82,19 +84,16 @@ impl Assembler {
     let value: u64 = int_const.value.unwrap();
     // insert to section
     match self.cur_sec {
-      Section::Consts => {
-        let index = match int_const.kind {
-          IntConstKind::I8(_) => self.builder.constant(value as i8),
-          IntConstKind::U8(_) => self.builder.constant(value as u8),
-          IntConstKind::I16(_) => self.builder.constant(value as i16),
-          IntConstKind::U16(_) => self.builder.constant(value as u16),
-          IntConstKind::I32(_) => self.builder.constant(value as i32),
-          IntConstKind::U32(_) => self.builder.constant(value as u32),
-          IntConstKind::I64(_) => self.builder.constant(value as i64),
-          IntConstKind::U64(_) => self.builder.constant(value as u64),
-        };
-        todo!()
-      }
+      Section::Consts => match int_const.kind {
+        IntConstKind::I8(_) => self.insert_to_const(value as i8),
+        IntConstKind::U8(_) => self.insert_to_const(value as u8),
+        IntConstKind::I16(_) => self.insert_to_const(value as i16),
+        IntConstKind::U16(_) => self.insert_to_const(value as u16),
+        IntConstKind::I32(_) => self.insert_to_const(value as i32),
+        IntConstKind::U32(_) => self.insert_to_const(value as u32),
+        IntConstKind::I64(_) => self.insert_to_const(value as i64),
+        IntConstKind::U64(_) => self.insert_to_const(value as u64),
+      },
       Section::Custom => match int_const.kind {
         IntConstKind::I8(_) => self.insert_to_custom(value as i8),
         IntConstKind::U8(_) => self.insert_to_custom(value as u8),
@@ -116,13 +115,10 @@ impl Assembler {
     let value: f64 = float_const.value.unwrap();
     // insert to section
     match self.cur_sec {
-      Section::Consts => {
-        let index = match float_const.kind {
-          FloatConstKind::F32(_) => self.builder.constant(value as f32),
-          FloatConstKind::F64(_) => self.builder.constant(value as f64),
-        };
-        todo!()
-      }
+      Section::Consts => match float_const.kind {
+        FloatConstKind::F32(_) => self.insert_to_const(value as f32),
+        FloatConstKind::F64(_) => self.insert_to_const(value as f64),
+      },
       Section::Custom => match float_const.kind {
         FloatConstKind::F32(_) => self.insert_to_custom(value as f32),
         FloatConstKind::F64(_) => self.insert_to_custom(value as f64),
@@ -138,10 +134,7 @@ impl Assembler {
     let value: String = str_const.value.unwrap();
     // insert to section
     match self.cur_sec {
-      Section::Consts => {
-        let index = self.builder.constant(value);
-        todo!()
-      }
+      Section::Consts => self.insert_to_const(value),
       Section::Custom => self.insert_to_custom(value),
       _ => return_error!(span, "string constant can not appear here"),
     }
@@ -160,10 +153,7 @@ impl Assembler {
     };
     // insert to section
     match self.cur_sec {
-      Section::Consts => {
-        let index = self.builder.constant(object);
-        todo!()
-      }
+      Section::Consts => self.insert_to_const(object),
       Section::Custom => self.insert_to_custom(object),
       _ => return_error!(span, "object metadata can not appear here"),
     }
@@ -180,10 +170,7 @@ impl Assembler {
       .collect();
     // insert to section
     match self.cur_sec {
-      Section::Consts => {
-        let index = self.builder.constant(value.as_slice());
-        todo!()
-      }
+      Section::Consts => self.insert_to_const(value.as_slice()),
       Section::Custom => self.insert_to_custom(value.as_slice()),
       _ => return_error!(span, "raw constant can not appear here"),
     }
@@ -209,151 +196,160 @@ impl Assembler {
   /// Generates on the given instruction.
   fn gen_inst(&mut self, inst: Instruction) -> Result<()> {
     let span = inst.span();
-    // get opcode, check if is CFI
-    let (opcode, cfi): (_, Option<fn(i64) -> Inst>) =
-      match inst.opcode.unwrap::<String, _>().to_lowercase().as_str() {
-        "nop" => (Opcode::Nop, None),
-        "pushi" => (Opcode::PushI, None),
-        "pushu" => (Opcode::PushU, None),
-        "pop" => (Opcode::Pop, None),
-        "dup" => (Opcode::Dup, None),
-        "swap" => (Opcode::Swap, None),
-        "ldb" => (Opcode::LdB, None),
-        "ldbu" => (Opcode::LdBU, None),
-        "ldh" => (Opcode::LdH, None),
-        "ldhu" => (Opcode::LdHU, None),
-        "ldw" => (Opcode::LdW, None),
-        "ldwu" => (Opcode::LdWU, None),
-        "ldd" => (Opcode::LdD, None),
-        "ldp" => (Opcode::LdP, None),
-        "ldbo" => (Opcode::LdBO, None),
-        "ldbuo" => (Opcode::LdBUO, None),
-        "ldho" => (Opcode::LdHO, None),
-        "ldhuo" => (Opcode::LdHUO, None),
-        "ldwo" => (Opcode::LdWO, None),
-        "ldwuo" => (Opcode::LdWUO, None),
-        "lddo" => (Opcode::LdDO, None),
-        "ldpo" => (Opcode::LdPO, None),
-        "ldv" => (Opcode::LdV, None),
-        "ldg" => (Opcode::LdG, None),
-        "ldc" => (Opcode::LdC, None),
-        "lac" => (Opcode::LaC, None),
-        "stb" => (Opcode::StB, None),
-        "sth" => (Opcode::StH, None),
-        "stw" => (Opcode::StW, None),
-        "std" => (Opcode::StD, None),
-        "stbo" => (Opcode::StBO, None),
-        "stho" => (Opcode::StHO, None),
-        "stwo" => (Opcode::StWO, None),
-        "stdo" => (Opcode::StDO, None),
-        "stv" => (Opcode::StV, None),
-        "stg" => (Opcode::StG, None),
-        "sta" => (Opcode::StA, None),
-        "new" => (Opcode::New, None),
-        "newo" => (Opcode::NewO, None),
-        "newoc" => (Opcode::NewOC, None),
-        "newa" => (Opcode::NewA, None),
-        "newac" => (Opcode::NewAC, None),
-        "load" => (Opcode::Load, None),
-        "loadc" => (Opcode::LoadC, None),
-        "loadm" => (Opcode::LoadM, None),
-        "bz" => (Opcode::Bz, Some(Inst::Bz)),
-        "bnz" => (Opcode::Bnz, Some(Inst::Bnz)),
-        "jmp" => (Opcode::Jmp, Some(Inst::Jmp)),
-        "call" => (Opcode::Call, Some(Inst::Call)),
-        "callext" => (Opcode::CallExt, None),
-        "callextc" => (Opcode::CallExtC, None),
-        "ret" => (Opcode::Ret, None),
-        "sys" => (Opcode::Sys, None),
-        "break" => (Opcode::Break, None),
-        "not" => (Opcode::Not, None),
-        "lnot" => (Opcode::LNot, None),
-        "and" => (Opcode::And, None),
-        "or" => (Opcode::Or, None),
-        "xor" => (Opcode::Xor, None),
-        "shl" => (Opcode::Shl, None),
-        "shr" => (Opcode::Shr, None),
-        "sar" => (Opcode::Sar, None),
-        "sext" => (Opcode::Sext, None),
-        "zext" => (Opcode::Zext, None),
-        "eq" => (Opcode::Eq, None),
-        "ne" => (Opcode::Ne, None),
-        "lt" => (Opcode::Lt, None),
-        "le" => (Opcode::Le, None),
-        "gt" => (Opcode::Gt, None),
-        "ge" => (Opcode::Ge, None),
-        "ltu" => (Opcode::LtU, None),
-        "leu" => (Opcode::LeU, None),
-        "gtu" => (Opcode::GtU, None),
-        "geu" => (Opcode::GeU, None),
-        "neg" => (Opcode::Neg, None),
-        "add" => (Opcode::Add, None),
-        "sub" => (Opcode::Sub, None),
-        "mul" => (Opcode::Mul, None),
-        "div" => (Opcode::Div, None),
-        "divu" => (Opcode::DivU, None),
-        "mod" => (Opcode::Mod, None),
-        "modu" => (Opcode::ModU, None),
-        "ltf" => (Opcode::LtF, None),
-        "lef" => (Opcode::LeF, None),
-        "gtf" => (Opcode::GtF, None),
-        "gef" => (Opcode::GeF, None),
-        "negf" => (Opcode::NegF, None),
-        "addf" => (Opcode::AddF, None),
-        "subf" => (Opcode::SubF, None),
-        "mulf" => (Opcode::MulF, None),
-        "divf" => (Opcode::DivF, None),
-        "modf" => (Opcode::ModF, None),
-        "ltd" => (Opcode::LtD, None),
-        "led" => (Opcode::LeD, None),
-        "gtd" => (Opcode::GtD, None),
-        "ged" => (Opcode::GeD, None),
-        "negd" => (Opcode::NegD, None),
-        "addd" => (Opcode::AddD, None),
-        "subd" => (Opcode::SubD, None),
-        "muld" => (Opcode::MulD, None),
-        "divd" => (Opcode::DivD, None),
-        "modd" => (Opcode::ModD, None),
-        "i2f" => (Opcode::I2F, None),
-        "i2d" => (Opcode::I2D, None),
-        "f2i" => (Opcode::F2I, None),
-        "f2d" => (Opcode::F2D, None),
-        "d2i" => (Opcode::D2I, None),
-        "d2f" => (Opcode::D2F, None),
-        "itf" => (Opcode::ITF, None),
-        "itd" => (Opcode::ITD, None),
-        "itp" => (Opcode::ITP, None),
-        _ => return_error!(span, "unknown instruction"),
-      };
-    // get operand
-    enum OprOrLabel {
-      Opr(Operand),
-      Label(u64),
+    // get kind of instruction
+    enum InstKind {
+      Normal(Opcode),
+      Const(fn(u64) -> Inst),
+      Cfi(CfInstConstructor),
     }
-    let opr = match opcode.operand_type() {
-      Some(OperandType::Signed) => match (inst.opr, cfi) {
-        (Some(InstOperand::Imm(i)), None) => Some(OprOrLabel::Opr(Operand::Signed(
-          i.unwrap::<u64, _>() as i64,
-        ))),
-        (Some(InstOperand::LabelRef(l)), Some(_)) => Some(OprOrLabel::Label(self.gen_label_ref(l))),
-        (_, None) => return_error!(span, "expected integer operand"),
-        (_, Some(_)) => return_error!(span, "expected label reference"),
+    let kind = match inst.opcode.unwrap::<String, _>().to_lowercase().as_str() {
+      "nop" => InstKind::Normal(Opcode::Nop),
+      "pushi" => InstKind::Normal(Opcode::PushI),
+      "pushu" => InstKind::Normal(Opcode::PushU),
+      "pop" => InstKind::Normal(Opcode::Pop),
+      "dup" => InstKind::Normal(Opcode::Dup),
+      "swap" => InstKind::Normal(Opcode::Swap),
+      "ldb" => InstKind::Normal(Opcode::LdB),
+      "ldbu" => InstKind::Normal(Opcode::LdBU),
+      "ldh" => InstKind::Normal(Opcode::LdH),
+      "ldhu" => InstKind::Normal(Opcode::LdHU),
+      "ldw" => InstKind::Normal(Opcode::LdW),
+      "ldwu" => InstKind::Normal(Opcode::LdWU),
+      "ldd" => InstKind::Normal(Opcode::LdD),
+      "ldp" => InstKind::Normal(Opcode::LdP),
+      "ldbo" => InstKind::Normal(Opcode::LdBO),
+      "ldbuo" => InstKind::Normal(Opcode::LdBUO),
+      "ldho" => InstKind::Normal(Opcode::LdHO),
+      "ldhuo" => InstKind::Normal(Opcode::LdHUO),
+      "ldwo" => InstKind::Normal(Opcode::LdWO),
+      "ldwuo" => InstKind::Normal(Opcode::LdWUO),
+      "lddo" => InstKind::Normal(Opcode::LdDO),
+      "ldpo" => InstKind::Normal(Opcode::LdPO),
+      "ldv" => InstKind::Normal(Opcode::LdV),
+      "ldg" => InstKind::Normal(Opcode::LdG),
+      "ldc" => InstKind::Const(Inst::LdC),
+      "lac" => InstKind::Const(Inst::LaC),
+      "stb" => InstKind::Normal(Opcode::StB),
+      "sth" => InstKind::Normal(Opcode::StH),
+      "stw" => InstKind::Normal(Opcode::StW),
+      "std" => InstKind::Normal(Opcode::StD),
+      "stbo" => InstKind::Normal(Opcode::StBO),
+      "stho" => InstKind::Normal(Opcode::StHO),
+      "stwo" => InstKind::Normal(Opcode::StWO),
+      "stdo" => InstKind::Normal(Opcode::StDO),
+      "stv" => InstKind::Normal(Opcode::StV),
+      "stg" => InstKind::Normal(Opcode::StG),
+      "sta" => InstKind::Normal(Opcode::StA),
+      "new" => InstKind::Normal(Opcode::New),
+      "newo" => InstKind::Normal(Opcode::NewO),
+      "newoc" => InstKind::Const(Inst::NewOC),
+      "newa" => InstKind::Normal(Opcode::NewA),
+      "newac" => InstKind::Const(Inst::NewAC),
+      "load" => InstKind::Normal(Opcode::Load),
+      "loadc" => InstKind::Const(Inst::LoadC),
+      "loadm" => InstKind::Normal(Opcode::LoadM),
+      "bz" => InstKind::Cfi(Inst::Bz),
+      "bnz" => InstKind::Cfi(Inst::Bnz),
+      "jmp" => InstKind::Cfi(Inst::Jmp),
+      "call" => InstKind::Cfi(Inst::Call),
+      "callext" => InstKind::Normal(Opcode::CallExt),
+      "callextc" => InstKind::Const(Inst::CallExtC),
+      "ret" => InstKind::Normal(Opcode::Ret),
+      "sys" => InstKind::Normal(Opcode::Sys),
+      "break" => InstKind::Normal(Opcode::Break),
+      "not" => InstKind::Normal(Opcode::Not),
+      "lnot" => InstKind::Normal(Opcode::LNot),
+      "and" => InstKind::Normal(Opcode::And),
+      "or" => InstKind::Normal(Opcode::Or),
+      "xor" => InstKind::Normal(Opcode::Xor),
+      "shl" => InstKind::Normal(Opcode::Shl),
+      "shr" => InstKind::Normal(Opcode::Shr),
+      "sar" => InstKind::Normal(Opcode::Sar),
+      "sext" => InstKind::Normal(Opcode::Sext),
+      "zext" => InstKind::Normal(Opcode::Zext),
+      "eq" => InstKind::Normal(Opcode::Eq),
+      "ne" => InstKind::Normal(Opcode::Ne),
+      "lt" => InstKind::Normal(Opcode::Lt),
+      "le" => InstKind::Normal(Opcode::Le),
+      "gt" => InstKind::Normal(Opcode::Gt),
+      "ge" => InstKind::Normal(Opcode::Ge),
+      "ltu" => InstKind::Normal(Opcode::LtU),
+      "leu" => InstKind::Normal(Opcode::LeU),
+      "gtu" => InstKind::Normal(Opcode::GtU),
+      "geu" => InstKind::Normal(Opcode::GeU),
+      "neg" => InstKind::Normal(Opcode::Neg),
+      "add" => InstKind::Normal(Opcode::Add),
+      "sub" => InstKind::Normal(Opcode::Sub),
+      "mul" => InstKind::Normal(Opcode::Mul),
+      "div" => InstKind::Normal(Opcode::Div),
+      "divu" => InstKind::Normal(Opcode::DivU),
+      "mod" => InstKind::Normal(Opcode::Mod),
+      "modu" => InstKind::Normal(Opcode::ModU),
+      "ltf" => InstKind::Normal(Opcode::LtF),
+      "lef" => InstKind::Normal(Opcode::LeF),
+      "gtf" => InstKind::Normal(Opcode::GtF),
+      "gef" => InstKind::Normal(Opcode::GeF),
+      "negf" => InstKind::Normal(Opcode::NegF),
+      "addf" => InstKind::Normal(Opcode::AddF),
+      "subf" => InstKind::Normal(Opcode::SubF),
+      "mulf" => InstKind::Normal(Opcode::MulF),
+      "divf" => InstKind::Normal(Opcode::DivF),
+      "modf" => InstKind::Normal(Opcode::ModF),
+      "ltd" => InstKind::Normal(Opcode::LtD),
+      "led" => InstKind::Normal(Opcode::LeD),
+      "gtd" => InstKind::Normal(Opcode::GtD),
+      "ged" => InstKind::Normal(Opcode::GeD),
+      "negd" => InstKind::Normal(Opcode::NegD),
+      "addd" => InstKind::Normal(Opcode::AddD),
+      "subd" => InstKind::Normal(Opcode::SubD),
+      "muld" => InstKind::Normal(Opcode::MulD),
+      "divd" => InstKind::Normal(Opcode::DivD),
+      "modd" => InstKind::Normal(Opcode::ModD),
+      "i2f" => InstKind::Normal(Opcode::I2F),
+      "i2d" => InstKind::Normal(Opcode::I2D),
+      "f2i" => InstKind::Normal(Opcode::F2I),
+      "f2d" => InstKind::Normal(Opcode::F2D),
+      "d2i" => InstKind::Normal(Opcode::D2I),
+      "d2f" => InstKind::Normal(Opcode::D2F),
+      "itf" => InstKind::Normal(Opcode::ITF),
+      "itd" => InstKind::Normal(Opcode::ITD),
+      "itp" => InstKind::Normal(Opcode::ITP),
+      _ => return_error!(span, "unknown instruction"),
+    };
+    // get instruction
+    enum Instruction {
+      Normal(Inst),
+      Cfi(CfInstConstructor, u64),
+    }
+    let inst = match kind {
+      InstKind::Normal(opc) => {
+        let opr = match (opc.operand_type(), inst.opr) {
+          (Some(OperandType::Signed), Some(InstOperand::Imm(i))) => {
+            Some(Operand::Signed(i.unwrap::<u64, _>() as i64))
+          }
+          (Some(OperandType::Unsigned), Some(InstOperand::Imm(i))) => {
+            Some(Operand::Unsigned(i.unwrap::<u64, _>()))
+          }
+          (None, None) => None,
+          _ => return_error!(span, "expected no operand"),
+        };
+        Instruction::Normal(Inst::new(opc, opr))
+      }
+      InstKind::Const(c) => match inst.opr {
+        Some(InstOperand::LabelRef(l)) => Instruction::Normal(c(self.gen_const_label_ref(l)?)),
+        _ => return_error!(span, "expected label reference"),
       },
-      Some(OperandType::Unsigned) => match inst.opr {
-        Some(InstOperand::Imm(i)) => Some(OprOrLabel::Opr(Operand::Unsigned(i.unwrap()))),
-        _ => return_error!(span, "expected integer operand"),
+      InstKind::Cfi(cfi) => match inst.opr {
+        Some(InstOperand::LabelRef(l)) => Instruction::Cfi(cfi, self.gen_inst_label_ref(l)?),
+        _ => return_error!(span, "expected label reference"),
       },
-      None if inst.opr.is_none() => None,
-      _ => return_error!(span, "expected no operand"),
     };
     // insert instruction to section
     match self.cur_sec {
-      Section::Insts => match opr {
-        Some(OprOrLabel::Opr(opr)) => self.builder.inst(Inst::new(opcode, Some(opr))),
-        Some(OprOrLabel::Label(l)) => self.builder.cfi(cfi.unwrap(), l),
-        None => self.builder.inst(Inst::new(opcode, None)),
+      Section::Insts => match inst {
+        Instruction::Normal(inst) => self.builder.inst(inst),
+        Instruction::Cfi(cfi, l) => self.builder.cfi(cfi, l),
       },
-      Section::Custom => todo!(),
       _ => return_error!(span, "instruction can not appear here"),
     }
     Ok(())
@@ -361,11 +357,60 @@ impl Assembler {
 
   /// Generates on the given label definition.
   fn gen_label_def(&mut self, label_def: LabelDef) -> Result<()> {
-    todo!("temporary label, constant label, custom label")
+    let span = label_def.span();
+    // insert to section
+    match self.cur_sec {
+      Section::Consts => match label_def.kind {
+        LabelDefKind::Named(l) => {
+          if let Some(name) = self.last_const_label.replace(l.unwrap()) {
+            return_error!(span, "overriding existing label {name}")
+          }
+        }
+        LabelDefKind::Temp(_) => return_error!(span, "constant label can not be temporary"),
+      },
+      Section::Insts => match label_def.kind {
+        LabelDefKind::Named(l) => {
+          // create and insert label
+          let id = self.builder.label();
+          self.builder.insert_label(id);
+          // insert to label map
+          let last = self.labels.insert(
+            l.unwrap(),
+            LabelInfo {
+              kind: LabelKind::Inst(id),
+              span: span.clone(),
+            },
+          );
+          // check if duplicate
+          if last.is_some() {
+            return_error!(span, "duplicate label definition");
+          }
+        }
+        LabelDefKind::Temp(t) => todo!(),
+      },
+      _ => return_error!(span, "label definition can not appear here"),
+    }
+    Ok(())
   }
 
-  /// Generates on the given label reference.
-  fn gen_label_ref(&mut self, label_ref: LabelRef) -> u64 {
+  /// Generates on the given constant label reference.
+  fn gen_const_label_ref(&mut self, label_ref: LabelRef) -> Result<u64> {
+    let span = label_ref.span();
+    match label_ref {
+      LabelRef::Named(l) => match self.labels.get(l.unwrap_ref::<&String, _>()) {
+        Some(LabelInfo { kind, span: s }) => match kind {
+          LabelKind::Const(Some(index)) => Ok(*index),
+          LabelKind::Const(None) => return_error!(s, "label references an invalid constant"),
+          _ => return_error!(span, "expected a constant label"),
+        },
+        None => todo!("insert to pending labels"),
+      },
+      LabelRef::Temp(_) => return_error!(span, "constant label can not be temporary"),
+    }
+  }
+
+  /// Generates on the given instruction label reference.
+  fn gen_inst_label_ref(&mut self, label_ref: LabelRef) -> Result<u64> {
     todo!()
   }
 
@@ -374,6 +419,20 @@ impl Assembler {
     match raw_value {
       RawValue::Str(s) => s.unwrap::<String, _>().bytes().collect(),
       RawValue::Byte(b) => vec![b.unwrap::<u64, _>() as u8],
+    }
+  }
+
+  /// Inserts the given constant to the constant section.
+  fn insert_to_const<C>(&mut self, c: C)
+  where
+    C: Into<Const>,
+  {
+    let id = self.builder.constant(c);
+    if let Some(last_const_label) = self.last_const_label.take() {
+      match &mut self.labels.get_mut(&last_const_label).unwrap().kind {
+        LabelKind::Const(Some(c)) => *c = id,
+        _ => unreachable!(),
+      }
     }
   }
 
@@ -390,6 +449,13 @@ impl Assembler {
 
 /// Label information.
 struct LabelInfo {
-  id: u64,
+  kind: LabelKind,
   span: Span,
+}
+
+/// Kind of label.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LabelKind {
+  Const(Option<u64>),
+  Inst(u64),
 }
