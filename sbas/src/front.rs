@@ -173,8 +173,8 @@ impl str::FromStr for InstOrLabel {
 /// Temporary label reference.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TempLabelRef {
-  label: u64,
-  front: bool,
+  pub label: u64,
+  pub front: bool,
 }
 
 impl fmt::Display for TempLabelRef {
