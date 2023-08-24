@@ -59,6 +59,12 @@ impl Builder {
     self.labels.insert(label, self.pc());
   }
 
+  /// Returns the PC of the given label. Returns [`None`] if label
+  /// has not been inserted yet.
+  pub fn label_pc(&self, label: u64) -> Option<u64> {
+    self.labels.get(&label).copied()
+  }
+
   /// Inserts a new exported function, with the given name, label, and number
   /// of arguments and return values. The exported function is variadic if
   /// `num_args` is [`None`].
