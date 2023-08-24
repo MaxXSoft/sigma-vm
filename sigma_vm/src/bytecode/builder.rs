@@ -1,4 +1,4 @@
-use crate::bytecode::consts::Const;
+use crate::bytecode::consts::{Const, ConstKind};
 use crate::bytecode::export::{CallSite, ExportInfo};
 use crate::bytecode::insts::Inst;
 use crate::bytecode::module::StaticModule;
@@ -40,6 +40,27 @@ impl Builder {
   {
     let index = self.consts.len() as u64;
     *self.consts.entry(c.into()).or_insert(index)
+  }
+
+  /// Inserts an object metadata which destructor references the given label,
+  /// returns the index of the constant.
+  ///
+  /// # Panics
+  ///
+  /// Panics if the given constant is not an object metadata.
+  pub fn object<C>(&mut self, c: C, label: u64) -> u64
+  where
+    C: Into<Const>,
+  {
+    let c: Const = c.into();
+    assert_eq!(c.kind(), ConstKind::Object);
+    let index = self.constant(c);
+    self
+      .pending_labels
+      .entry(label)
+      .or_default()
+      .push(LabelKind::Object(index));
+    index
   }
 
   /// Returns the current PC.
@@ -159,8 +180,13 @@ impl Builder {
       let pc = *self.labels.get(&label).ok_or(Error::LabelNotFound(label))?;
       for kind in kinds {
         match kind {
-          LabelKind::Inst(i, cfi) => self.insts[i as usize] = cfi(pc as i64 - i as i64),
+          LabelKind::Object(index) => {
+            let (i, c) = &mut consts[index as usize];
+            assert_eq!(*i, index);
+            unsafe { c.object_mut() }.unwrap().destructor = pc;
+          }
           LabelKind::Export(name) => self.exports.get_mut(&name).unwrap().pc = pc,
+          LabelKind::Inst(i, cfi) => self.insts[i as usize] = cfi(pc as i64 - i as i64),
         }
       }
     }
@@ -176,12 +202,15 @@ impl Builder {
 
 /// Kind of a pending label.
 enum LabelKind {
-  /// Label corresponding to a control flow instruction,
-  /// with its PC and constructor.
-  Inst(u64, CfInstConstructor),
+  /// Label corresponding to an object metadata,
+  /// with the constant index.
+  Object(u64),
   /// Label corresponding to an export information,
   /// with the name of the export.
   Export(String),
+  /// Label corresponding to a control flow instruction,
+  /// with its PC and constructor.
+  Inst(u64, CfInstConstructor),
 }
 
 /// Constructor of control flow instruction.
