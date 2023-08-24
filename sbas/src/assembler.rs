@@ -5,7 +5,7 @@ use sigma_vm::bytecode::builder::{Builder, CfInstConstructor};
 use sigma_vm::bytecode::consts::{Const, ObjectRef};
 use sigma_vm::bytecode::export::CallSite;
 use sigma_vm::bytecode::insts::{Inst, Opcode, Operand, OperandType};
-use sigma_vm::bytecode::writer::Writer;
+use sigma_vm::bytecode::writer::{WriteData, Writer};
 use std::collections::HashMap;
 use std::io::Write;
 
@@ -116,12 +116,23 @@ impl Assembler {
         }
       }
       Section::Custom => {
+        // get PC of label
+        let pc = match self.builder.label_pc(label) {
+          Some(pc) => pc,
+          None => return_error!(span, "export information reference an invalid label"),
+        };
+        // write call site
+        let mut bytes: Vec<u8> = vec![];
         let call_site = CallSite {
-          pc: todo!(),
+          pc,
           num_args: num_args.into(),
           num_rets,
         };
-        todo!()
+        call_site.write(&mut bytes).unwrap();
+        // write name
+        name.write(&mut bytes).unwrap();
+        // insert to custom section
+        self.builder.custom(bytes);
       }
       _ => return_error!(span, "`.export` can not appear here"),
     }
@@ -194,17 +205,38 @@ impl Assembler {
   /// Generates on the given object metadata.
   fn gen_object(&mut self, object: Object) -> Result<()> {
     let span = object.span();
+    let destructor = object
+      .destructor
+      .map(|d| self.gen_inst_label_ref(d.destructor))
+      .transpose()?;
     let offsets: Vec<_> = object.offsets.into_iter().map(|o| o.unwrap()).collect();
-    let object = ObjectRef {
+    let mut object = ObjectRef {
       size: object.size.unwrap(),
       align: object.align.unwrap(),
-      destructor: todo!(),
+      destructor: destructor.unwrap_or(0),
       offsets: &offsets,
     };
     // insert to section
     match self.cur_sec {
-      Section::Consts => self.insert_to_const(object),
-      Section::Custom => self.insert_to_custom(object),
+      Section::Consts => {
+        if let Some(label) = destructor {
+          let index = self.builder.object(object, label);
+          self.handle_const_label(index);
+        } else {
+          self.insert_to_const(object);
+        }
+      }
+      Section::Custom => {
+        // updated destructor
+        if let Some(label) = destructor {
+          match self.builder.label_pc(label) {
+            Some(pc) => object.destructor = pc,
+            None => return_error!(span, "destructor references an invalid label"),
+          }
+        }
+        // insert to custom section
+        self.insert_to_custom(object);
+      }
       _ => return_error!(span, "object metadata can not appear here"),
     }
     Ok(())
@@ -560,12 +592,7 @@ impl Assembler {
     C: Into<Const>,
   {
     let id = self.builder.constant(c);
-    if let Some(last_const_label) = self.last_const_label.take() {
-      match &mut self.labels.get_mut(&last_const_label).unwrap().kind {
-        LabelKind::Const(Some(c)) => *c = id,
-        _ => unreachable!(),
-      }
-    }
+    self.handle_const_label(id);
   }
 
   /// Inserts the given constant to the custom section.
@@ -576,6 +603,16 @@ impl Assembler {
     let c: Const = c.into();
     self.builder.custom([c.kind() as u8]);
     self.builder.custom(c.data().iter().copied());
+  }
+
+  /// Handles label of the constant of the given index.
+  fn handle_const_label(&mut self, index: u64) {
+    if let Some(last_const_label) = self.last_const_label.take() {
+      match &mut self.labels.get_mut(&last_const_label).unwrap().kind {
+        LabelKind::Const(Some(c)) => *c = index,
+        _ => unreachable!(),
+      }
+    }
   }
 }
 
