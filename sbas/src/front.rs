@@ -14,7 +14,7 @@ pub enum TokenKind {
   #[skip(r"\s+|#.*\n|#.*")]
   _Skip,
   /// Directive.
-  #[regex(r"\.[a-z]+")]
+  #[regex(r"\.[a-z0-9]+")]
   Directive(Directive),
   /// Section.
   #[regex(r"consts|exports|insts|custom")]
@@ -97,7 +97,7 @@ impl str::FromStr for Directive {
   type Err = ();
 
   fn from_str(s: &str) -> Result<Self, Self::Err> {
-    match s {
+    match &s[1..] {
       "section" => Ok(Self::Section),
       "export" => Ok(Self::Export),
       "i8" => Ok(Self::I8),
@@ -155,7 +155,7 @@ impl str::FromStr for Section {
 
 /// Instruction or label.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct InstOrLabel(String);
+pub struct InstOrLabel(pub String);
 
 impl fmt::Display for InstOrLabel {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
