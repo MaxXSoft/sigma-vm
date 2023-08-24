@@ -284,7 +284,8 @@ impl Assembler {
       Const(ConstInst),
       Cfi(CfInstConstructor),
     }
-    let kind = match inst.opcode.unwrap::<String, _>().to_lowercase().as_str() {
+    let opcode: InstOrLabel = inst.opcode.unwrap();
+    let kind = match opcode.0.to_lowercase().as_str() {
       "nop" => InstKind::Normal(Opcode::Nop),
       "pushi" => InstKind::Normal(Opcode::PushI),
       "pushu" => InstKind::Normal(Opcode::PushU),
