@@ -4,6 +4,7 @@ use laps::span::{Result, Span, Spanned};
 use sigma_vm::bytecode::builder::Builder;
 use sigma_vm::bytecode::consts::{Const, ObjectRef};
 use sigma_vm::bytecode::export::CallSite;
+use sigma_vm::bytecode::insts::{Inst, Opcode, Operand, OperandType};
 use std::collections::HashMap;
 
 /// Bytecode assembler.
@@ -207,7 +208,151 @@ impl Assembler {
 
   /// Generates on the given instruction.
   fn gen_inst(&mut self, inst: Instruction) -> Result<()> {
-    todo!()
+    let span = inst.span();
+    // get opcode, check if is CFI
+    let (opcode, cfi): (_, Option<fn(i64) -> Inst>) =
+      match inst.opcode.unwrap::<String, _>().to_lowercase().as_str() {
+        "nop" => (Opcode::Nop, None),
+        "pushi" => (Opcode::PushI, None),
+        "pushu" => (Opcode::PushU, None),
+        "pop" => (Opcode::Pop, None),
+        "dup" => (Opcode::Dup, None),
+        "swap" => (Opcode::Swap, None),
+        "ldb" => (Opcode::LdB, None),
+        "ldbu" => (Opcode::LdBU, None),
+        "ldh" => (Opcode::LdH, None),
+        "ldhu" => (Opcode::LdHU, None),
+        "ldw" => (Opcode::LdW, None),
+        "ldwu" => (Opcode::LdWU, None),
+        "ldd" => (Opcode::LdD, None),
+        "ldp" => (Opcode::LdP, None),
+        "ldbo" => (Opcode::LdBO, None),
+        "ldbuo" => (Opcode::LdBUO, None),
+        "ldho" => (Opcode::LdHO, None),
+        "ldhuo" => (Opcode::LdHUO, None),
+        "ldwo" => (Opcode::LdWO, None),
+        "ldwuo" => (Opcode::LdWUO, None),
+        "lddo" => (Opcode::LdDO, None),
+        "ldpo" => (Opcode::LdPO, None),
+        "ldv" => (Opcode::LdV, None),
+        "ldg" => (Opcode::LdG, None),
+        "ldc" => (Opcode::LdC, None),
+        "lac" => (Opcode::LaC, None),
+        "stb" => (Opcode::StB, None),
+        "sth" => (Opcode::StH, None),
+        "stw" => (Opcode::StW, None),
+        "std" => (Opcode::StD, None),
+        "stbo" => (Opcode::StBO, None),
+        "stho" => (Opcode::StHO, None),
+        "stwo" => (Opcode::StWO, None),
+        "stdo" => (Opcode::StDO, None),
+        "stv" => (Opcode::StV, None),
+        "stg" => (Opcode::StG, None),
+        "sta" => (Opcode::StA, None),
+        "new" => (Opcode::New, None),
+        "newo" => (Opcode::NewO, None),
+        "newoc" => (Opcode::NewOC, None),
+        "newa" => (Opcode::NewA, None),
+        "newac" => (Opcode::NewAC, None),
+        "load" => (Opcode::Load, None),
+        "loadc" => (Opcode::LoadC, None),
+        "loadm" => (Opcode::LoadM, None),
+        "bz" => (Opcode::Bz, Some(Inst::Bz)),
+        "bnz" => (Opcode::Bnz, Some(Inst::Bnz)),
+        "jmp" => (Opcode::Jmp, Some(Inst::Jmp)),
+        "call" => (Opcode::Call, Some(Inst::Call)),
+        "callext" => (Opcode::CallExt, None),
+        "callextc" => (Opcode::CallExtC, None),
+        "ret" => (Opcode::Ret, None),
+        "sys" => (Opcode::Sys, None),
+        "break" => (Opcode::Break, None),
+        "not" => (Opcode::Not, None),
+        "lnot" => (Opcode::LNot, None),
+        "and" => (Opcode::And, None),
+        "or" => (Opcode::Or, None),
+        "xor" => (Opcode::Xor, None),
+        "shl" => (Opcode::Shl, None),
+        "shr" => (Opcode::Shr, None),
+        "sar" => (Opcode::Sar, None),
+        "sext" => (Opcode::Sext, None),
+        "zext" => (Opcode::Zext, None),
+        "eq" => (Opcode::Eq, None),
+        "ne" => (Opcode::Ne, None),
+        "lt" => (Opcode::Lt, None),
+        "le" => (Opcode::Le, None),
+        "gt" => (Opcode::Gt, None),
+        "ge" => (Opcode::Ge, None),
+        "ltu" => (Opcode::LtU, None),
+        "leu" => (Opcode::LeU, None),
+        "gtu" => (Opcode::GtU, None),
+        "geu" => (Opcode::GeU, None),
+        "neg" => (Opcode::Neg, None),
+        "add" => (Opcode::Add, None),
+        "sub" => (Opcode::Sub, None),
+        "mul" => (Opcode::Mul, None),
+        "div" => (Opcode::Div, None),
+        "divu" => (Opcode::DivU, None),
+        "mod" => (Opcode::Mod, None),
+        "modu" => (Opcode::ModU, None),
+        "ltf" => (Opcode::LtF, None),
+        "lef" => (Opcode::LeF, None),
+        "gtf" => (Opcode::GtF, None),
+        "gef" => (Opcode::GeF, None),
+        "negf" => (Opcode::NegF, None),
+        "addf" => (Opcode::AddF, None),
+        "subf" => (Opcode::SubF, None),
+        "mulf" => (Opcode::MulF, None),
+        "divf" => (Opcode::DivF, None),
+        "modf" => (Opcode::ModF, None),
+        "ltd" => (Opcode::LtD, None),
+        "led" => (Opcode::LeD, None),
+        "gtd" => (Opcode::GtD, None),
+        "ged" => (Opcode::GeD, None),
+        "negd" => (Opcode::NegD, None),
+        "addd" => (Opcode::AddD, None),
+        "subd" => (Opcode::SubD, None),
+        "muld" => (Opcode::MulD, None),
+        "divd" => (Opcode::DivD, None),
+        "modd" => (Opcode::ModD, None),
+        "i2f" => (Opcode::I2F, None),
+        "i2d" => (Opcode::I2D, None),
+        "f2i" => (Opcode::F2I, None),
+        "f2d" => (Opcode::F2D, None),
+        "d2i" => (Opcode::D2I, None),
+        "d2f" => (Opcode::D2F, None),
+        "itf" => (Opcode::ITF, None),
+        "itd" => (Opcode::ITD, None),
+        "itp" => (Opcode::ITP, None),
+        _ => return_error!(span, "unknown instruction"),
+      };
+    // get operand
+    enum OprOrLabel {
+      Opr(Operand),
+      Label(u64),
+    }
+    let opr = match opcode.operand_type() {
+      Some(OperandType::Signed) => match (inst.opr, cfi) {
+        (Some(InstOperand::Imm(i)), None) => Some(OprOrLabel::Opr(Operand::Signed(
+          i.unwrap::<u64, _>() as i64,
+        ))),
+        (Some(InstOperand::LabelRef(l)), Some(_)) => Some(OprOrLabel::Label(self.gen_label_ref(l))),
+        (_, None) => return_error!(span, "expected integer operand"),
+        (_, Some(_)) => return_error!(span, "expected label reference"),
+      },
+      Some(OperandType::Unsigned) => match inst.opr {
+        Some(InstOperand::Imm(i)) => Some(OprOrLabel::Opr(Operand::Unsigned(i.unwrap()))),
+        _ => return_error!(span, "expected integer operand"),
+      },
+      None if inst.opr.is_none() => None,
+      _ => return_error!(span, "expected no operand"),
+    };
+    // insert instruction
+    match opr {
+      Some(OprOrLabel::Opr(opr)) => self.builder.inst(Inst::new(opcode, Some(opr))),
+      Some(OprOrLabel::Label(l)) => self.builder.cfi(cfi.unwrap(), l),
+      None => self.builder.inst(Inst::new(opcode, None)),
+    }
+    Ok(())
   }
 
   /// Generates on the given label definition.
