@@ -792,11 +792,35 @@ pub enum LabelDefKind {
 }
 
 /// Label reference.
-#[derive(Debug, Parse, Spanned)]
-#[token(Token)]
+#[derive(Debug, Spanned)]
 pub enum LabelRef {
   Named(Token![label]),
   Temp(Token![tlr]),
+}
+
+impl<TS> Parse<TS> for LabelRef
+where
+  TS: TokenStream<Token = Token>,
+{
+  fn parse(tokens: &mut TS) -> laps::span::Result<Self> {
+    Ok(if <Token![label]>::maybe(tokens)? {
+      Self::Named(tokens.parse()?)
+    } else {
+      Self::Temp(tokens.parse()?)
+    })
+  }
+
+  fn maybe(tokens: &mut TS) -> laps::span::Result<bool> {
+    if tokens
+      .lookahead()
+      .maybe(Token![label])?
+      .maybe(Token![:])?
+      .result()?
+    {
+      return Ok(false);
+    }
+    Ok(<Token![label]>::maybe(tokens)? || <Token![tlr]>::maybe(tokens)?)
+  }
 }
 
 /// Bytecode assembly parser.
