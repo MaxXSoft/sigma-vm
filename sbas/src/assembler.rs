@@ -370,20 +370,28 @@ impl Assembler {
       },
       Section::Insts => match label_def.kind {
         LabelDefKind::Named(l) => {
-          // create and insert label
-          let id = self.builder.label();
-          self.builder.insert_label(id);
-          // insert to label map
-          let last = self.labels.insert(
-            l.unwrap(),
-            LabelInfo {
-              kind: LabelKind::Inst(id),
-              span: span.clone(),
-            },
-          );
-          // check if duplicate
-          if last.is_some() {
-            return_error!(span, "duplicate label definition");
+          let label: String = l.unwrap();
+          // try to find the label
+          if let Some(info) = self.labels.get_mut(&label) {
+            match &mut info.kind {
+              LabelKind::Inst(id, inserted) if !*inserted => {
+                // insert to builder
+                self.builder.insert_label(*id);
+                *inserted = true;
+              }
+              _ => return_error!(span, "duplicate label definition"),
+            }
+          } else {
+            // create and insert label
+            let id = self.builder.label();
+            self.builder.insert_label(id);
+            self.labels.insert(
+              label,
+              LabelInfo {
+                kind: LabelKind::Inst(id, true),
+                span: span.clone(),
+              },
+            );
           }
         }
         LabelDefKind::Temp(t) => todo!(),
@@ -456,6 +464,10 @@ struct LabelInfo {
 /// Kind of label.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum LabelKind {
+  /// Constant label, with an optional index.
+  /// If index is [`None`], the label is undefined.
   Const(Option<u64>),
-  Inst(u64),
+  /// Instruction label, with label id and a flag that indicates
+  /// whether the label has been inserted.
+  Inst(u64, bool),
 }
