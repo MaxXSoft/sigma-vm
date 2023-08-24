@@ -165,6 +165,8 @@ where
 {
   // create VM instance
   let mut vm = VM::new(policy);
+  vm.loader_mut()
+    .add_search_path(ok_or_exit(env::current_dir(), PROMPT_LOADER));
   for path in &args.search_paths {
     vm.loader_mut().add_search_path(path);
   }
