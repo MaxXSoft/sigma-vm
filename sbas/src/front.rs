@@ -231,7 +231,16 @@ token_ast! {
     [lbc] => { kind: TokenKind::Other('[') },
     [rbc] => { kind: TokenKind::Other(']') },
     [:] => { kind: TokenKind::Other(':') },
+    [eof] => { kind: TokenKind::Eof },
   }
+}
+
+/// Statement or end-of-file.
+#[derive(Parse)]
+#[token(Token)]
+enum StatementOrEof {
+  Statement(Statement),
+  Eof(Token![eof]),
 }
 
 /// Statement.
@@ -430,10 +439,13 @@ impl<R> Parser<R> {
   }
 
   /// Parses the next statement.
-  pub fn parse(&mut self) -> laps::span::Result<Statement>
+  pub fn parse(&mut self) -> laps::span::Result<Option<Statement>>
   where
     R: io::Read,
   {
-    self.tokens.parse()
+    Ok(match self.tokens.parse::<StatementOrEof>()? {
+      StatementOrEof::Statement(stmt) => Some(stmt),
+      StatementOrEof::Eof(_) => None,
+    })
   }
 }
