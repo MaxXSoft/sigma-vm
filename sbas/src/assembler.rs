@@ -346,18 +346,22 @@ impl Assembler {
       None if inst.opr.is_none() => None,
       _ => return_error!(span, "expected no operand"),
     };
-    // insert instruction
-    match opr {
-      Some(OprOrLabel::Opr(opr)) => self.builder.inst(Inst::new(opcode, Some(opr))),
-      Some(OprOrLabel::Label(l)) => self.builder.cfi(cfi.unwrap(), l),
-      None => self.builder.inst(Inst::new(opcode, None)),
+    // insert instruction to section
+    match self.cur_sec {
+      Section::Insts => match opr {
+        Some(OprOrLabel::Opr(opr)) => self.builder.inst(Inst::new(opcode, Some(opr))),
+        Some(OprOrLabel::Label(l)) => self.builder.cfi(cfi.unwrap(), l),
+        None => self.builder.inst(Inst::new(opcode, None)),
+      },
+      Section::Custom => todo!(),
+      _ => return_error!(span, "instruction can not appear here"),
     }
     Ok(())
   }
 
   /// Generates on the given label definition.
   fn gen_label_def(&mut self, label_def: LabelDef) -> Result<()> {
-    todo!()
+    todo!("temporary label, constant label, custom label")
   }
 
   /// Generates on the given label reference.
