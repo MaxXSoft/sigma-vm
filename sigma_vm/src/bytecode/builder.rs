@@ -131,6 +131,16 @@ impl Builder {
     self.inst(Inst::PushU(unsafe { *(&value as *const _ as *const u64) }))
   }
 
+  /// Replaces the instruction at the given PC.
+  /// Returns the instruction before replacement.
+  ///
+  /// # Panics
+  ///
+  /// Panics if the given PC is invalid.
+  pub fn replace_inst(&mut self, pc: u64, inst: Inst) -> Inst {
+    std::mem::replace(&mut self.insts[pc as usize], inst)
+  }
+
   /// Adds the given bytes to custom metadata.
   pub fn custom<I>(&mut self, bytes: I)
   where
