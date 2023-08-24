@@ -370,18 +370,26 @@ pub struct Bytes {
 #[derive(Debug, Parse)]
 #[token(Token)]
 pub struct Instruction {
-  pub inst: Token![il],
-  pub opr: Option<Token![int]>,
+  pub opcode: Token![il],
+  pub opr: Option<InstOperand>,
 }
 
 impl Spanned for Instruction {
   fn span(&self) -> laps::span::Span {
-    let mut span = self.inst.span();
-    if let Some(opr) = self.opr.as_ref() {
+    let mut span = self.opcode.span();
+    if let Some(opr) = &self.opr {
       span.update_end(opr.span());
     }
     span
   }
+}
+
+//// Instruction operand.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub enum InstOperand {
+  Imm(Token![int]),
+  LabelRef(LabelRef),
 }
 
 /// Label definition.
