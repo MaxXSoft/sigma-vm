@@ -304,6 +304,10 @@ dependencies = [
 [[package]]
 name = "sbdump"
 version = "0.0.1"
+dependencies = [
+ "clap",
+ "sigma_vm",
+]
 
 [[package]]
 name = "sigma"
