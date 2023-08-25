@@ -32,6 +32,10 @@ struct CommandLineArgs {
   /// Garbage collector threshold.
   #[arg(short = 't', long, default_value_t = Size::Megabytes(256))]
   gc_threshold: Size,
+
+  /// Arguments for the bytecode module.
+  #[arg(last = true)]
+  args: Vec<String>,
 }
 
 #[derive(ValueEnum, Clone, Copy, Debug)]
@@ -179,7 +183,7 @@ where
     PROMPT_LOADER,
   );
   // run VM
-  let rets = ok_or_exit(vm.run_main(module, env::args()), PROMPT_VM);
+  let rets = ok_or_exit(vm.run_main(module, &args.args), PROMPT_VM);
   ok_or_exit(vm.terminate(), PROMPT_VM);
   // return the first integer value
   if let Some(v) = rets.first() {
