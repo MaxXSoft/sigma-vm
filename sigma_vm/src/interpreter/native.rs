@@ -79,10 +79,12 @@ impl NativeLoader {
     // call the native function
     let ret_vals = unsafe {
       let func: Symbol<ffi::NativeFn> = lib.get(name.as_bytes()).map_err(Error::Loading)?;
-      func(ffi::VmState {
+      func(&ffi::VmState {
         heap: &mut (heap as &mut dyn ffi::HeapWrapper),
         num_args: args.len(),
         args: args.as_ptr(),
+        heap_alloc: ffi::heap_alloc as *const _,
+        heap_addr: ffi::heap_addr as *const _,
       })
     };
     // extract return values
@@ -121,7 +123,7 @@ mod ffi {
   use std::ffi::c_void;
 
   /// Function type of native functions.
-  pub type NativeFn = unsafe extern "C" fn(VmState) -> RetVals;
+  pub type NativeFn = unsafe extern "C" fn(*const VmState) -> RetVals;
 
   /// Virtual machine state.
   #[repr(C)]
@@ -129,6 +131,8 @@ mod ffi {
     pub heap: &'vm mut &'vm mut dyn HeapWrapper,
     pub num_args: usize,
     pub args: *const u64,
+    pub heap_alloc: *const c_void,
+    pub heap_addr: *const c_void,
   }
 
   /// Return values.
@@ -173,18 +177,12 @@ mod ffi {
   /// # Panics
   ///
   /// Panics if size or align are invalid.
-  #[no_mangle]
-  pub extern "C" fn sigma_vm_heap_alloc(
-    heap: &mut &mut dyn HeapWrapper,
-    size: usize,
-    align: usize,
-  ) -> u64 {
+  pub(super) fn heap_alloc(heap: &mut &mut dyn HeapWrapper, size: usize, align: usize) -> u64 {
     heap.alloc(size, align)
   }
 
   /// Returns the memory address of the given pointer.
-  #[no_mangle]
-  pub extern "C" fn sigma_vm_heap_addr(heap: &mut &mut dyn HeapWrapper, ptr: u64) -> *mut c_void {
+  pub(super) fn heap_addr(heap: &mut &mut dyn HeapWrapper, ptr: u64) -> *mut c_void {
     heap.addr_mut(ptr) as *mut c_void
   }
 }
