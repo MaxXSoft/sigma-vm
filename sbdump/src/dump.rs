@@ -2,7 +2,7 @@ use sigma_vm::bytecode::consts::{Const, ConstKind, Object, Raw, Str};
 use sigma_vm::bytecode::export::NumArgs;
 use sigma_vm::bytecode::insts::{Inst, Opcode, Operand};
 use sigma_vm::bytecode::module::StaticModule;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::{Result, Write};
 
 /// Bytecode dumper.
@@ -50,8 +50,17 @@ where
   /// Dumps to the given writer.
   fn dump(&mut self) -> Result<()> {
     self.dump_consts()?;
+    if !self.module.consts.is_empty() && !self.module.exports.is_empty() {
+      writeln!(self.writer)?;
+    }
     self.dump_exports()?;
+    if !self.module.exports.is_empty() && !self.module.insts.is_empty() {
+      writeln!(self.writer)?;
+    }
     self.dump_insts()?;
+    if !self.module.insts.is_empty() && !self.module.custom.is_empty() {
+      writeln!(self.writer)?;
+    }
     self.dump_custom()
   }
 
@@ -88,19 +97,37 @@ where
 
   /// Dumps the instruction section.
   fn dump_insts(&mut self) -> Result<()> {
-    if !self.module.insts.is_empty() {
-      writeln!(self.writer, "Section `insts`:")?;
-      for (pc, inst) in self.module.insts.iter().enumerate() {
-        // check if exported
-        if let Some(names) = self.exported_pcs.get(&(pc as u64)) {
-          for name in names {
-            Exported(name).dump(self.writer)?;
-          }
+    if self.module.insts.is_empty() {
+      return Ok(());
+    }
+    // get locations of all functions
+    let funcs: HashSet<_> = self
+      .module
+      .insts
+      .iter()
+      .enumerate()
+      .filter_map(|(pc, inst)| match inst {
+        Inst::Call(opr) => Some((pc as i64 + opr) as usize),
+        _ => None,
+      })
+      .collect();
+    // dump instruction section
+    writeln!(self.writer, "Section `insts`:")?;
+    for (pc, inst) in self.module.insts.iter().enumerate() {
+      // check if exported
+      if let Some(names) = self.exported_pcs.get(&(pc as u64)) {
+        if pc != 0 {
+          writeln!(self.writer)?;
         }
-        // dump instruction
-        self.write_label(INST_LABEL, pc, self.module.insts.len())?;
-        (pc, inst).dump(self.writer)?;
+        for name in names {
+          Exported(name).dump(self.writer)?;
+        }
+      } else if funcs.contains(&pc) && pc != 0 {
+        writeln!(self.writer)?;
       }
+      // dump instruction
+      self.write_label(INST_LABEL, pc, self.module.insts.len())?;
+      (pc, inst).dump(self.writer)?;
     }
     Ok(())
   }
