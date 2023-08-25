@@ -34,6 +34,40 @@ typedef struct {
 } sigma_vm_ret_vals_t;
 
 ///
+/// String.
+///
+typedef struct {
+  uint64_t len;
+  uint8_t bytes[];
+} sigma_vm_str_t;
+
+///
+/// Managed pointer information.
+///
+typedef struct {
+  uint64_t len;
+  uint64_t offsets[];
+} sigma_vm_managed_ptr_t;
+
+///
+/// Object metadata.
+///
+typedef struct {
+  uint64_t size;
+  uint64_t align;
+  uint64_t destructor;
+  sigma_vm_managed_ptr_t managed_ptr;
+} sigma_vm_object_t;
+
+///
+/// Raw data.
+///
+typedef struct {
+  uint64_t len;
+  uint8_t bytes[];
+} sigma_vm_raw_t;
+
+///
 /// Allocates a new memory with the given size and align.
 /// Returns the heap pointer of the allocated memory.
 ///
