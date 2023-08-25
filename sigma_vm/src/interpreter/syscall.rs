@@ -144,6 +144,12 @@ where
   /// * s3: arguments n - 1.
   /// * ...
   /// * s{n + 2}: arguments 0.
+  ///
+  /// Stack layout after call:
+  /// * s0 (TOS): zero if native call succeeded.
+  /// * s1 if s0 is zero: return value n - 1.
+  /// * ...
+  /// * s{n} if s0 is zero: return value 0.
   fn native_call(&self, state: VmState<P, H>) -> Result<ControlFlow, P::Error> {
     // get name and handle
     let name_ptr = P::get_ptr(&P::unwrap_val(state.value_stack.pop())?)?;
@@ -157,12 +163,18 @@ where
     }
     args.reverse();
     // call the native function
-    let rets = unsafe { state.native_loader.call(handle, &name, state.heap, &args) };
-    let rets = P::unwrap_module(rets.ok())?;
+    let rets = match unsafe { state.native_loader.call(handle, &name, state.heap, &args) } {
+      Ok(rets) => rets,
+      Err(_) => {
+        state.value_stack.push(P::int_val(1));
+        return Ok(ControlFlow::Continue);
+      }
+    };
     // push return values to stack
     state
       .value_stack
       .extend(rets.iter().map(|v| P::int_val(*v)));
+    state.value_stack.push(P::int_val(0));
     Ok(ControlFlow::Continue)
   }
 
