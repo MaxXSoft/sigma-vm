@@ -148,7 +148,7 @@ where
   /// Writes padded label with the given index.
   fn write_label(&mut self, label: &str, index: usize, num_index: usize) -> Result<()> {
     let pad = (num_index.ilog10() - index.checked_ilog10().unwrap_or(0)) as usize;
-    write!(self.writer, "{:<pad$}{label}{index}: ", "")
+    write!(self.writer, "  {:<pad$}{label}{index}: ", "")
   }
 }
 
