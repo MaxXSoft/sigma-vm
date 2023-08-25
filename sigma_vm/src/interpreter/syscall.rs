@@ -5,6 +5,7 @@ use crate::interpreter::policy::Policy;
 use crate::interpreter::vm::Vars;
 use std::collections::HashMap;
 use std::io::{stderr, stdin, stdout, Read, Write};
+use std::num::NonZeroU64;
 use std::slice;
 
 /// System call handler.
@@ -165,8 +166,10 @@ where
     // call the native function
     let rets = match unsafe { state.native_loader.call(handle, &name, state.heap, &args) } {
       Ok(rets) => rets,
-      Err(_) => {
-        state.value_stack.push(P::int_val(1));
+      Err(e) => {
+        state
+          .value_stack
+          .push(P::int_val(NonZeroU64::from(e).get()));
         return Ok(ControlFlow::Continue);
       }
     };
