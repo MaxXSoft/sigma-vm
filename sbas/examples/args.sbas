@@ -1,0 +1,65 @@
+  .section insts
+  # module initializer
+  pop
+  ret
+
+main:
+  # say hello
+  lac   hello
+  call  print_str
+
+  # print begin of argument list
+  lac   arguments
+  call  print_str
+
+  # iterate through all arguments
+1:
+  dup
+  bz    1f
+  stv   0
+  # print the current argument
+  call  print_str
+  # update loop counter
+  ldv   0
+  pushu 1
+  sub
+  # print separator
+  dup
+  bz    2f
+  lac   comma
+  call  print_str
+2:
+  jmp   1b
+1:
+  pop
+
+  # print end of argument list
+  lac end_of_list
+  call print_str
+
+  # return
+  pushu 0
+  ret
+
+print_str:
+  dup
+  pushu 8
+  add
+  swap
+  lddo  0
+  sys   9
+  pop
+  ret
+
+  .section consts
+hello:
+  .str  "Hello, world!\n"
+arguments:
+  .str  "Arguments (reversed): ["
+comma:
+  .str  ", "
+end_of_list:
+  .str  "]\n"
+
+  .section exports
+  .export "main", main, variadic, 1
