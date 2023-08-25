@@ -2,6 +2,7 @@ use crate::interpreter::heap::{Heap, Meta, Ptr};
 use libloading::{Error as Loading, Library, Symbol};
 use std::alloc::Layout;
 use std::collections::HashMap;
+use std::num::NonZeroU64;
 use std::{fmt, slice};
 
 /// Native library loader.
@@ -111,6 +112,16 @@ impl fmt::Display for Error {
       Self::Loading(e) => write!(f, "{e}"),
       Self::LibNotFound => write!(f, "library not found"),
     }
+  }
+}
+
+impl From<Error> for NonZeroU64 {
+  fn from(e: Error) -> Self {
+    Self::new(match e {
+      Error::Loading(_) => 1,
+      Error::LibNotFound => 2,
+    })
+    .unwrap()
   }
 }
 
