@@ -4,6 +4,7 @@ members = [
   "sigma_vm",
   "sigma",
   "sbas",
+  "sbdump",
   "xeno",
   "lisp",
 ]
