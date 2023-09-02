@@ -3,11 +3,12 @@ use libloading::{Error as Loading, Library, Symbol};
 use std::alloc::Layout;
 use std::collections::HashMap;
 use std::num::NonZeroU64;
+use std::path::{Path, PathBuf};
 use std::{fmt, slice};
 
 /// Native library loader.
 pub struct NativeLoader {
-  resolved_paths: HashMap<String, Ptr>,
+  resolved_paths: HashMap<PathBuf, Ptr>,
   loaded_libs: HashMap<Ptr, Library>,
 }
 
@@ -22,17 +23,18 @@ impl NativeLoader {
 
   /// Loads a native shared library by the given path,
   /// return the handle of loaded library, or a invalid handle.
-  pub fn load<H>(&mut self, heap: &mut H, path: &str) -> Result<Ptr, Error>
+  pub fn load<H, P>(&mut self, heap: &mut H, path: P) -> Result<Ptr, Error>
   where
     H: Heap,
+    P: AsRef<Path>,
   {
-    if let Some(handle) = self.resolved_paths.get(path) {
+    if let Some(handle) = self.resolved_paths.get(path.as_ref()) {
       Ok(*handle)
     } else {
-      match unsafe { Library::new(path) } {
+      match unsafe { Library::new(path.as_ref()) } {
         Ok(lib) => {
           let handle = heap.alloc(Layout::from_size_align(1, 1).unwrap(), Meta::Native);
-          self.resolved_paths.insert(path.into(), handle);
+          self.resolved_paths.insert(path.as_ref().into(), handle);
           self.loaded_libs.insert(handle, lib);
           Ok(handle)
         }
