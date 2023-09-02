@@ -12,7 +12,7 @@ use crate::utils::{IntoU64, Unsized};
 use std::alloc::Layout;
 use std::collections::HashMap;
 use std::iter::{self, Flatten};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::slice::Iter;
 use std::{mem, slice};
 
@@ -509,7 +509,9 @@ impl<'vm, P: Policy> Scheduler<'vm, P> {
   /// Loads module from the given path pointer.
   fn load_module(&mut self, context: Context<P>, ptr: Ptr) -> Result<(), P::Error> {
     // load module
-    let path = P::utf8_str(&self.vm.global_heap.heap, ptr)?.to_string();
+    let path: PathBuf = P::utf8_str(&self.vm.global_heap.heap, ptr)?
+      .split('/')
+      .collect();
     let handle = Ptr::from(
       self
         .vm
