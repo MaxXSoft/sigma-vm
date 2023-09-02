@@ -6,6 +6,7 @@ use crate::interpreter::vm::Vars;
 use std::collections::HashMap;
 use std::io::{stderr, stdin, stdout, Read, Write};
 use std::num::NonZeroU64;
+use std::path::PathBuf;
 use std::slice;
 
 /// System call handler.
@@ -116,9 +117,9 @@ where
   fn native_load(&mut self, state: VmState<P, H>) -> Result<ControlFlow, P::Error> {
     // get library path
     let path_ptr = P::get_ptr(&P::unwrap_val(state.value_stack.pop())?)?;
-    let path = P::utf8_str(state.heap, path_ptr)?.to_string();
+    let path: PathBuf = P::utf8_str(state.heap, path_ptr)?.split('/').collect();
     // load library
-    let handle = Ptr::from(state.native_loader.load(state.heap, &path));
+    let handle = Ptr::from(state.native_loader.load(state.heap, path));
     // update stack
     state.value_stack.push(P::ptr_val(handle));
     Ok(ControlFlow::Continue)
