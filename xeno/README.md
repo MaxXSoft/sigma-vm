@@ -80,7 +80,7 @@ Factor := Block | NonBlock;
 Block := "{" {Statement} "}";
 NonBlock := Loop | While | Break | Continue | If | Match | Return
           | Literal | Underscore | Bang | Paren | TupleExpr | ArrayExpr
-          | StructExpr | Call | PathExpr | Closure;
+          | StructExpr | Call | PathExpr | Access | Closure;
 
 Loop := [Label ":"] "loop" Block;
 While := [Label ":"] "while" Cond Block;
@@ -104,6 +104,7 @@ FieldExpr := IDENT [":" Expr] | ".." Expr;
 Call := Expr CallArgs;
 CallArgs := ImplicitArgs | Args | ImplicitArgs Args;
 PathExpr := IDENT [ImplicitArgs] [Args] ["." PathExpr];
+Access := Expr "." IDENT;
 Closure := "fn" [ImplicitClosureParams] [ClosureParams] ["->" Type] [Where] Expr;
 ImplicitClosureParams := "[" [ClosureParam {"," ClosureParam} [","]] "]";
 ClosureParams := "(" [ClosureParam {"," ClosureParam} [","]] ")";
