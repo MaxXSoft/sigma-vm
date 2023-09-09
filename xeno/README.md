@@ -71,17 +71,17 @@ StructPat := PathExpr "{" [FieldPat {"," FieldPat} [","]] "}";
 FieldPat := IDENT [":" ConcretePat] | "..";
 EnumPat := PathExpr [TuplePat];
 
-Expr := Block | Loop | While | If | Match | Return | Infix;
+Expr := Prefix {PathExpr Prefix};
+Prefix := {PathExpr} Factor;
+Factor := Block | Loop | While | If | Match | Return
+        | Literal | Underscore | Paren | TupleExpr | Call
+        | StructExpr | PathExpr | Closure;
 Block := "{" {Statement} "}";
 Loop := ...;
 While := ...;
 If := ...;
 Match := ...;
 Return := ...;
-Infix := Prefix {PathExpr Prefix};
-Prefix := {PathExpr} Factor;
-Factor := Literal | Underscore | Paren | TupleExpr | Call | StructExpr
-        | PathExpr | Closure | ...;
 Literal := ...;
 Underscore := "_";
 Paren := "(" Expr ")";
