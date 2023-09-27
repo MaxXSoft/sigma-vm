@@ -32,7 +32,7 @@ TraitBody := "{" {FuncDecl [FuncBody]} "}";
 Impl := "impl" [ImplicitParams] [PathExpr "for"] PathExpr [Where] ImplBody;
 ImplBody := "{" {FuncDef} "}";
 
-ImplicitParams := "[" [ImplicitParam {"," ImplicitParam} [","]] "]";
+ImplicitParams := "[" [ImplicitParam {"," ImplicitParam} {"," ImplicitParam "=" Expr} [","]] "]";
 ImplicitParam := IDENT | Param;
 ImplicitArgs := "[" [Expr {"," Expr} [","]] "]";
 Params := "(" [Param {"," Param} [","]] ")";
