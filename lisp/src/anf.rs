@@ -1,6 +1,6 @@
 use crate::front::{ElemKind, Element};
 use laps::span::{Result, Span};
-use laps::{log_warning, return_error};
+use laps::{log_error, log_warning, return_error};
 use std::collections::HashMap;
 
 /// Statement.
@@ -323,13 +323,10 @@ impl Generator {
 
   /// Generates a symbol.
   fn gen_sym(&mut self, sym: &str, span: &Span) -> Result<Value> {
-    match self.env.get(sym) {
-      Some(VarKind::Var(id)) => Ok(Value::Var(id)),
-      Some(VarKind::OuterVar(id)) => Ok(Value::OuterVar(id)),
-      Some(VarKind::GlobalVar(id)) => Ok(Value::GlobalVar(id)),
-      Some(VarKind::Builtin(b)) => Ok(Value::Builtin(b)),
-      None => return_error!(span, "symbol {sym} not found"),
-    }
+    self
+      .env
+      .get(sym)
+      .ok_or_else(|| log_error!(span, "symbol {sym} not found"))
   }
 
   /// Generates a quotation.
@@ -428,39 +425,39 @@ impl Env {
   }
 
   /// Finds the given variable in all scopes.
-  fn get(&mut self, name: &str) -> Option<VarKind> {
+  fn get(&mut self, name: &str) -> Option<Value> {
     let mut iter = self.scopes.iter().enumerate().rev();
     if let Some(id) = iter.next().unwrap().1.get(name) {
-      Some(VarKind::Var(id))
+      Some(Value::Var(id))
     } else {
       // find in outer scopes
       for (i, scope) in iter {
         if let Some(id) = scope.get(name) {
           return if i == 0 {
-            Some(VarKind::GlobalVar(id))
+            Some(Value::GlobalVar(id))
           } else {
-            Some(VarKind::OuterVar(id))
+            Some(Value::OuterVar(id))
           };
         }
       }
       // check if is a builtin function
       match name {
-        "atom?" => Some(VarKind::Builtin(Builtin::Atom)),
-        "number?" => Some(VarKind::Builtin(Builtin::Number)),
-        "eq?" => Some(VarKind::Builtin(Builtin::Equal)),
-        "car" => Some(VarKind::Builtin(Builtin::Car)),
-        "cdr" => Some(VarKind::Builtin(Builtin::Cdr)),
-        "cons" => Some(VarKind::Builtin(Builtin::Cons)),
-        "list" => Some(VarKind::Builtin(Builtin::List)),
-        "+" => Some(VarKind::Builtin(Builtin::Add)),
-        "-" => Some(VarKind::Builtin(Builtin::Sub)),
-        "*" => Some(VarKind::Builtin(Builtin::Mul)),
-        "/" => Some(VarKind::Builtin(Builtin::Div)),
-        ">" => Some(VarKind::Builtin(Builtin::Gt)),
-        "<" => Some(VarKind::Builtin(Builtin::Lt)),
-        ">=" => Some(VarKind::Builtin(Builtin::Ge)),
-        "<=" => Some(VarKind::Builtin(Builtin::Le)),
-        "=" => Some(VarKind::Builtin(Builtin::Eq)),
+        "atom?" => Some(Value::Builtin(Builtin::Atom)),
+        "number?" => Some(Value::Builtin(Builtin::Number)),
+        "eq?" => Some(Value::Builtin(Builtin::Equal)),
+        "car" => Some(Value::Builtin(Builtin::Car)),
+        "cdr" => Some(Value::Builtin(Builtin::Cdr)),
+        "cons" => Some(Value::Builtin(Builtin::Cons)),
+        "list" => Some(Value::Builtin(Builtin::List)),
+        "+" => Some(Value::Builtin(Builtin::Add)),
+        "-" => Some(Value::Builtin(Builtin::Sub)),
+        "*" => Some(Value::Builtin(Builtin::Mul)),
+        "/" => Some(Value::Builtin(Builtin::Div)),
+        ">" => Some(Value::Builtin(Builtin::Gt)),
+        "<" => Some(Value::Builtin(Builtin::Lt)),
+        ">=" => Some(Value::Builtin(Builtin::Ge)),
+        "<=" => Some(Value::Builtin(Builtin::Le)),
+        "=" => Some(Value::Builtin(Builtin::Eq)),
         _ => None,
       }
     }
