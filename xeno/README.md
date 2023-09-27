@@ -82,8 +82,8 @@ Factor := Block | NonBlock;
 Block := "{" {Statement} "}";
 NonBlock := Loop | While | Break | Continue | If | Match | Return
           | Literal | Underscore | Bang | Paren | TupleExpr | ArrayExpr
-          | StructExpr | Call | PathExpr | Access | Closure | Expand;
-
+          | StructExpr | Call | PathExpr | Access | Closure | Expand
+          | Type;
 Loop := [Label ":"] "loop" Block;
 While := [Label ":"] "while" Cond Block;
 Label := "@" IDENT;
