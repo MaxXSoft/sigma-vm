@@ -466,7 +466,7 @@ impl Env {
 
 /// Scope of environment.
 struct Scope {
-  vars: HashMap<String, u64>,
+  vars: HashMap<String, VarKind>,
   next_var_id: u64,
 }
 
@@ -483,13 +483,23 @@ impl Scope {
   fn define(&mut self, name: String) -> u64 {
     let id = self.next_var_id;
     self.next_var_id += 1;
-    *self.vars.entry(name).or_insert(id)
+    self.vars.insert(name, VarKind::Local(id));
+    id
   }
 
   /// Defines a new argument. Returns the variable number.
   fn define_arg(&mut self, name: String, i: u64) -> u64 {
     self.next_var_id = std::cmp::max(self.next_var_id, i + 1);
-    *self.vars.entry(name).or_insert(i)
+    self.vars.insert(name, VarKind::Local(i));
+    i
+  }
+
+  /// Defines a new captured variable. Returns the variable number.
+  fn define_captured(&mut self, name: String, outer: u64) -> u64 {
+    let id = self.next_var_id;
+    self.next_var_id += 1;
+    self.vars.insert(name, VarKind::Captured(id, outer));
+    id
   }
 
   /// Defines a new temporary variable. Returns the variable number.
@@ -501,14 +511,17 @@ impl Scope {
 
   /// Finds the given variable.
   fn get(&self, name: &str) -> Option<u64> {
-    self.vars.get(name).copied()
+    self.vars.get(name).map(|v| match v {
+      VarKind::Local(id) => *id,
+      VarKind::Captured(id, _) => *id,
+    })
   }
 }
 
 /// Kind of variable.
 enum VarKind {
-  Var(u64),
-  OuterVar(u64),
-  GlobalVar(u64),
-  Builtin(Builtin),
+  /// Local variable, with a variable ID.
+  Local(u64),
+  /// Captured variable, with a variable ID and a captured variable ID.
+  Captured(u64, u64),
 }
