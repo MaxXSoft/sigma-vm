@@ -44,8 +44,8 @@ Bound := TraitBound | TypeBound;
 TraitBound := PathExpr ":" PathExpr {"+" PathExpr};
 TypeBound := PathExpr "=" PathExpr;
 
-Type := PrimType | StructType | EnumType | ArrayType
-      | TupleType | FuncType | TypeOfType | TraitType;
+Type := PrimType | StructType | EnumType | ArrayType | TupleType
+      | FuncType | TypeOfType | TraitType | SelfType;
 PrimType := "i8" | "i16" | "i32" | "i64" | "u8" | "u16" | "u32" | "u64"
           | "f32" | "f64" | "char" | "str" | "!";
 StructType := "struct" "{" [StructField {"," StructField} [","]] "}";
@@ -61,6 +61,7 @@ TypeOfType := "type" [TraitTypeBound | ValueTypeBound];
 TraitTypeBound := "+" PathExpr [TraitTypeBound];
 ValueTypeBound := ":" TraitType;
 TraitType := PathExpr [TraitTypeBound];
+SelfType := "Self";
 
 Statement := Item | Let | Expr;
 Let := "let" ["mut"] ConcretePat [":" Type] "=" Expr;
