@@ -73,7 +73,15 @@ pub struct Let {
 #[derive(Debug)]
 pub struct Lambda {
   pub params: Vec<u64>,
+  pub captures: Vec<Captured>,
   pub expr: Box<Expr>,
+}
+
+/// Captured variable.
+#[derive(Debug)]
+pub struct Captured {
+  pub id: u64,
+  pub captured: u64,
 }
 
 /// Function application.
@@ -379,8 +387,13 @@ impl Generator {
       .collect::<Result<_>>()?;
     // generate body
     let expr = Box::new(self.gen_expr(&elems[1])?);
-    self.env.exit();
-    Ok(Expr::Value(Value::Lambda(Lambda { params, expr })))
+    // generate captured variables
+    let captures = self.env.exit().unwrap();
+    Ok(Expr::Value(Value::Lambda(Lambda {
+      params,
+      captures,
+      expr,
+    })))
   }
 }
 
@@ -403,8 +416,10 @@ impl Env {
   }
 
   /// Exits from the current scope.
-  fn exit(&mut self) {
-    self.scopes.pop();
+  ///
+  /// Returns the captured variable list of the current scope.
+  fn exit(&mut self) -> Option<Vec<Captured>> {
+    self.scopes.pop().map(Scope::captured_vars)
   }
 
   /// Defines a new variable. Returns the variable number.
@@ -520,6 +535,21 @@ impl Scope {
       VarKind::Local(id) => *id,
       VarKind::Captured(id, _) => *id,
     })
+  }
+
+  /// Consumes the current scope and returns a list of all captured variables
+  /// in the current scope.
+  fn captured_vars(self) -> Vec<Captured> {
+    let mut captures: Vec<_> = self
+      .vars
+      .into_values()
+      .filter_map(|v| match v {
+        VarKind::Captured(id, captured) => Some(Captured { id, captured }),
+        _ => None,
+      })
+      .collect();
+    captures.sort_by_key(|c| c.id);
+    captures
   }
 }
 
