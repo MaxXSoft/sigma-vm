@@ -44,8 +44,6 @@ pub enum Value {
   List(Vec<Value>),
   /// Variable reference.
   Var(u64),
-  /// Variable reference from an outer scope.
-  OuterVar(u64),
   /// Variable reference from the global scope.
   GlobalVar(u64),
   /// Builtin function.
@@ -426,20 +424,27 @@ impl Env {
 
   /// Finds the given variable in all scopes.
   fn get(&mut self, name: &str) -> Option<Value> {
-    let mut iter = self.scopes.iter().enumerate().rev();
-    if let Some(id) = iter.next().unwrap().1.get(name) {
-      Some(Value::Var(id))
-    } else {
-      // find in outer scopes
-      for (i, scope) in iter {
-        if let Some(id) = scope.get(name) {
-          return if i == 0 {
-            Some(Value::GlobalVar(id))
-          } else {
-            Some(Value::OuterVar(id))
-          };
+    self.get_or_capture(name, self.scopes.len() - 1)
+  }
+
+  /// Finds the given variable in the given scope.
+  /// If not found, finds in the outer scope, and marks it as a captured
+  /// variable in the current scope.
+  fn get_or_capture(&mut self, name: &str, scope_id: usize) -> Option<Value> {
+    if let Some(id) = self.scopes[scope_id].get(name) {
+      Some(match scope_id {
+        0 => Value::GlobalVar(id),
+        _ => Value::Var(id),
+      })
+    } else if scope_id != 0 {
+      match self.get_or_capture(name, scope_id - 1) {
+        Some(Value::Var(id)) => {
+          let scope = self.scopes.get_mut(scope_id).unwrap();
+          Some(Value::Var(scope.define_captured(name.into(), id)))
         }
+        value => value,
       }
+    } else {
       // check if is a builtin function
       match name {
         "atom?" => Some(Value::Builtin(Builtin::Atom)),
