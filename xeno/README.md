@@ -33,10 +33,10 @@ Impl := "impl" [ImplicitParams] [PathExpr "for"] PathExpr [Where] ImplBody;
 ImplBody := "{" {FuncDef} "}";
 
 ImplicitParams := "[" [ImplicitParam {"," ImplicitParam} [","]] "]";
-ImplicitParam := (IDENT | Param) ["=" Expr];
+ImplicitParam := (["..."] IDENT | Param) ["=" Expr];
 ImplicitArgs := "[" [Expr {"," Expr} [","]] "]";
 Params := "(" [Param {"," Param} [","]] ")";
-Param := IDENT ":" Type;
+Param := ["..."] IDENT ":" Type;
 Args := "(" [Expr {"," Expr} [","]] ")";
 
 Where := "where" Bound {"," Bound} [","];
@@ -53,10 +53,11 @@ StructField := ["pub"] IDENT ":" Type;
 EnumType := "enum" "{" [EnumField {"," EnumField} [","]] "}";
 EnumField := IDENT [TupleType] ["=" Expr];
 ArrayType := "[" Type ";" Expr "]";
-TupleType := "(" [Type {"," Type} [","]] ")";
+TupleType := "(" [Types] ")";
+Types := ["..."] Type {"," ["..."] Type} [","];
 FuncType := "fn" [ImplicitParamsType] [ParamsType] ["->" Type];
-ImplicitParamsType := "[" [Type {"," Type} [","]] "]";
-ParamsType := "(" [Type {"," Type} [","]] ")";
+ImplicitParamsType := "[" [Types] "]";
+ParamsType := "(" [Types] ")";
 TypeOfType := "type" [TraitTypeBound | ValueTypeBound];
 TraitTypeBound := "+" PathExpr [TraitTypeBound];
 ValueTypeBound := ":" TraitType;
@@ -81,7 +82,7 @@ Factor := Block | NonBlock;
 Block := "{" {Statement} "}";
 NonBlock := Loop | While | Break | Continue | If | Match | Return
           | Literal | Underscore | Bang | Paren | TupleExpr | ArrayExpr
-          | StructExpr | Call | PathExpr | Access | Closure;
+          | StructExpr | Call | PathExpr | Access | Closure | Expand;
 
 Loop := [Label ":"] "loop" Block;
 While := [Label ":"] "while" Cond Block;
@@ -110,6 +111,5 @@ Closure := "fn" [ImplicitClosureParams] [ClosureParams] ["->" Type] [Where] Expr
 ImplicitClosureParams := "[" [ClosureParam {"," ClosureParam} [","]] "]";
 ClosureParams := "(" [ClosureParam {"," ClosureParam} [","]] ")";
 ClosureParam := IDENT [":" Type];
+Expand := "..." [PathExpr] Paren;
 ```
-
-TODO: Variadic parameters and expand syntax.
