@@ -2,7 +2,7 @@ mod anf;
 mod back;
 mod front;
 
-use clap::{ArgAction, Parser};
+use clap::Parser;
 use laps::reader::Reader;
 use std::{fmt, io, process};
 
@@ -12,10 +12,6 @@ use std::{fmt, io, process};
 struct CommandLineArgs {
   /// Path to the Lisp source file, default to standard input.
   source: Option<String>,
-
-  /// Add directory to search path for other Lisp modules.
-  #[arg(short = 'I', id = "PATH", action = ArgAction::Append)]
-  search_paths: Vec<String>,
 
   /// Path to the output bytecode file, default to standard output.
   #[arg(short, long)]
