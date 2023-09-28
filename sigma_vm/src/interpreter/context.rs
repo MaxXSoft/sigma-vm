@@ -457,15 +457,26 @@ where
         }
       }
       Inst::Jmp(opr) => PcUpdate::Set((self.pc as i64 + opr) as u64),
+      Inst::JmpS => PcUpdate::Set(gctx.pop_int_ptr()?),
       Inst::Call(opr) => {
         self.var_stack.push(Vars::new());
         self.ra_stack.push(self.pc + 1);
         PcUpdate::Set((self.pc as i64 + opr) as u64)
       }
+      Inst::CallS => {
+        self.var_stack.push(Vars::new());
+        self.ra_stack.push(self.pc + 1);
+        PcUpdate::Set(gctx.pop_int_ptr()?)
+      }
       Inst::CallExt => {
         let ptr = gctx.pop_ptr()?;
         let handle = gctx.pop_ptr()?;
         return ControlFlow::CallExt(handle, ptr).into();
+      }
+      Inst::CallExtS => {
+        let pc = gctx.pop_int_ptr()?;
+        let handle = gctx.pop_ptr()?;
+        return ControlFlow::CallExtPc(handle, pc).into();
       }
       Inst::CallExtC(opr) => {
         let handle = gctx.pop_ptr()?;
