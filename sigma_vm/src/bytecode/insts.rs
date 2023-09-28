@@ -115,6 +115,8 @@ def_opc_inst! {
   PushI(i64),
   /// Push unsigned integer opr constant to stack.
   PushU(u64),
+  /// Push pc to stack.
+  PushPc,
   /// Discard s0.
   Pop,
   /// Duplicate s0.

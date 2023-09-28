@@ -168,6 +168,10 @@ where
         gctx.push_int(opr);
         PcUpdate::Next
       }
+      Inst::PushPc => {
+        gctx.push_int(self.pc);
+        PcUpdate::Next
+      }
       Inst::Pop => {
         gctx.pop()?;
         PcUpdate::Next
