@@ -58,6 +58,7 @@ where
 
 /// Garbage collection roots of modules.
 pub struct ModuleRoots<'gc, P: ?Sized + Policy> {
+  pub handle: Ptr,
   pub consts: &'gc [HeapConst],
   pub globals: &'gc Vars<P::Value>,
 }
@@ -67,11 +68,12 @@ where
   P: 'gc + ?Sized + Policy,
 {
   fn roots(self) -> impl 'gc + Iterator<Item = Ptr> {
-    self
-      .consts
-      .iter()
-      .map(|c| c.ptr())
-      .chain(self.globals.iter().filter_map(P::ptr_or_none))
+    self.consts.iter().map(|c| c.ptr()).chain(
+      self
+        .globals
+        .iter()
+        .filter_map(move |v| P::ptr_or_none(v).and_then(|p| (p != self.handle).then_some(p))),
+    )
   }
 }
 

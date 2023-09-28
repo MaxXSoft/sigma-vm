@@ -107,6 +107,7 @@ impl<P: Policy> VM<P> {
   ) -> Result<Vec<Ptr>, P::Error> {
     let mroots = self.module_globals.iter().flat_map(|(s, g)| {
       self.loader.module(*s).map(|m| ModuleRoots::<P> {
+        handle: *s,
         consts: &m.consts,
         globals: g,
       })
