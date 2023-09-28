@@ -83,43 +83,43 @@ invoke_builtin:
   dup
   pushu 7
   eq
-  bnz   add
+  bnz   builtin_add
   # -
   dup
   pushu 8
   eq
-  bnz   sub
+  bnz   builtin_sub
   # *
   dup
   pushu 9
   eq
-  bnz   mul
+  bnz   builtin_mul
   # /
   dup
   pushu 10
   eq
-  bnz   div
+  bnz   builtin_div
   # >
   dup
   pushu 11
   eq
-  bnz   gt
+  bnz   builtin_gt
   # <
   dup
   pushu 12
   eq
-  bnz   lt
+  bnz   builtin_lt
   # >=
   dup
   pushu 13
   eq
-  bnz   ge
+  bnz   builtin_ge
   # <=
   pushu 14
   eq
-  bnz   le
+  bnz   builtin_le
   # =
-  jmp   eq
+  jmp   builtin_eq
 
 
   # Calls a user-defined function.
@@ -227,7 +227,7 @@ list:
 
 
   # Builtin function `+`.
-add:
+builtin_add:
   # check argument number
   ldv   0
   pushu 3
@@ -237,7 +237,7 @@ add:
 
 
   # Builtin function `-`.
-sub:
+builtin_sub:
   # check argument number
   ldv   0
   pushu 3
@@ -247,7 +247,7 @@ sub:
 
 
   # Builtin function `*`.
-mul:
+builtin_mul:
   # check argument number
   ldv   0
   pushu 3
@@ -257,7 +257,7 @@ mul:
 
 
   # Builtin function `/`.
-div:
+builtin_div:
   # check argument number
   ldv   0
   pushu 3
@@ -267,7 +267,7 @@ div:
 
 
   # Builtin function `>`.
-gt:
+builtin_gt:
   # check argument number
   ldv   0
   pushu 3
@@ -277,7 +277,7 @@ gt:
 
 
   # Builtin function `<`.
-lt:
+builtin_lt:
   # check argument number
   ldv   0
   pushu 3
@@ -287,7 +287,7 @@ lt:
 
 
   # Builtin function `>=`.
-ge:
+builtin_ge:
   # check argument number
   ldv   0
   pushu 3
@@ -297,7 +297,7 @@ ge:
 
 
   # Builtin function `<=`.
-le:
+builtin_le:
   # check argument number
   ldv   0
   pushu 3
@@ -307,7 +307,7 @@ le:
 
 
   # Builtin function `=`.
-eq:
+builtin_eq:
   # check argument number
   ldv   0
   pushu 3
