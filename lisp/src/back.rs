@@ -145,6 +145,8 @@ impl Generate for Statement {
     match self {
       Self::Define(d) => d.generate(generator),
       Self::Expr(e) => e.generate(generator),
+      Self::Require(r) => r.generate(generator),
+      Self::Provide(p) => p.generate(generator),
     }
   }
 }
@@ -162,6 +164,18 @@ impl Generate for Expr {
       Self::CompExpr(c) => c.generate(generator),
       Self::Let(l) => l.generate(generator),
     }
+  }
+}
+
+impl Generate for Require {
+  fn generate(self, generator: &mut Generator) -> Result<()> {
+    todo!()
+  }
+}
+
+impl Generate for Provide {
+  fn generate(self, generator: &mut Generator) -> Result<()> {
+    todo!()
   }
 }
 
