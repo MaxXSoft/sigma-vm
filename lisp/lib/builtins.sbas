@@ -343,4 +343,5 @@ nargs_mismatch:
 
   .section exports
   .export "invoke", invoke, variadic, 0
+  .export "panic", panic, 1, 0
   .export "check_nargs", check_nargs, 2, 0
