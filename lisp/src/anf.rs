@@ -19,7 +19,6 @@ pub enum Statement {
 /// Definition.
 #[derive(Debug)]
 pub struct Define {
-  pub name: String,
   pub var: u64,
   pub expr: Expr,
   pub exportable: bool,
@@ -241,10 +240,9 @@ impl Generator {
       _ => false,
     };
     if exportable {
-      self.exportable_vars.insert(name.clone(), var);
+      self.exportable_vars.insert(name, var);
     }
     Ok(Define {
-      name,
       var,
       expr,
       exportable,
