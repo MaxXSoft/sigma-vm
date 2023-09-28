@@ -132,8 +132,24 @@ impl Builder {
         .pending_labels
         .entry(label)
         .or_default()
-        .push(LabelKind::Inst(pc, cfi));
+        .push(LabelKind::Cfi(pc, cfi));
       cfi(0)
+    };
+    self.insts.push(inst);
+  }
+
+  /// Inserts a new PC-immediate instruction at the current PC.
+  pub fn pc_imm(&mut self, pc_imm: PcInstConstructor, label: u64) {
+    let inst = if let Some(l) = self.labels.get(&label) {
+      pc_imm(*l)
+    } else {
+      let pc = self.pc();
+      self
+        .pending_labels
+        .entry(label)
+        .or_default()
+        .push(LabelKind::PcImm(pc, pc_imm));
+      pc_imm(0)
     };
     self.insts.push(inst);
   }
@@ -186,7 +202,8 @@ impl Builder {
             unsafe { c.object_mut() }.unwrap().destructor = pc;
           }
           LabelKind::Export(name) => self.exports.get_mut(&name).unwrap().pc = pc,
-          LabelKind::Inst(i, cfi) => self.insts[i as usize] = cfi(pc as i64 - i as i64),
+          LabelKind::Cfi(i, cfi) => self.insts[i as usize] = cfi(pc as i64 - i as i64),
+          LabelKind::PcImm(i, pc_imm) => self.insts[i as usize] = pc_imm(pc),
         }
       }
     }
@@ -210,11 +227,17 @@ enum LabelKind {
   Export(String),
   /// Label corresponding to a control flow instruction,
   /// with its PC and constructor.
-  Inst(u64, CfInstConstructor),
+  Cfi(u64, CfInstConstructor),
+  /// Label corresponding to a PC-immediate instruction,
+  /// with its PC and constructor.
+  PcImm(u64, PcInstConstructor),
 }
 
 /// Constructor of control flow instruction.
 pub type CfInstConstructor = fn(i64) -> Inst;
+
+/// Constructor of PC-immediate instruction.
+pub type PcInstConstructor = fn(u64) -> Inst;
 
 /// Errors for the bytecode builder.
 #[derive(Debug)]
