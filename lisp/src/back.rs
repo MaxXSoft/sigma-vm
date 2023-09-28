@@ -35,7 +35,9 @@ impl Generator {
   /// Consumes the current builder and generates a static module.
   pub fn generate(mut self) -> StaticModule {
     self.state.gen_requires(self.requires);
-    self.state.gen_main(self.main_body);
+    if !self.main_body.is_empty() {
+      self.state.gen_main(self.main_body);
+    }
     self.state.gen_funcs();
     self.state.builder.build().unwrap()
   }
@@ -52,8 +54,9 @@ struct State {
 impl State {
   /// Number of preserved global variables.
   ///
-  /// Global variable 0: builtin module handler.
-  const NUM_PRESERVED_GLOBALS: u64 = 1;
+  /// Global variable 0: handle of the current module.
+  /// Global variable 1: builtin module handler.
+  const NUM_PRESERVED_GLOBALS: u64 = 2;
 
   fn new() -> Self {
     let mut builder = Builder::new();
@@ -121,8 +124,8 @@ impl State {
 
   /// Generates instructions to load builtin module and store the handler.
   fn gen_init_builtin(&mut self) {
-    // pop the handler of the current module
-    self.builder.inst(Inst::Pop);
+    // store the handle of the current module to globbal variable 0
+    self.builder.inst(Inst::StG(0));
     // load builtin module
     let builtins = self.builder.constant("builtins.sbc");
     self.builder.inst(Inst::LoadC(builtins));
@@ -132,9 +135,9 @@ impl State {
     self.builder.cfi(Inst::Bnz, end_check);
     // print error message and panic
     self.gen_panic("failed to load builtin module");
-    // store the handler to globbal variable 0
+    // store the builtin module handle to globbal variable 1
     self.builder.insert_label(end_check);
-    self.builder.inst(Inst::StG(0));
+    self.builder.inst(Inst::StG(1));
   }
 
   /// Generates a panic.
@@ -235,6 +238,10 @@ impl State {
 }
 
 /// Kind of atom.
+///
+/// # Notes
+///
+/// This must be synchronized with implementations in `builtins.sbas`.
 enum AtomKind {
   /// Number.
   Num,
