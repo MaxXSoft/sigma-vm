@@ -50,6 +50,11 @@ struct State {
 }
 
 impl State {
+  /// Number of preserved global variables.
+  ///
+  /// Global variable 0: builtin module handler.
+  const NUM_PRESERVED_GLOBALS: u64 = 1;
+
   fn new() -> Self {
     let mut builder = Builder::new();
     // generate object metadata
@@ -65,14 +70,16 @@ impl State {
       destructor: 0,
       offsets: &[1, 2], // kind, pointer, next
     });
-    // generate a `pop` instruction for the module initializer
-    builder.inst(Inst::Pop);
-    Self {
+    // create state
+    let mut state = Self {
       builder,
       obj_value,
       obj_ptr,
       funcs: Vec::new(),
-    }
+    };
+    // generate instructions for the module initializer
+    state.gen_init_builtin();
+    state
   }
 
   /// Generates requires (imports) and finish the
@@ -89,6 +96,8 @@ impl State {
   fn gen_main(&mut self, stmts: Vec<Statement>) {
     let main = self.builder.label();
     self.builder.insert_label(main);
+    // clear all arguments
+    self.builder.inst(Inst::Sys(11));
     // generate main body
     for stmt in stmts {
       stmt.generate(self);
@@ -108,6 +117,37 @@ impl State {
         f.generate(self);
       }
     }
+  }
+
+  /// Generates instructions to load builtin module and store the handler.
+  fn gen_init_builtin(&mut self) {
+    // pop the handler of the current module
+    self.builder.inst(Inst::Pop);
+    // load builtin module
+    let builtins = self.builder.constant("builtins.sbc");
+    self.builder.inst(Inst::LoadC(builtins));
+    // check if failed
+    self.builder.inst(Inst::Dup);
+    let end_check = self.builder.label();
+    self.builder.cfi(Inst::Bnz, end_check);
+    // print error message and panic
+    self.gen_panic("failed to load builtin module");
+    // store the handler to globbal variable 0
+    self.builder.insert_label(end_check);
+    self.builder.inst(Inst::StG(0));
+  }
+
+  /// Generates a panic.
+  fn gen_panic(&mut self, msg: &str) {
+    let error_msg = self.builder.constant(format!("FATAL: {msg}\n"));
+    self.builder.inst(Inst::LaC(error_msg));
+    self.builder.inst(Inst::Dup);
+    self.builder.inst(Inst::PushU(8));
+    self.builder.inst(Inst::Add);
+    self.builder.inst(Inst::Swap);
+    self.builder.inst(Inst::LdDO(0));
+    self.builder.inst(Inst::Sys(10));
+    self.builder.inst(Inst::Sys(13));
   }
 
   // /// Generates a quote.
@@ -204,6 +244,8 @@ enum AtomKind {
   Sym,
   /// List.
   List,
+  /// Builtin function.
+  Builtin,
   /// Lambda.
   Lambda,
 }
