@@ -45,12 +45,13 @@ where
   M: 'gc + Iterator<Item = ModuleRoots<'gc, P>>,
   C: 'gc + Iterator<Item = ContextRoots<'gc, P>>,
 {
-  /// Returns an iterator of all garbage collection roots (pointers).
-  fn roots(self) -> impl 'gc + Iterator<Item = Ptr> {
+  /// Returns an iterator of all garbage collection roots
+  /// (pointers and their module handles).
+  fn roots(self) -> impl 'gc + Iterator<Item = (Ptr, Option<Ptr>)> {
     self
       .values
       .iter()
-      .filter_map(P::ptr_or_none)
+      .filter_map(|v| P::ptr_or_none(v).map(|p| (p, None)))
       .chain(self.mroots.flat_map(|mr| mr.roots()))
       .chain(self.croots.flat_map(|cr| cr.roots()))
   }
@@ -67,12 +68,12 @@ impl<'gc, P> ModuleRoots<'gc, P>
 where
   P: 'gc + ?Sized + Policy,
 {
-  fn roots(self) -> impl 'gc + Iterator<Item = Ptr> {
-    self.consts.iter().map(|c| c.ptr()).chain(
+  fn roots(self) -> impl 'gc + Iterator<Item = (Ptr, Option<Ptr>)> {
+    self.consts.iter().map(|c| (c.ptr(), None)).chain(
       self
         .globals
         .iter()
-        .filter_map(move |v| P::ptr_or_none(v).and_then(|p| (p != self.handle).then_some(p))),
+        .filter_map(move |v| P::ptr_or_none(v).map(|p| (p, Some(self.handle)))),
     )
   }
 }
@@ -87,12 +88,13 @@ impl<'gc, P> ContextRoots<'gc, P>
 where
   P: 'gc + ?Sized + Policy,
 {
-  fn roots(self) -> impl 'gc + Iterator<Item = Ptr> {
+  fn roots(self) -> impl 'gc + Iterator<Item = (Ptr, Option<Ptr>)> {
     self
       .vars
       .iter()
       .flat_map(|vs| vs.iter().filter_map(P::ptr_or_none))
       .chain(iter::once(self.module))
+      .map(|p| (p, None))
   }
 }
 
@@ -126,10 +128,11 @@ pub struct MarkSweep;
 impl MarkSweep {
   /// Pushes object pointer to the worklist by the given object metadata.
   fn extend_workist<P>(
-    worklist: &mut Vec<Ptr>,
+    worklist: &mut Vec<(Ptr, Option<Ptr>)>,
     object: &Object<[u64]>,
     heap: &P::Heap,
     ptr: Ptr,
+    handle: Option<Ptr>,
   ) -> Result<(), P::Error>
   where
     P: Policy,
@@ -138,7 +141,7 @@ impl MarkSweep {
       let ptr_size = mem::size_of::<u64>() as u64;
       let ptr = ptr + o * ptr_size;
       P::check_access(heap, ptr, ptr_size as usize, ptr_size as usize)?;
-      worklist.push(unsafe { *(heap.addr(ptr) as *const Ptr) });
+      worklist.push((unsafe { *(heap.addr(ptr) as *const Ptr) }, handle));
     }
     Ok(())
   }
@@ -162,24 +165,26 @@ impl GarbageCollector for MarkSweep {
     // mark reachable pointers
     let mut reachable = HashSet::new();
     let mut worklist: Vec<_> = roots.roots().collect();
-    while let Some(ptr) = worklist.pop() {
-      if !reachable.insert(ptr) {
+    while let Some((ptr, handle)) = worklist.pop() {
+      // skip if the pointer is the same as the module handle,
+      // or the pointer has already been marked
+      if Some(ptr) == handle || !reachable.insert(ptr) {
         continue;
       }
       // get object metadata
       if let Some(Meta::Obj(obj)) = heap.meta(ptr) {
         let object: &Object<[u64]> = P::object(heap, obj.ptr)?;
         // mark object metadata and module handle
-        worklist.push(obj.ptr);
-        worklist.push(obj.module);
+        worklist.push((obj.ptr, handle));
+        worklist.push((obj.module, handle));
         // handle by kind
         match obj.kind {
-          ObjKind::Obj => Self::extend_workist::<P>(&mut worklist, object, heap, ptr)?,
+          ObjKind::Obj => Self::extend_workist::<P>(&mut worklist, object, heap, ptr, handle)?,
           ObjKind::Array(len) => {
             // visit all objects
             let step = object.aligned_size();
             for i in 0..len as u64 {
-              Self::extend_workist::<P>(&mut worklist, object, heap, ptr + i * step)?;
+              Self::extend_workist::<P>(&mut worklist, object, heap, ptr + i * step, handle)?;
             }
           }
         };
