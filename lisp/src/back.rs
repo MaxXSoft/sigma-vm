@@ -48,14 +48,20 @@ struct State {
   builder: Builder,
   obj_value: u64,
   obj_ptr: u64,
-  funcs: Vec<Lambda>,
+  invoke: u64,
+  panic: u64,
+  check_nargs: u64,
+  funcs: Vec<(Option<u64>, Lambda)>,
 }
 
 impl State {
+  /// Handle of the current module.
+  const MOD_HANDLE: u64 = 0;
+
+  /// Handle of the builtin module.
+  const BUILTIN_HANDLE: u64 = 1;
+
   /// Number of preserved global variables.
-  ///
-  /// Global variable 0: handle of the current module.
-  /// Global variable 1: builtin module handler.
   const NUM_PRESERVED_GLOBALS: u64 = 2;
 
   fn new() -> Self {
@@ -73,11 +79,17 @@ impl State {
       destructor: 0,
       offsets: &[1, 2], // kind, pointer, next
     });
+    let invoke = builder.constant("invoke");
+    let panic = builder.constant("panic");
+    let check_nargs = builder.constant("check_nargs");
     // create state
     let mut state = Self {
       builder,
       obj_value,
       obj_ptr,
+      invoke,
+      panic,
+      check_nargs,
       funcs: Vec::new(),
     };
     // generate instructions for the module initializer
@@ -116,7 +128,10 @@ impl State {
   fn gen_funcs(&mut self) {
     while !self.funcs.is_empty() {
       let funcs = mem::take(&mut self.funcs);
-      for f in funcs {
+      for (label, f) in funcs {
+        if let Some(l) = label {
+          self.builder.insert_label(l);
+        }
         f.generate(self);
       }
     }
@@ -124,8 +139,8 @@ impl State {
 
   /// Generates instructions to load builtin module and store the handler.
   fn gen_init_builtin(&mut self) {
-    // store the handle of the current module to globbal variable 0
-    self.builder.inst(Inst::StG(0));
+    // store the handle of the current module to globbal variable
+    self.builder.inst(Inst::StG(Self::MOD_HANDLE));
     // load builtin module
     let builtins = self.builder.constant("builtins.sbc");
     self.builder.inst(Inst::LoadC(builtins));
@@ -135,9 +150,9 @@ impl State {
     self.builder.cfi(Inst::Bnz, end_check);
     // print error message and panic
     self.gen_panic("failed to load builtin module");
-    // store the builtin module handle to globbal variable 1
+    // store the builtin module handle to globbal variable
     self.builder.insert_label(end_check);
-    self.builder.inst(Inst::StG(1));
+    self.builder.inst(Inst::StG(Self::BUILTIN_HANDLE));
   }
 
   /// Generates a panic.
@@ -151,6 +166,19 @@ impl State {
     self.builder.inst(Inst::LdDO(0));
     self.builder.inst(Inst::Sys(10));
     self.builder.inst(Inst::Sys(13));
+  }
+
+  /// Generates a builtin panic.
+  fn gen_builtin_panic(&mut self, msg: &str) {
+    let error_msg = self.builder.constant(format!("{msg}\n"));
+    self.builder.inst(Inst::LaC(error_msg));
+    self.builder.inst(Inst::LdG(Self::BUILTIN_HANDLE));
+    self.builder.inst(Inst::CallExtC(self.panic));
+  }
+
+  /// Returns the actual global variable number of the given variable.
+  fn global(var: u64) -> u64 {
+    Self::NUM_PRESERVED_GLOBALS + var
   }
 
   // /// Generates a quote.
@@ -276,7 +304,10 @@ impl Generate for Statement {
 
 impl Generate for Define {
   fn generate(self, state: &mut State) {
-    todo!()
+    // generate the expression
+    self.expr.generate(state);
+    // store to global variable
+    state.builder.inst(Inst::StG(State::global(self.var)));
   }
 }
 
@@ -292,13 +323,46 @@ impl Generate for Expr {
 
 impl Generate for Require {
   fn generate(self, state: &mut State) {
-    todo!()
+    // load module
+    let path = state.builder.constant(format!("{}.sbc", self.path));
+    state.builder.inst(Inst::LoadC(path));
+    // check if failed
+    state.builder.inst(Inst::Dup);
+    let end_check = state.builder.label();
+    state.builder.cfi(Inst::Bnz, end_check);
+    // print error message and panic
+    state.gen_builtin_panic(&format!("failed to load module `{}`", self.path));
+    // get symbols from module
+    state.builder.insert_label(end_check);
+    let nsyms = self.sym_vars.len();
+    for (i, (sym, var)) in self.sym_vars.into_iter().enumerate() {
+      if i + 1 != nsyms {
+        state.builder.inst(Inst::Dup);
+      }
+      // call the symbol
+      let sym = state.builder.constant(sym);
+      state.builder.inst(Inst::CallExtC(sym));
+      // store to global variable
+      state.builder.inst(Inst::StG(State::global(var)));
+    }
   }
 }
 
 impl Generate for Provide {
   fn generate(self, state: &mut State) {
-    todo!()
+    for (sym, var) in self.sym_vars {
+      // generate a function for the current provide
+      let func = Lambda {
+        params: vec![],
+        captures: vec![],
+        expr: Box::new(Expr::Value(Value::GlobalVar(var))),
+      };
+      // add to function list
+      let label = state.builder.label();
+      state.funcs.push((Some(label), func));
+      // export the generated function
+      state.builder.export(sym, label, Some(0), 1);
+    }
   }
 }
 
