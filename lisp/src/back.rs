@@ -1,5 +1,4 @@
 use crate::anf::*;
-use laps::span::Result;
 use sigma_vm::bytecode::builder::Builder;
 use sigma_vm::bytecode::consts::ObjectRef;
 use sigma_vm::bytecode::insts::Inst;
@@ -23,20 +22,20 @@ impl Generator {
   }
 
   /// Generates on the given statement.
-  pub fn generate_on(&mut self, stmt: Statement) -> Result<()> {
+  pub fn generate_on(&mut self, stmt: Statement) {
     match stmt {
       Statement::Define(d) if d.exportable => d.generate(&mut self.state),
       Statement::Provide(p) => p.generate(&mut self.state),
-      Statement::Require(r) => Ok(self.requires.push(r)),
-      stmt => Ok(self.main_body.push(stmt)),
+      Statement::Require(r) => self.requires.push(r),
+      stmt => self.main_body.push(stmt),
     }
   }
 
   /// Consumes the current builder and generates a static module.
-  pub fn generate(mut self) -> Result<StaticModule> {
+  pub fn generate(mut self) -> StaticModule {
     // generate all requires (imports)
     for r in self.requires {
-      r.generate(&mut self.state)?;
+      r.generate(&mut self.state);
     }
     // generate `main` function
     todo!()
@@ -171,11 +170,11 @@ enum AtomKind {
 /// Trait for generating statements.
 trait Generate {
   /// Generates the given statement.
-  fn generate(self, state: &mut State) -> Result<()>;
+  fn generate(self, state: &mut State);
 }
 
 impl Generate for Statement {
-  fn generate(self, state: &mut State) -> Result<()> {
+  fn generate(self, state: &mut State) {
     match self {
       Self::Define(d) => d.generate(state),
       Self::Expr(e) => e.generate(state),
@@ -186,13 +185,13 @@ impl Generate for Statement {
 }
 
 impl Generate for Define {
-  fn generate(self, state: &mut State) -> Result<()> {
+  fn generate(self, state: &mut State) {
     todo!()
   }
 }
 
 impl Generate for Expr {
-  fn generate(self, state: &mut State) -> Result<()> {
+  fn generate(self, state: &mut State) {
     match self {
       Self::Value(v) => v.generate(state),
       Self::CompExpr(c) => c.generate(state),
@@ -202,19 +201,19 @@ impl Generate for Expr {
 }
 
 impl Generate for Require {
-  fn generate(self, state: &mut State) -> Result<()> {
+  fn generate(self, state: &mut State) {
     todo!()
   }
 }
 
 impl Generate for Provide {
-  fn generate(self, state: &mut State) -> Result<()> {
+  fn generate(self, state: &mut State) {
     todo!()
   }
 }
 
 impl Generate for Value {
-  fn generate(self, state: &mut State) -> Result<()> {
+  fn generate(self, state: &mut State) {
     match self {
       Self::Num(n) => todo!(),
       Self::Str(s) => todo!(),
@@ -229,7 +228,7 @@ impl Generate for Value {
 }
 
 impl Generate for CompExpr {
-  fn generate(self, state: &mut State) -> Result<()> {
+  fn generate(self, state: &mut State) {
     match self {
       Self::Apply(a) => a.generate(state),
       Self::If(i) => i.generate(state),
@@ -238,25 +237,25 @@ impl Generate for CompExpr {
 }
 
 impl Generate for Let {
-  fn generate(self, state: &mut State) -> Result<()> {
+  fn generate(self, state: &mut State) {
     todo!()
   }
 }
 
 impl Generate for Lambda {
-  fn generate(self, state: &mut State) -> Result<()> {
+  fn generate(self, state: &mut State) {
     todo!()
   }
 }
 
 impl Generate for Apply {
-  fn generate(self, state: &mut State) -> Result<()> {
+  fn generate(self, state: &mut State) {
     todo!()
   }
 }
 
 impl Generate for If {
-  fn generate(self, state: &mut State) -> Result<()> {
+  fn generate(self, state: &mut State) {
     todo!()
   }
 }
