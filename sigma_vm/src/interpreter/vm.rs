@@ -392,6 +392,7 @@ impl<'vm, P: Policy> Scheduler<'vm, P> {
         ControlFlow::LoadModule(ptr) => self.load_module(context, ptr)?,
         ControlFlow::LoadModuleMem(ptr, len) => self.load_module_mem(context, ptr, len)?,
         ControlFlow::CallExt(handle, ptr) => self.call_ext(context, handle, ptr)?,
+        ControlFlow::CallExtPc(handle, pc) => self.call_ext_pc(context, handle, pc),
         ControlFlow::Syscall(syscall) => self.syscall(context, syscall)?,
       }
     }
@@ -556,6 +557,12 @@ impl<'vm, P: Policy> Scheduler<'vm, P> {
     Ok(())
   }
 
+  /// Calls an external function by the given handle and PC.
+  fn call_ext_pc(&mut self, context: Context<P>, handle: Ptr, pc: u64) {
+    self.contexts.push(context.into_cont());
+    self.contexts.push(Context::call(handle, pc));
+  }
+
   /// Calls a system call with the given system call number.
   fn syscall(&mut self, context: Context<P>, syscall: i64) -> Result<(), P::Error> {
     use crate::interpreter::syscall::ControlFlow;
@@ -657,6 +664,9 @@ pub(super) enum ControlFlow {
   /// Requests an external call, with a module handle and
   /// a pointer to the function name.
   CallExt(Ptr, Ptr),
+  /// Requests an external call, with a module handle and
+  /// a function PC.
+  CallExtPc(Ptr, u64),
   /// Requests a system call, with a system call number.
   Syscall(i64),
 }
