@@ -86,6 +86,7 @@ where
       8 => Self::read(state),
       9 => Self::write(state, stdout()),
       10 => Self::write(state, stderr()),
+      11 => Self::stack_clear(state),
       _ => match self.handlers.get_mut(&syscall) {
         Some(handler) => handler.handle(state),
         None => P::report_invalid_syscall().map(|_| ControlFlow::Continue),
@@ -187,6 +188,12 @@ where
     state
       .value_stack
       .push(P::int_val(state.value_stack.len() as u64));
+    Ok(ControlFlow::Continue)
+  }
+
+  /// Clears the stack.
+  fn stack_clear(state: VmState<P, H>) -> Result<ControlFlow, P::Error> {
+    state.value_stack.clear();
     Ok(ControlFlow::Continue)
   }
 
