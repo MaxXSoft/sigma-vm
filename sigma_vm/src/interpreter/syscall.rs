@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::io::{stderr, stdin, stdout, Read, Write};
 use std::num::NonZeroU64;
 use std::path::PathBuf;
-use std::slice;
+use std::{process, slice};
 
 /// System call handler.
 pub trait Handler<P, H>
@@ -87,6 +87,8 @@ where
       9 => Self::write(state, stdout()),
       10 => Self::write(state, stderr()),
       11 => Self::stack_clear(state),
+      12 => Self::exit(state),
+      13 => process::abort(),
       _ => match self.handlers.get_mut(&syscall) {
         Some(handler) => handler.handle(state),
         None => P::report_invalid_syscall().map(|_| ControlFlow::Continue),
@@ -261,5 +263,14 @@ where
     let result = w.write(buf).unwrap_or(usize::MAX);
     state.value_stack.push(P::int_val(result as u64));
     Ok(ControlFlow::Continue)
+  }
+
+  /// Terminates the current process with an exit code.
+  ///
+  /// Stack layout:
+  /// * s0 (TOS): exit code.
+  fn exit(state: VmState<P, H>) -> Result<ControlFlow, P::Error> {
+    let code = P::get_int_ptr(&P::unwrap_val(state.value_stack.pop())?)?;
+    process::exit(code as i32)
   }
 }
