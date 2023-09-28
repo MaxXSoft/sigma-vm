@@ -3,6 +3,7 @@ use sigma_vm::bytecode::builder::Builder;
 use sigma_vm::bytecode::consts::ObjectRef;
 use sigma_vm::bytecode::insts::Inst;
 use sigma_vm::bytecode::module::StaticModule;
+use std::mem;
 
 /// Sigma VM module generator.
 pub struct Generator {
@@ -33,12 +34,10 @@ impl Generator {
 
   /// Consumes the current builder and generates a static module.
   pub fn generate(mut self) -> StaticModule {
-    // generate all requires (imports)
-    for r in self.requires {
-      r.generate(&mut self.state);
-    }
-    // generate `main` function
-    todo!()
+    self.state.gen_requires(self.requires);
+    self.state.gen_main(self.main_body);
+    self.state.gen_funcs();
+    self.state.builder.build().unwrap()
   }
 }
 
@@ -47,11 +46,13 @@ struct State {
   builder: Builder,
   obj_value: u64,
   obj_ptr: u64,
+  funcs: Vec<Lambda>,
 }
 
 impl State {
   fn new() -> Self {
     let mut builder = Builder::new();
+    // generate object metadata
     let obj_value = builder.constant(ObjectRef {
       size: 24,
       align: 8,
@@ -64,10 +65,48 @@ impl State {
       destructor: 0,
       offsets: &[1, 2], // kind, pointer, next
     });
+    // generate a `pop` instruction for the module initializer
+    builder.inst(Inst::Pop);
     Self {
       builder,
       obj_value,
       obj_ptr,
+      funcs: Vec::new(),
+    }
+  }
+
+  /// Generates requires (imports) and finish the
+  /// module initializer generation.
+  fn gen_requires(&mut self, requires: Vec<Require>) {
+    for r in requires {
+      r.generate(self);
+    }
+    // generate a `ret` instruction for the module initializer
+    self.builder.inst(Inst::Ret);
+  }
+
+  /// Generates the `main` function.
+  fn gen_main(&mut self, stmts: Vec<Statement>) {
+    let main = self.builder.label();
+    self.builder.insert_label(main);
+    // generate main body
+    for stmt in stmts {
+      stmt.generate(self);
+    }
+    // generate return
+    self.builder.inst(Inst::PushU(0));
+    self.builder.inst(Inst::Ret);
+    // export `main` function
+    self.builder.export("main".into(), main, None, 1);
+  }
+
+  /// Generates other functions.
+  fn gen_funcs(&mut self) {
+    while !self.funcs.is_empty() {
+      let funcs = mem::take(&mut self.funcs);
+      for f in funcs {
+        f.generate(self);
+      }
     }
   }
 
@@ -165,6 +204,8 @@ enum AtomKind {
   Sym,
   /// List.
   List,
+  /// Lambda.
+  Lambda,
 }
 
 /// Trait for generating statements.
