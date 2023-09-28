@@ -22,6 +22,7 @@ pub struct Define {
   pub name: String,
   pub var: u64,
   pub expr: Expr,
+  pub exportable: bool,
 }
 
 /// Expression.
@@ -233,16 +234,21 @@ impl Generator {
     let var = self.env.define(name.clone());
     let expr = self.gen_expr(&elems[1])?;
     // update exportable symbols
-    let is_exportable = match &expr {
+    let exportable = match &expr {
       Expr::Value(Value::GlobalVar(g)) => self.exportable_vars.values().find(|v| g == *v).is_some(),
       Expr::Value(Value::Var(_)) => unreachable!(),
       Expr::Value(_) => true,
       _ => false,
     };
-    if is_exportable {
+    if exportable {
       self.exportable_vars.insert(name.clone(), var);
     }
-    Ok(Define { name, var, expr })
+    Ok(Define {
+      name,
+      var,
+      expr,
+      exportable,
+    })
   }
 
   /// Generates a `require`.
