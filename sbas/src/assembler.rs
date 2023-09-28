@@ -1,7 +1,7 @@
 use crate::front::*;
 use laps::span::{Result, Span, Spanned};
 use laps::{log_raw_error, return_error};
-use sigma_vm::bytecode::builder::{Builder, CfInstConstructor};
+use sigma_vm::bytecode::builder::{Builder, CfInstConstructor, PcInstConstructor};
 use sigma_vm::bytecode::consts::{Const, ObjectRef};
 use sigma_vm::bytecode::export::CallSite;
 use sigma_vm::bytecode::insts::{Inst, Opcode, Operand, OperandType};
@@ -299,6 +299,7 @@ impl Assembler {
       Normal(Opcode),
       Const(ConstInst),
       Cfi(CfInstConstructor),
+      PcImmOrNormal(PcInstConstructor),
     }
     let opcode: InstOpcode = match inst.opcode.unwrap::<OpcOrLabel, _>() {
       OpcOrLabel::Opcode(opcode) => opcode,
@@ -307,7 +308,8 @@ impl Assembler {
     let kind = match opcode {
       InstOpcode::Nop => InstKind::Normal(Opcode::Nop),
       InstOpcode::PushI => InstKind::Normal(Opcode::PushI),
-      InstOpcode::PushU => InstKind::Normal(Opcode::PushU),
+      InstOpcode::PushU => InstKind::PcImmOrNormal(Inst::PushU),
+      InstOpcode::PushPc => InstKind::Normal(Opcode::PushPc),
       InstOpcode::Pop => InstKind::Normal(Opcode::Pop),
       InstOpcode::Dup => InstKind::Normal(Opcode::Dup),
       InstOpcode::Swap => InstKind::Normal(Opcode::Swap),
@@ -353,8 +355,11 @@ impl Assembler {
       InstOpcode::Bz => InstKind::Cfi(Inst::Bz),
       InstOpcode::Bnz => InstKind::Cfi(Inst::Bnz),
       InstOpcode::Jmp => InstKind::Cfi(Inst::Jmp),
+      InstOpcode::JmpS => InstKind::Normal(Opcode::JmpS),
       InstOpcode::Call => InstKind::Cfi(Inst::Call),
+      InstOpcode::CallS => InstKind::Normal(Opcode::CallS),
       InstOpcode::CallExt => InstKind::Normal(Opcode::CallExt),
+      InstOpcode::CallExtS => InstKind::Normal(Opcode::CallExtS),
       InstOpcode::CallExtC => InstKind::Const(Inst::CallExtC),
       InstOpcode::Ret => InstKind::Normal(Opcode::Ret),
       InstOpcode::Sys => InstKind::Normal(Opcode::Sys),
@@ -421,6 +426,7 @@ impl Assembler {
     enum Instruction {
       Normal(Inst),
       Cfi(CfInstConstructor, u64),
+      PcImm(PcInstConstructor, u64),
     }
     let inst = match kind {
       InstKind::Normal(opc) => {
@@ -444,12 +450,18 @@ impl Assembler {
         Some(InstOperand::LabelRef(l)) => Instruction::Cfi(cfi, self.gen_inst_label_ref(l)?),
         _ => return_error!(span, "expected label reference"),
       },
+      InstKind::PcImmOrNormal(pc_imm) => match inst.opr {
+        Some(InstOperand::Imm(i)) => Instruction::Normal(pc_imm(i.unwrap::<u64, _>())),
+        Some(InstOperand::LabelRef(l)) => Instruction::PcImm(pc_imm, self.gen_inst_label_ref(l)?),
+        _ => return_error!(span, "expected immediate or label reference"),
+      },
     };
     // insert instruction to section
     match self.cur_sec {
       Section::Insts => match inst {
         Instruction::Normal(inst) => self.builder.inst(inst),
         Instruction::Cfi(cfi, l) => self.builder.cfi(cfi, l),
+        Instruction::PcImm(pc_imm, l) => self.builder.pc_imm(pc_imm, l),
       },
       _ => return_error!(span, "instruction can not appear here"),
     }
