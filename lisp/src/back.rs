@@ -3,16 +3,55 @@ use laps::span::Result;
 use sigma_vm::bytecode::builder::Builder;
 use sigma_vm::bytecode::consts::ObjectRef;
 use sigma_vm::bytecode::insts::Inst;
+use sigma_vm::bytecode::module::StaticModule;
 
+/// Sigma VM module generator.
 pub struct Generator {
-  builder: Builder,
-  obj_value: u64,
-  obj_ptr: u64,
+  state: State,
+  requires: Vec<Require>,
+  main_body: Vec<Statement>,
 }
 
 impl Generator {
   /// Creates a new generator.
   pub fn new() -> Self {
+    Self {
+      state: State::new(),
+      requires: Vec::new(),
+      main_body: Vec::new(),
+    }
+  }
+
+  /// Generates on the given statement.
+  pub fn generate_on(&mut self, stmt: Statement) -> Result<()> {
+    match stmt {
+      Statement::Define(d) if d.exportable => d.generate(&mut self.state),
+      Statement::Provide(p) => p.generate(&mut self.state),
+      Statement::Require(r) => Ok(self.requires.push(r)),
+      stmt => Ok(self.main_body.push(stmt)),
+    }
+  }
+
+  /// Consumes the current builder and generates a static module.
+  pub fn generate(mut self) -> Result<StaticModule> {
+    // generate all requires (imports)
+    for r in self.requires {
+      r.generate(&mut self.state)?;
+    }
+    // generate `main` function
+    todo!()
+  }
+}
+
+/// State of a generator.
+struct State {
+  builder: Builder,
+  obj_value: u64,
+  obj_ptr: u64,
+}
+
+impl State {
+  fn new() -> Self {
     let mut builder = Builder::new();
     let obj_value = builder.constant(ObjectRef {
       size: 24,
@@ -31,11 +70,6 @@ impl Generator {
       obj_value,
       obj_ptr,
     }
-  }
-
-  /// Generates on the given statement.
-  pub fn generate(&mut self, stmt: Statement) -> Result<()> {
-    stmt.generate(self)
   }
 
   // /// Generates a quote.
@@ -137,50 +171,50 @@ enum AtomKind {
 /// Trait for generating statements.
 trait Generate {
   /// Generates the given statement.
-  fn generate(self, generator: &mut Generator) -> Result<()>;
+  fn generate(self, state: &mut State) -> Result<()>;
 }
 
 impl Generate for Statement {
-  fn generate(self, generator: &mut Generator) -> Result<()> {
+  fn generate(self, state: &mut State) -> Result<()> {
     match self {
-      Self::Define(d) => d.generate(generator),
-      Self::Expr(e) => e.generate(generator),
-      Self::Require(r) => r.generate(generator),
-      Self::Provide(p) => p.generate(generator),
+      Self::Define(d) => d.generate(state),
+      Self::Expr(e) => e.generate(state),
+      Self::Require(r) => r.generate(state),
+      Self::Provide(p) => p.generate(state),
     }
   }
 }
 
 impl Generate for Define {
-  fn generate(self, generator: &mut Generator) -> Result<()> {
+  fn generate(self, state: &mut State) -> Result<()> {
     todo!()
   }
 }
 
 impl Generate for Expr {
-  fn generate(self, generator: &mut Generator) -> Result<()> {
+  fn generate(self, state: &mut State) -> Result<()> {
     match self {
-      Self::Value(v) => v.generate(generator),
-      Self::CompExpr(c) => c.generate(generator),
-      Self::Let(l) => l.generate(generator),
+      Self::Value(v) => v.generate(state),
+      Self::CompExpr(c) => c.generate(state),
+      Self::Let(l) => l.generate(state),
     }
   }
 }
 
 impl Generate for Require {
-  fn generate(self, generator: &mut Generator) -> Result<()> {
+  fn generate(self, state: &mut State) -> Result<()> {
     todo!()
   }
 }
 
 impl Generate for Provide {
-  fn generate(self, generator: &mut Generator) -> Result<()> {
+  fn generate(self, state: &mut State) -> Result<()> {
     todo!()
   }
 }
 
 impl Generate for Value {
-  fn generate(self, generator: &mut Generator) -> Result<()> {
+  fn generate(self, state: &mut State) -> Result<()> {
     match self {
       Self::Num(n) => todo!(),
       Self::Str(s) => todo!(),
@@ -189,40 +223,40 @@ impl Generate for Value {
       Self::Var(v) => todo!(),
       Self::GlobalVar(g) => todo!(),
       Self::Builtin(b) => todo!(),
-      Self::Lambda(l) => l.generate(generator),
+      Self::Lambda(l) => l.generate(state),
     }
   }
 }
 
 impl Generate for CompExpr {
-  fn generate(self, generator: &mut Generator) -> Result<()> {
+  fn generate(self, state: &mut State) -> Result<()> {
     match self {
-      Self::Apply(a) => a.generate(generator),
-      Self::If(i) => i.generate(generator),
+      Self::Apply(a) => a.generate(state),
+      Self::If(i) => i.generate(state),
     }
   }
 }
 
 impl Generate for Let {
-  fn generate(self, generator: &mut Generator) -> Result<()> {
+  fn generate(self, state: &mut State) -> Result<()> {
     todo!()
   }
 }
 
 impl Generate for Lambda {
-  fn generate(self, generator: &mut Generator) -> Result<()> {
+  fn generate(self, state: &mut State) -> Result<()> {
     todo!()
   }
 }
 
 impl Generate for Apply {
-  fn generate(self, generator: &mut Generator) -> Result<()> {
+  fn generate(self, state: &mut State) -> Result<()> {
     todo!()
   }
 }
 
 impl Generate for If {
-  fn generate(self, generator: &mut Generator) -> Result<()> {
+  fn generate(self, state: &mut State) -> Result<()> {
     todo!()
   }
 }
