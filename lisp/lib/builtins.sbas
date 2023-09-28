@@ -124,7 +124,19 @@ invoke_builtin:
 
   # Calls a user-defined function.
 invoke_lambda:
-  # TODO
+  # setup stack
+  ldv   1
+  lddo  4   # captured arguments
+  ldv   0   # number of arguments
+  ldv   1
+  lddo  3   # module handle
+  ldv   1
+  lddo  1   # function PC
+  # Stack layout after entered the user-defined function:
+  # * s0 (TOS): number of arguments.
+  # * s1: array of captured arguments.
+  # * s2 ...: other arguments.
+  callexts
   ret
 
 
