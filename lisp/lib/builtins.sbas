@@ -1,0 +1,334 @@
+# Implementations of builtin functions and utility functions.
+
+  .section insts
+  pop
+  ret
+
+
+  # Entry of all function calls.
+  #
+  # Stack layout:
+  # * s0 (TOS): number of arguments.
+  # * s1: the Lisp object to be invoked.
+  # * s2 ...: arguments of the invocation.
+invoke:
+  # store argument number
+  stv   0
+  # check argument number
+  ldv   0
+  pushu 0
+  eq
+  bz    1f
+  lac   expect_obj
+  jmp   panic
+1:
+  # store object
+  stv   1
+  # check object kind
+  ldv   1
+  lddo  0
+  dup
+  pushu 4   # AtomKind::Builtin
+  eq
+  bnz   invoke_builtin
+  pushu 5   # AtomKind::Lambda
+  eq
+  bnz   invoke_lambda
+  # object is not callable
+  lac   not_callable
+  jmp   panic
+
+  # Calls a builtin function.
+invoke_builtin:
+  # check builtin kind
+  ldv   1
+  lddo  1
+  # TODO: table switch
+  # atom?
+  dup
+  pushu 0
+  eq
+  bnz   atom
+  # number?
+  dup
+  pushu 1
+  eq
+  bnz   number
+  # eq?
+  dup
+  pushu 2
+  eq
+  bnz   equal
+  # car
+  dup
+  pushu 3
+  eq
+  bnz   car
+  # cdr
+  dup
+  pushu 4
+  eq
+  bnz   cdr
+  # cons
+  dup
+  pushu 5
+  eq
+  bnz   cons
+  # list
+  dup
+  pushu 6
+  eq
+  bnz   list
+  # +
+  dup
+  pushu 7
+  eq
+  bnz   add
+  # -
+  dup
+  pushu 8
+  eq
+  bnz   sub
+  # *
+  dup
+  pushu 9
+  eq
+  bnz   mul
+  # /
+  dup
+  pushu 10
+  eq
+  bnz   div
+  # >
+  dup
+  pushu 11
+  eq
+  bnz   gt
+  # <
+  dup
+  pushu 12
+  eq
+  bnz   lt
+  # >=
+  dup
+  pushu 13
+  eq
+  bnz   ge
+  # <=
+  pushu 14
+  eq
+  bnz   le
+  # =
+  jmp   eq
+
+
+  # Calls a user-defined function.
+invoke_lambda:
+  # TODO
+  ret
+
+
+  # Panics and abort.
+panic:
+  lac   fatal
+  call  eprint
+  call  eprint
+  sys   13
+
+
+  # Prints string to standard error.
+eprint:
+  dup
+  pushu 8
+  add
+  swap
+  lddo  0
+  sys   10
+  pop
+  ret
+
+
+  # Builtin function `atom?`.
+atom:
+  # check argument number
+  ldv   0
+  pushu 2
+  call  check_nargs
+  # TODO
+  ret
+
+
+  # Builtin function `number?`.
+number:
+  # check argument number
+  ldv   0
+  pushu 2
+  call  check_nargs
+  # TODO
+  ret
+
+
+  # Builtin function `eq?`.
+equal:
+  # check argument number
+  ldv   0
+  pushu 3
+  call  check_nargs
+  # TODO
+  ret
+
+
+  # Builtin function `car`.
+car:
+  # check argument number
+  ldv   0
+  pushu 2
+  call  check_nargs
+  # TODO
+  ret
+
+
+  # Builtin function `cdr`.
+cdr:
+  # check argument number
+  ldv   0
+  pushu 2
+  call  check_nargs
+  # TODO
+  ret
+
+
+  # Builtin function `cons`.
+cons:
+  # check argument number
+  ldv   0
+  pushu 3
+  call  check_nargs
+  # TODO
+  ret
+
+
+  # Builtin function `list`.
+list:
+  # TODO
+  ret
+
+
+  # Builtin function `+`.
+add:
+  # check argument number
+  ldv   0
+  pushu 3
+  call  check_nargs
+  # TODO
+  ret
+
+
+  # Builtin function `-`.
+sub:
+  # check argument number
+  ldv   0
+  pushu 3
+  call  check_nargs
+  # TODO
+  ret
+
+
+  # Builtin function `*`.
+mul:
+  # check argument number
+  ldv   0
+  pushu 3
+  call  check_nargs
+  # TODO
+  ret
+
+
+  # Builtin function `/`.
+div:
+  # check argument number
+  ldv   0
+  pushu 3
+  call  check_nargs
+  # TODO
+  ret
+
+
+  # Builtin function `>`.
+gt:
+  # check argument number
+  ldv   0
+  pushu 3
+  call  check_nargs
+  # TODO
+  ret
+
+
+  # Builtin function `<`.
+lt:
+  # check argument number
+  ldv   0
+  pushu 3
+  call  check_nargs
+  # TODO
+  ret
+
+
+  # Builtin function `>=`.
+ge:
+  # check argument number
+  ldv   0
+  pushu 3
+  call  check_nargs
+  # TODO
+  ret
+
+
+  # Builtin function `<=`.
+le:
+  # check argument number
+  ldv   0
+  pushu 3
+  call  check_nargs
+  # TODO
+  ret
+
+
+  # Builtin function `=`.
+eq:
+  # check argument number
+  ldv   0
+  pushu 3
+  call  check_nargs
+  # TODO
+  ret
+
+
+  # Checks the number of arguments, panics if mismatch.
+  #
+  # Stack layout:
+  # * s0 (TOS): expected argument number.
+  # * s1: actual argument number.
+check_nargs:
+  eq
+  bnz   1f
+  lac   nargs_mismatch
+  jmp   panic
+1:
+  ret
+
+
+  .section consts
+fatal:
+  .str  "FATAL: "
+expect_obj:
+  .str  "expected Lisp object\n"
+not_callable:
+  .str  "object is not callable\n"
+nargs_mismatch:
+  .str  "number of arguments does not match\n"
+
+
+  .section exports
+  .export "invoke", invoke, variadic, 0
+  .export "check_nargs", check_nargs, 2, 0
