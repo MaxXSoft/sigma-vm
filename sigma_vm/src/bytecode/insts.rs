@@ -216,11 +216,18 @@ def_opc_inst! {
   Bnz(i64),
   /// Jump to pc + opr.
   Jmp(i64),
+  /// Jump to s0.
+  JmpS,
   /// Call the function at pc + opr with arguments s{n - 1}, ..., s0.
   Call(i64),
+  /// Call the function at s0 with arguments s{n}, ..., s1.
+  CallS,
   /// Call an external function with module handle s1, function name pointer s0
   /// and arguments s{n + 1}, ..., s2.
   CallExt,
+  /// Call an external function with module handle s1, function PC s0
+  /// and arguments s{n + 1}, ..., s2.
+  CallExtS,
   /// Call an external function with module handle s0, function name constant opr
   /// and arguments s{n}, ..., s1.
   CallExtC(u64),
