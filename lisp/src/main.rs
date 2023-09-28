@@ -4,6 +4,7 @@ mod front;
 
 use clap::Parser;
 use laps::reader::Reader;
+use sigma_vm::bytecode::writer::Writer;
 use std::{fmt, io, process};
 
 /// Lisp to Sigma VM bytecode compiler.
@@ -32,9 +33,10 @@ fn compile<R>(args: &CommandLineArgs, reader: Reader<R>)
 where
   R: io::Read,
 {
-  // run parser
   let mut parser = front::Parser::new(reader);
   let mut anf_gen = anf::Generator::new();
+  let mut module_gen = back::Generator::new();
+  // run parser
   loop {
     let elem = match parser.parse() {
       Ok(Some(elem)) => elem,
@@ -47,8 +49,16 @@ where
       Ok(None) => continue,
       Err(_) => return,
     };
-    println!("{stmt:#?}");
+    // generate on the ANF
+    module_gen.generate_on(stmt);
   }
+  // generate module and write to the output
+  let module = module_gen.generate();
+  let writer = Writer::new(&module);
+  ok_or_exit(match &args.output {
+    Some(path) => writer.write_to_file(path),
+    None => writer.write_to_stdout(),
+  });
 }
 
 /// Returns the result, or print error message and exit on error.
