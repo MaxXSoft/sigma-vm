@@ -10,6 +10,10 @@ pub enum Statement {
   Define(Define),
   /// Expression.
   Expr(Expr),
+  /// Require.
+  Require(Require),
+  /// Provide.
+  Provide(Provide),
 }
 
 /// Definition.
@@ -29,6 +33,19 @@ pub enum Expr {
   CompExpr(CompExpr),
   /// Let binding.
   Let(Let),
+}
+
+/// Require.
+#[derive(Debug)]
+pub struct Require {
+  pub path: String,
+  pub sym_vars: Vec<(String, u64)>,
+}
+
+/// Provide.
+#[derive(Debug)]
+pub struct Provide {
+  pub sym_vars: Vec<(String, u64)>,
 }
 
 /// Value (atomic expression).
@@ -139,12 +156,16 @@ pub enum Builtin {
 /// A-normal form generator.
 pub struct Generator {
   env: Env,
+  exportable_vars: HashMap<String, u64>,
 }
 
 impl Generator {
   /// Creates a new generator.
   pub fn new() -> Self {
-    Self { env: Env::new() }
+    Self {
+      env: Env::new(),
+      exportable_vars: HashMap::new(),
+    }
   }
 
   /// Generates on the given element.
@@ -172,6 +193,16 @@ impl Generator {
               return self
                 .gen_cond(&es[1..], &elem.span)
                 .map(|e| Some(Statement::Expr(e)))
+            }
+            "require" => {
+              return self
+                .gen_require(&es[1..], elem.span)
+                .map(|d| Some(Statement::Require(d)))
+            }
+            "provide" => {
+              return self
+                .gen_provide(&es[1..], elem.span)
+                .map(|d| Some(Statement::Provide(d)))
             }
             _ => return self.gen_apply(&es).map(|e| Some(Statement::Expr(e))),
           },
@@ -201,7 +232,61 @@ impl Generator {
     let name = Self::sym(&elems[0])?;
     let var = self.env.define(name.clone());
     let expr = self.gen_expr(&elems[1])?;
+    // update exportable symbols
+    let is_exportable = match &expr {
+      Expr::Value(Value::GlobalVar(g)) => self.exportable_vars.values().find(|v| g == *v).is_some(),
+      Expr::Value(Value::Var(_)) => unreachable!(),
+      Expr::Value(_) => true,
+      _ => false,
+    };
+    if is_exportable {
+      self.exportable_vars.insert(name.clone(), var);
+    }
     Ok(Define { name, var, expr })
+  }
+
+  /// Generates a `require`.
+  fn gen_require(&mut self, elems: &[Element], span: Span) -> Result<Require> {
+    if elems.len() != 2 {
+      return_error!(span, "expected exactly 2 arguments")
+    }
+    // get module path
+    let path = match &elems[0].kind {
+      ElemKind::Str(s) => s.clone(),
+      _ => return_error!(elems[0].span, "expected a path string"),
+    };
+    // get symbol-variable pair list
+    let sym_vars = match &elems[1].kind {
+      ElemKind::List(l) if l.is_empty() => {
+        return_error!(elems[1].span, "expected at least 1 symbol")
+      }
+      ElemKind::List(l) => l
+        .iter()
+        .map(|e| Self::sym(e).map(|s| (s.clone(), self.env.define(s))))
+        .collect::<Result<Vec<_>>>()?,
+      _ => return_error!(elems[1].span, "expected symbol list"),
+    };
+    Ok(Require { path, sym_vars })
+  }
+
+  /// Generates a `provide`.
+  fn gen_provide(&mut self, elems: &[Element], span: Span) -> Result<Provide> {
+    if elems.is_empty() {
+      return_error!(span, "expected at least 1 argument")
+    }
+    let sym_vars = elems
+      .iter()
+      .map(|e| {
+        Self::sym(e).and_then(|s| match self.exportable_vars.get(&s) {
+          Some(_) if s == "main" => {
+            return_error!(e.span, "symbol `main` is preserved by the compiler")
+          }
+          Some(var) => Ok((s, *var)),
+          None => return_error!(e.span, "symbol `{s}` is undefined, or is not exportable"),
+        })
+      })
+      .collect::<Result<_>>()?;
+    Ok(Provide { sym_vars })
   }
 
   /// Generates a conditional expression.
