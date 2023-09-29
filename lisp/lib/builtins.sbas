@@ -145,7 +145,7 @@ panic:
   lac   fatal
   call  eprint
   call  eprint
-  sys   13
+  sys   12
 
 
   # Prints string to standard error.

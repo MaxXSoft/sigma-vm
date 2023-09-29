@@ -172,7 +172,7 @@ impl State {
     self.builder.inst(Inst::Swap);
     self.builder.inst(Inst::LdDO(0));
     self.builder.inst(Inst::Sys(10));
-    self.builder.inst(Inst::Sys(13));
+    self.builder.inst(Inst::Sys(12));
   }
 
   /// Generates a builtin panic.
