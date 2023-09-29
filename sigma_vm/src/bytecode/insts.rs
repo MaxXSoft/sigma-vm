@@ -214,8 +214,13 @@ def_opc_inst! {
   LoadM,
   /// Branch to pc + opr if s0 is zero.
   Bz(i64),
+  /// Branch to pc + opr if s0 is zero, otherwise do not pop s0.
+  BzNP(i64),
   /// Branch to pc + opr if s0 is not zero.
   Bnz(i64),
+  /// Set s0 to s0 - 1 (wrapping), branch to pc + opr if s0 is not zero
+  /// without popping, otherwise pop s0 and do not branch.
+  Loop(i64),
   /// Jump to pc + opr.
   Jmp(i64),
   /// Jump to s0.
