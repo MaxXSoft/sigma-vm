@@ -112,7 +112,14 @@ impl State {
     let main = self.builder.label();
     self.builder.insert_label(main);
     // clear all arguments
-    self.builder.inst(Inst::Sys(11));
+    let loop_start = self.builder.label();
+    let loop_end = self.builder.label();
+    self.builder.cfi(Inst::BzNP, loop_end);
+    self.builder.insert_label(loop_start);
+    self.builder.inst(Inst::Swap);
+    self.builder.inst(Inst::Pop);
+    self.builder.cfi(Inst::Loop, loop_start);
+    self.builder.insert_label(loop_end);
     // generate main body
     for stmt in stmts {
       stmt.generate(self);
@@ -287,7 +294,7 @@ enum AtomKind {
 
 /// Trait for generating statements.
 trait Generate {
-  /// Generates the given statement.
+  /// Generates on the current ANF.
   fn generate(self, state: &mut State);
 }
 
