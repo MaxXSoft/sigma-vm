@@ -569,4 +569,48 @@ mod test {
     assert_eq!(fib(10), 55);
     assert_eq!(fib(20), 6765);
   }
+
+  #[test]
+  fn factorial_loop() {
+    fn fact(n: u64) -> u64 {
+      vm! {
+        modules: {
+          main: {
+            insts: [
+              Pop,
+              Ret,
+
+            // main:
+              PushU(1),
+              StV(0),
+              BzNP(6), // end_loop
+            // start_loop:
+              Dup,
+              LdV(0),
+              Mul,
+              StV(0),
+              Loop(-4), // start_loop
+            // end_loop:
+              LdV(0),
+              Ret,
+            ],
+            consts: [],
+            exports: ["main" => { pc: 2, num_args: 1, num_rets: 1 }],
+          },
+        },
+        main: main,
+        args: [u64: n],
+        results: (u64),
+      }
+    }
+
+    assert_eq!(fact(0), 1);
+    assert_eq!(fact(1), 1);
+    assert_eq!(fact(2), 2);
+    assert_eq!(fact(3), 6);
+    assert_eq!(fact(4), 24);
+    assert_eq!(fact(5), 120);
+    assert_eq!(fact(6), 720);
+    assert_eq!(fact(10), 3628800);
+  }
 }
