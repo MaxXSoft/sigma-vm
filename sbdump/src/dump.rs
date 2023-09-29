@@ -353,7 +353,9 @@ impl Dump for (usize, &Inst) {
       | Opcode::NewAC
       | Opcode::LoadC
       | Opcode::CallExtC => Kind::Const,
-      Opcode::Bz | Opcode::Bnz | Opcode::Jmp | Opcode::Call => Kind::Cfi,
+      Opcode::Bz | Opcode::BzNP | Opcode::Bnz | Opcode::Loop | Opcode::Jmp | Opcode::Call => {
+        Kind::Cfi
+      }
       _ => Kind::Normal,
     };
     // dump operand
