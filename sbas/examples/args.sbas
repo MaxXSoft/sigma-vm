@@ -13,25 +13,21 @@ main:
   call  print_str
 
   # iterate through all arguments
+  bznp  3f
 1:
-  dup
-  bz    1f
-  stv   0
+  swap
   # print the current argument
   call  print_str
-  # update loop counter
-  ldv   0
-  pushu 1
-  sub
   # print separator
   dup
+  pushu 1
+  ne
   bz    2f
   lac   comma
   call  print_str
 2:
-  jmp   1b
-1:
-  pop
+  loop  1b
+3:
 
   # print end of argument list
   lac end_of_list
