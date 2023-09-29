@@ -453,8 +453,26 @@ where
           PcUpdate::Next
         }
       }
+      Inst::BzNP(opr) => {
+        let s0 = gctx.pop_int_ptr()?;
+        if s0 == 0 {
+          PcUpdate::Set((self.pc as i64 + opr) as u64)
+        } else {
+          gctx.push_int(s0);
+          PcUpdate::Next
+        }
+      }
       Inst::Bnz(opr) => {
         if gctx.pop_any()? != 0 {
+          PcUpdate::Set((self.pc as i64 + opr) as u64)
+        } else {
+          PcUpdate::Next
+        }
+      }
+      Inst::Loop(opr) => {
+        let counter = gctx.pop_int_ptr()?.wrapping_sub(1);
+        if counter != 0 {
+          gctx.push_int(counter);
           PcUpdate::Set((self.pc as i64 + opr) as u64)
         } else {
           PcUpdate::Next
