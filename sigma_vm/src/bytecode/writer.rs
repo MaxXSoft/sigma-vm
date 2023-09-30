@@ -127,7 +127,9 @@ where
     if !self.exports.is_empty() {
       (Section::Exports as u8).write(self.writer)?;
       unsigned(&mut self.writer, self.exports.len() as u64)?;
-      for (name, call_site) in self.exports {
+      let mut exports: Vec<_> = self.exports.iter().collect();
+      exports.sort_by_key(|(name, _)| *name);
+      for (name, call_site) in exports {
         call_site.write(&mut self.writer)?;
         name.write(&mut self.writer)?;
       }
