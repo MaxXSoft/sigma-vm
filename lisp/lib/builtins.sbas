@@ -1,7 +1,44 @@
 # Implementations of builtin functions and utility functions.
 
+
+  # Offsets of Lisp object fields.
+#define OFFSET_KIND         0   // Kind.
+#define OFFSET_VALUE        1   // Value or pointer.
+#define OFFSET_NEXT         2   // Pointer to the next object.
+#define OFFSET_MOD_HANDLE   3   // Module handle (for lambda object only).
+#define OFFSET_CAPTURES     4   // Captured variables (for lambda object only).
+
+  # Lisp object kinds.
+#define OBJ_NUM     0   // Number.
+#define OBJ_STR     1   // String.
+#define OBJ_SYM     2   // Symbol.
+#define OBJ_LIST    3   // List.
+#define OBJ_LAMBDA  4   // Lambda.
+
+  # Creates a new Lisp object with a specific,
+  # leaves the value field uninitialized.
+#define NEW_OBJ(obj, kind)  \
+  newoc obj                 \
+  dup                       \
+  pushu kind                \
+  stdo  OFFSET_KIND         \
+  dup                       \
+  pushu 0                   \
+  stdo  OFFSET_NEXT
+
+  # Defines a function that creates an object with a specific kind.
+#define DEF_NEW_OBJ(name, obj, kind)  \
+new_##name:                           \
+  NEW_OBJ(obj, kind)                  \
+  dups1                               \
+  swap                                \
+  stdo  OFFSET_VALUE                  \
+  ret
+
+
   .section insts
-  pop
+  # Store the handle of the current module to global variable.
+  stg   0
   ret
 
 
@@ -24,114 +61,27 @@ invoke:
 1:
   # store object
   stv   1
-  # check object kind
+  # check if is a lambda
   ldv   1
-  lddo  0
-  dup
-  pushu 4   # AtomKind::Builtin
-  eq
-  bnz   invoke_builtin
-  pushu 5   # AtomKind::Lambda
+  lddo  OFFSET_KIND
+  pushu OBJ_LAMBDA
   eq
   bnz   invoke_lambda
   # object is not callable
   lac   not_callable
   jmp   panic
 
-  # Calls a builtin function.
-invoke_builtin:
-  # check builtin kind
-  ldv   1
-  lddo  1
-  # TODO: table switch
-  # atom?
-  dup
-  pushu 0
-  eq
-  bnz   atom
-  # number?
-  dup
-  pushu 1
-  eq
-  bnz   number
-  # eq?
-  dup
-  pushu 2
-  eq
-  bnz   equal
-  # car
-  dup
-  pushu 3
-  eq
-  bnz   car
-  # cdr
-  dup
-  pushu 4
-  eq
-  bnz   cdr
-  # cons
-  dup
-  pushu 5
-  eq
-  bnz   cons
-  # list
-  dup
-  pushu 6
-  eq
-  bnz   list
-  # +
-  dup
-  pushu 7
-  eq
-  bnz   builtin_add
-  # -
-  dup
-  pushu 8
-  eq
-  bnz   builtin_sub
-  # *
-  dup
-  pushu 9
-  eq
-  bnz   builtin_mul
-  # /
-  dup
-  pushu 10
-  eq
-  bnz   builtin_div
-  # >
-  dup
-  pushu 11
-  eq
-  bnz   builtin_gt
-  # <
-  dup
-  pushu 12
-  eq
-  bnz   builtin_lt
-  # >=
-  dup
-  pushu 13
-  eq
-  bnz   builtin_ge
-  # <=
-  pushu 14
-  eq
-  bnz   builtin_le
-  # =
-  jmp   builtin_eq
-
 
   # Calls a user-defined function.
 invoke_lambda:
   # setup stack
   ldv   1
-  lddo  4   # captured arguments
-  ldv   0   # number of arguments
+  lddo  OFFSET_CAPTURES
+  ldv   0                 # number of arguments
   ldv   1
-  lddo  3   # module handle
+  lddo  OFFSET_MOD_HANDLE
   ldv   1
-  lddo  1   # function PC
+  lddo  OFFSET_VALUE      # function PC
   # Stack layout after entered the user-defined function:
   # * s0 (TOS): number of arguments.
   # * s1: array of captured arguments.
@@ -141,6 +91,9 @@ invoke_lambda:
 
 
   # Panics and abort.
+  #
+  # Stack layout:
+  # * s0 (TOS): error message string pointer.
 panic:
   lac   fatal
   call  eprint
@@ -157,6 +110,114 @@ eprint:
   lddo  0
   sys   10
   pop
+  ret
+
+
+  # Checks the number of arguments, panics if mismatch.
+  #
+  # Stack layout:
+  # * s0 (TOS): expected argument number.
+  # * s1: actual argument number.
+check_nargs:
+  eq
+  bnz   1f
+  lac   nargs_mismatch
+  jmp   panic
+1:
+  ret
+
+
+  # Creates a number object.
+  #
+  # Stack layout:
+  # * s0 (TOS): a floating point number.
+DEF_NEW_OBJ(num, object, OBJ_NUM)
+
+
+  # Creates a string object.
+  #
+  # Stack layout:
+  # * s0 (TOS): a string pointer.
+DEF_NEW_OBJ(str, ptr_object, OBJ_STR)
+
+
+  # Creates a symbol object.
+  #
+  # Stack layout:
+  # * s0 (TOS): a string pointer.
+DEF_NEW_OBJ(sym, ptr_object, OBJ_SYM)
+
+
+  # Creates a list object.
+  #
+  # Stack layout:
+  # * s0 (TOS): number of list elements.
+  # * s1: list elements n - 1.
+  # * ...
+  # * s{n}: list elements 0.
+new_list:
+  # construct linked list
+  pushu 0
+  swap
+  bznp  2f
+1:
+  stv   0
+  swap
+  dups1
+  swap
+  stdo  OFFSET_NEXT
+  ldv   0
+  loop  1b
+2:
+  # create new object
+  NEW_OBJ(ptr_object, OBJ_LIST)
+  dups1
+  swap
+  stdo  OFFSET_VALUE
+  ret
+
+
+  # Creates a lambda object.
+  #
+  # Stack layout:
+  # * s0 (TOS): number of arguments.
+  # * s1: captured variable 0.
+  # * ...
+  # * s{n}: captured variable n - 1.
+  # * s{n + 1}: function PC.
+  # * s{n + 2}: module handle.
+new_lambda:
+  # create captured variable array
+  pushu 2
+  sub
+  dup
+  newac ptr
+  stv   0
+  # store variables to array
+  bznp  2f
+1:
+  swap
+  ldv   0
+  swap
+  std
+  ldv   0
+  pushu 8
+  add
+  stv   0
+  loop  1b
+2:
+  ldv   0
+  # create new object
+  NEW_OBJ(func_object, OBJ_LAMBDA)
+  dups1
+  swap
+  stdo  OFFSET_CAPTURES
+  dups1
+  swap
+  stdo  OFFSET_VALUE
+  dups1
+  swap
+  stdo  OFFSET_MOD_HANDLE
   ret
 
 
@@ -316,20 +377,6 @@ builtin_eq:
   ret
 
 
-  # Checks the number of arguments, panics if mismatch.
-  #
-  # Stack layout:
-  # * s0 (TOS): expected argument number.
-  # * s1: actual argument number.
-check_nargs:
-  eq
-  bnz   1f
-  lac   nargs_mismatch
-  jmp   panic
-1:
-  ret
-
-
   .section consts
 fatal:
   .str  "FATAL: "
@@ -340,8 +387,22 @@ not_callable:
 nargs_mismatch:
   .str  "number of arguments does not match\n"
 
+object:
+  .object 24, 8, [2]
+ptr_object:
+  .object 24, 8, [1, 2]
+func_object:
+  .object 40, 8, [2, 3, 4]
+ptr:
+  .object 8, 8, [0]
+
 
   .section exports
   .export "invoke", invoke, variadic, 0
   .export "panic", panic, 1, 0
   .export "check_nargs", check_nargs, 2, 0
+  .export "new_num", new_num, 1, 1
+  .export "new_str", new_str, 1, 1
+  .export "new_sym", new_sym, 1, 1
+  .export "new_list", new_list, variadic, 1
+  .export "new_lambda", new_lambda, variadic, 1
