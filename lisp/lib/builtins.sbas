@@ -105,14 +105,14 @@ invoke:
   lddo  OFFSET_KIND
   pushu OBJ_LAMBDA
   eq
-  bz    _not_callable
+  bz    _invoke_not_callable
   # setup stack
   stv   0
   ldv   0
-  lddo  OFFSET_CAPTURES
+  ldpo  OFFSET_CAPTURES
   swap
   ldv   0
-  lddo  OFFSET_MOD_HANDLE
+  ldpo  OFFSET_MOD_HANDLE
   ldv   0
   lddo  OFFSET_VALUE      # function PC
   # Stack layout after entered the target function:
@@ -121,7 +121,7 @@ invoke:
   # * s2 ...: other arguments.
   callexts
   ret
-_not_callable:
+_invoke_not_callable:
   # object is not callable
   lac   not_callable
   jmp   panic
@@ -139,6 +139,9 @@ panic:
 
 
   # Prints string to standard error.
+  #
+  # Stack layout:
+  # * s0 (TOS): error message string pointer.
 eprint:
   dup
   pushu 8
@@ -167,7 +170,7 @@ check_nargs:
   # Creates a number object.
   #
   # Stack layout:
-  # * s0 (TOS): a floating point number.
+  # * s0 (TOS): a double.
 DEF_NEW_OBJ(num, object, OBJ_NUM)
 
 
@@ -280,14 +283,152 @@ new_builtin:
   ret
 
 
+  # Creates a boolean object.
+  #
+  # Stack layout:
+  # * s0 (TOS): boolean, 0 for false, otherwise true.
+new_bool:
+  bz    1f
+  lac   true
+  jmp   new_sym
+1:
+  pushu 0
+  jmp   new_list
+
+
+  # Returns a list if the given object is a list object,
+  # otherwise panics.
+  #
+  # Stack layout:
+  # * s0 (TOS): a Lisp object.
+unwrap_list:
+  dup
+  lddo  OFFSET_KIND
+  pushu OBJ_LIST
+  eq
+  bz    _unwrap_list_not_list
+  ldpo  OFFSET_VALUE
+  ret
+_unwrap_list_not_list:
+  lac   expected_list
+  jmp   panic
+
+
+  # Panics if the given list is empty.
+  #
+  # Stack layout:
+  # * s0 (TOS): a list (not a list object).
+expect_non_empty:
+  bznp  _expect_non_empty_empty_list
+  ret
+_expect_non_empty_empty_list:
+  lac   expected_non_empty_list
+  jmp   panic
+
+
+  # Creates a shallow copy of the given object.
+  #
+  # Stack layout:
+  # * s0 (TOS): a Lisp object.
+shallow_copy:
+  # get field next
+  dup
+  ldpo  OFFSET_NEXT
+  swap
+  # get field kind and store
+  dup
+  lddo  OFFSET_KIND
+  stv   0
+  # check if is a lambda
+  ldv   0
+  pushu OBJ_LAMBDA
+  ne
+  bz    _shallow_copy_lambda
+  # check if is a number
+  ldv   0
+  pushu OBJ_NUM
+  ne
+  bz    1f
+  # get field pointer and create pointer object
+  ldpo  OFFSET_VALUE
+  newoc ptr_object
+  jmp   2f
+1:
+  # get field value and create object
+  lddo  OFFSET_VALUE
+  newoc object
+2:
+  # store fields
+  dups1
+  swap
+  stdo  OFFSET_VALUE
+  dups1
+  swap
+  stdo  OFFSET_NEXT
+  dup
+  ldv   0
+  stdo  OFFSET_KIND
+  ret
+_shallow_copy_lambda:
+  # get field value, module handle and captured variables
+  dup
+  lddo  OFFSET_VALUE
+  swap
+  dup
+  ldpo  OFFSET_MOD_HANDLE
+  swap
+  ldpo  OFFSET_CAPTURES
+  # create function object
+  newoc func_object
+  # store fields
+  dups1
+  swap
+  stdo  OFFSET_CAPTURES
+  dups1
+  swap
+  stdo  OFFSET_MOD_HANDLE
+  dups1
+  swap
+  stdo  OFFSET_VALUE
+  dups1
+  swap
+  stdo  OFFSET_NEXT
+  dup
+  ldv   0
+  stdo  OFFSET_KIND
+  ret
+
+
+  # Returns a number if the given object is a number object,
+  # otherwise panics.
+  #
+  # Stack layout:
+  # * s0 (TOS): a Lisp object.
+unwrap_num:
+  dup
+  lddo  OFFSET_KIND
+  pushu OBJ_NUM
+  eq
+  bz    _unwrap_num_not_num
+  lddo  OFFSET_VALUE
+  itd
+  ret
+_unwrap_num_not_num:
+  lac   expected_num
+  jmp   panic
+
+
   # Builtin function `atom?`.
 BUILTIN_ATOM(DECL_BUILTIN)
   # check argument number
   pushu 2
   call  check_nargs
   pop
-  # TODO
-  ret
+  # check if is an atom
+  lddo  OFFSET_KIND
+  pushu OBJ_LIST
+  ne
+  jmp   new_bool
 
 
   # Builtin function `number?`.
@@ -296,8 +437,11 @@ BUILTIN_NUMBER(DECL_BUILTIN)
   pushu 2
   call  check_nargs
   pop
-  # TODO
-  ret
+  # check if is a number
+  lddo  OFFSET_KIND
+  pushu OBJ_NUM
+  eq
+  jmp   new_bool
 
 
   # Builtin function `eq?`.
@@ -316,8 +460,9 @@ BUILTIN_CAR(DECL_BUILTIN)
   pushu 2
   call  check_nargs
   pop
-  # TODO
-  ret
+  # get the list
+  call  unwrap_list
+  jmp   expect_non_empty
 
 
   # Builtin function `cdr`.
@@ -326,7 +471,14 @@ BUILTIN_CDR(DECL_BUILTIN)
   pushu 2
   call  check_nargs
   pop
-  # TODO
+  # get tail of the list
+  call  unwrap_list
+  call  expect_non_empty
+  NEW_OBJ(ptr_object, OBJ_LIST)
+  dups1
+  swap
+  ldpo  OFFSET_NEXT
+  stdo  OFFSET_VALUE
   ret
 
 
@@ -336,13 +488,48 @@ BUILTIN_CONS(DECL_BUILTIN)
   pushu 3
   call  check_nargs
   pop
-  # TODO
+  # get the list
+  call  unwrap_list
+  # create a shallow copy of the first argument
+  swap
+  call  shallow_copy
+  # append the second argument to the copied object
+  dups1
+  swap
+  stdo  OFFSET_NEXT
+  # create a new list
+  NEW_OBJ(ptr_object, OBJ_LIST)
+  dups1
+  swap
+  stdo  OFFSET_VALUE
   ret
 
 
   # Builtin function `list`.
 BUILTIN_LIST(DECL_BUILTIN)
-  # TODO
+  pushu 1
+  sub
+  swap
+  pop
+  # construct linked list (shallow copy)
+  pushu 0
+  swap
+  bznp  2f
+1:
+  stv   0
+  swap
+  call  shallow_copy
+  dups1
+  swap
+  stdo  OFFSET_NEXT
+  ldv   0
+  loop  1b
+2:
+  # create new object
+  NEW_OBJ(ptr_object, OBJ_LIST)
+  dups1
+  swap
+  stdo  OFFSET_VALUE
   ret
 
 
@@ -352,8 +539,12 @@ BUILTIN_ADD(DECL_BUILTIN)
   pushu 3
   call  check_nargs
   pop
-  # TODO
-  ret
+  # perform add
+  call  unwrap_num
+  swap
+  call  unwrap_num
+  addd
+  jmp   new_num
 
 
   # Builtin function `-`.
@@ -362,8 +553,13 @@ BUILTIN_SUB(DECL_BUILTIN)
   pushu 3
   call  check_nargs
   pop
-  # TODO
-  ret
+  # perform sub
+  call  unwrap_num
+  swap
+  call  unwrap_num
+  swap
+  subd
+  jmp   new_num
 
 
   # Builtin function `*`.
@@ -372,8 +568,12 @@ BUILTIN_MUL(DECL_BUILTIN)
   pushu 3
   call  check_nargs
   pop
-  # TODO
-  ret
+  # perform mul
+  call  unwrap_num
+  swap
+  call  unwrap_num
+  muld
+  jmp   new_num
 
 
   # Builtin function `/`.
@@ -382,8 +582,13 @@ BUILTIN_DIV(DECL_BUILTIN)
   pushu 3
   call  check_nargs
   pop
-  # TODO
-  ret
+  # perform div
+  call  unwrap_num
+  swap
+  call  unwrap_num
+  swap
+  divd
+  jmp   new_num
 
 
   # Builtin function `>`.
@@ -392,8 +597,12 @@ BUILTIN_GT(DECL_BUILTIN)
   pushu 3
   call  check_nargs
   pop
-  # TODO
-  ret
+  # perform gt
+  call  unwrap_num
+  swap
+  call  unwrap_num
+  ltd
+  jmp   new_bool
 
 
   # Builtin function `<`.
@@ -402,8 +611,12 @@ BUILTIN_LT(DECL_BUILTIN)
   pushu 3
   call  check_nargs
   pop
-  # TODO
-  ret
+  # perform lt
+  call  unwrap_num
+  swap
+  call  unwrap_num
+  gtd
+  jmp   new_bool
 
 
   # Builtin function `>=`.
@@ -412,8 +625,12 @@ BUILTIN_GE(DECL_BUILTIN)
   pushu 3
   call  check_nargs
   pop
-  # TODO
-  ret
+  # perform ge
+  call  unwrap_num
+  swap
+  call  unwrap_num
+  led
+  jmp   new_bool
 
 
   # Builtin function `<=`.
@@ -422,8 +639,12 @@ BUILTIN_LE(DECL_BUILTIN)
   pushu 3
   call  check_nargs
   pop
-  # TODO
-  ret
+  # perform le
+  call  unwrap_num
+  swap
+  call  unwrap_num
+  ged
+  jmp   new_bool
 
 
   # Builtin function `=`.
@@ -432,8 +653,12 @@ BUILTIN_EQ(DECL_BUILTIN)
   pushu 3
   call  check_nargs
   pop
-  # TODO
-  ret
+  # perform eq
+  call  unwrap_num
+  swap
+  call  unwrap_num
+  eq
+  jmp   new_bool
 
 
   .section consts
@@ -443,6 +668,14 @@ not_callable:
   .str  "object is not callable\n"
 nargs_mismatch:
   .str  "number of arguments does not match\n"
+expected_list:
+  .str  "expected a list\n"
+expected_non_empty_list:
+  .str  "expected a non empty list\n"
+expected_num:
+  .str  "expected a number\n"
+true:
+  .str  "t"
 
 object:
   .object 24, 8, [2]
