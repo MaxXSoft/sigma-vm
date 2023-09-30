@@ -1,5 +1,5 @@
 use std::alloc::{self, Layout};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use std::{fmt, ops, slice};
 
 /// Heap pointer.
@@ -135,9 +135,18 @@ pub trait Heap {
   /// Returns the mutable memory address of the given pointer.
   fn addr_mut(&mut self, ptr: Ptr) -> *mut ();
 
-  /// Returns a reference to the metadata of the given heap pointer, or
-  /// [`None`] if the given pointer is invalid.
-  fn meta(&self, ptr: Ptr) -> Option<&Meta>;
+  /// Returns a reference to the metadata and the object pointer
+  /// of the given heap pointer, or [`None`] if the given pointer is invalid.
+  fn meta_ptr(&self, ptr: Ptr) -> Option<(&Meta, Ptr)>;
+
+  /// Returns a reference to the metadata of the given heap pointer,
+  /// or [`None`] if the given pointer is invalid or is not equal to
+  /// the object pointer.
+  fn meta(&self, ptr: Ptr) -> Option<&Meta> {
+    self
+      .meta_ptr(ptr)
+      .and_then(|(m, p)| (ptr == p).then_some(m))
+  }
 
   /// Returns a vector of pointers of all allocated memory.
   fn ptrs(&self) -> Vec<Ptr>;
@@ -189,7 +198,7 @@ pub trait CheckedHeap: Heap {
 /// Heap that uses system's allocator to allocate memory.
 #[derive(Default)]
 pub struct System {
-  mems: HashMap<Ptr, Mem>,
+  mems: BTreeMap<Ptr, Mem>,
   size: usize,
 }
 
@@ -228,8 +237,11 @@ impl Heap for System {
     u64::from(ptr) as *mut ()
   }
 
-  fn meta(&self, ptr: Ptr) -> Option<&Meta> {
-    self.mems.get(&ptr).map(|m| &m.meta)
+  fn meta_ptr(&self, ptr: Ptr) -> Option<(&Meta, Ptr)> {
+    match self.mems.range(..=ptr).next_back() {
+      Some((p, mem)) if ptr < *p + mem.data.len() as u64 => Some((&mem.meta, *p)),
+      _ => None,
+    }
   }
 
   fn ptrs(&self) -> Vec<Ptr> {
@@ -345,8 +357,8 @@ where
     self.heap.addr_mut(ptr)
   }
 
-  fn meta(&self, ptr: Ptr) -> Option<&Meta> {
-    self.heap.meta(ptr)
+  fn meta_ptr(&self, ptr: Ptr) -> Option<(&Meta, Ptr)> {
+    self.heap.meta_ptr(ptr)
   }
 
   fn ptrs(&self) -> Vec<Ptr> {
