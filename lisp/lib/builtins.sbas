@@ -309,8 +309,36 @@ new_bool:
   lac   true
   jmp   new_sym
 1:
+  lac   false
+  jmp   new_sym
+
+
+  # Converts the given object to a boolean.
+  #
+  # Stack layout:
+  # * s0 (TOS): a Lisp object.
+to_bool:
+  dup
+  lddo  OFFSET_KIND
+  pushu OBJ_SYM
+  eq
+  bz    _to_bool_failed
+  dup
+  ldpo  OFFSET_VALUE
+  lac   true
+  sys   13
+  bznp  _to_bool_check_false
+  ret
+_to_bool_check_false:
+  ldpo  OFFSET_VALUE
+  lac   false
+  sys   13
+  bz    _to_bool_failed
   pushu 0
-  jmp   new_list
+  ret
+_to_bool_failed:
+  lac   expected_bool
+  jmp   panic
 
 
   # Returns a list if the given object is a list object,
@@ -847,6 +875,8 @@ not_callable:
   .str  "object is not callable\n"
 nargs_mismatch:
   .str  "number of arguments does not match\n"
+expected_bool:
+  .str  "expected a boolean\n"
 expected_list:
   .str  "expected a list\n"
 expected_non_empty_list:
@@ -855,6 +885,8 @@ expected_num:
   .str  "expected a number\n"
 true:
   .str  "t"
+false:
+  .str  "f"
 quote:
   .str  "\""
 single_quote:
@@ -891,3 +923,4 @@ ptr:
   .export "new_sym", new_sym, 1, 1
   .export "new_list", new_list, variadic, 1
   .export "new_lambda", new_lambda, variadic, 1
+  .export "to_bool", to_bool, 1, 1
