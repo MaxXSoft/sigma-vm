@@ -312,6 +312,7 @@ impl Assembler {
       InstOpcode::PushPc => InstKind::Normal(Opcode::PushPc),
       InstOpcode::Pop => InstKind::Normal(Opcode::Pop),
       InstOpcode::Dup => InstKind::Normal(Opcode::Dup),
+      InstOpcode::DupS1 => InstKind::Normal(Opcode::DupS1),
       InstOpcode::Swap => InstKind::Normal(Opcode::Swap),
       InstOpcode::LdB => InstKind::Normal(Opcode::LdB),
       InstOpcode::LdBU => InstKind::Normal(Opcode::LdBU),
