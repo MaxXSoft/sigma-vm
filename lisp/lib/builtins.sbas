@@ -16,22 +16,23 @@
 #define OBJ_LAMBDA  4   // Lambda.
 
   # ID and name of builtin functions.
-#define BUILTIN_ATOM(e)   e(atom,         1)
-#define BUILTIN_NUMBER(e) e(number,       2)
-#define BUILTIN_EQUAL(e)  e(equal,        3)
-#define BUILTIN_CAR(e)    e(car,          4)
-#define BUILTIN_CDR(e)    e(cdr,          5)
-#define BUILTIN_CONS(e)   e(cons,         6)
-#define BUILTIN_LIST(e)   e(list,         7)
-#define BUILTIN_ADD(e)    e(builtin_add,  8)
-#define BUILTIN_SUB(e)    e(builtin_sub,  9)
-#define BUILTIN_MUL(e)    e(builtin_mul,  10)
-#define BUILTIN_DIV(e)    e(builtin_div,  11)
-#define BUILTIN_GT(e)     e(builtin_gt,   12)
-#define BUILTIN_LT(e)     e(builtin_lt,   13)
-#define BUILTIN_GE(e)     e(builtin_ge,   14)
-#define BUILTIN_LE(e)     e(builtin_le,   15)
-#define BUILTIN_EQ(e)     e(builtin_eq,   16)
+#define BUILTIN_ATOM(e)   e(atom,           1)
+#define BUILTIN_NUMBER(e) e(number,         2)
+#define BUILTIN_EQUAL(e)  e(equal,          3)
+#define BUILTIN_CAR(e)    e(car,            4)
+#define BUILTIN_CDR(e)    e(cdr,            5)
+#define BUILTIN_CONS(e)   e(cons,           6)
+#define BUILTIN_LIST(e)   e(list,           7)
+#define BUILTIN_ADD(e)    e(builtin_add,    8)
+#define BUILTIN_SUB(e)    e(builtin_sub,    9)
+#define BUILTIN_MUL(e)    e(builtin_mul,    10)
+#define BUILTIN_DIV(e)    e(builtin_div,    11)
+#define BUILTIN_GT(e)     e(builtin_gt,     12)
+#define BUILTIN_LT(e)     e(builtin_lt,     13)
+#define BUILTIN_GE(e)     e(builtin_ge,     14)
+#define BUILTIN_LE(e)     e(builtin_le,     15)
+#define BUILTIN_EQ(e)     e(builtin_eq,     16)
+#define BUILTIN_PRINT(e)  e(builtin_print,  17)
 
   # Creates a new Lisp object with a specific,
   # leaves the value field uninitialized.
@@ -89,6 +90,7 @@ name##_impl:
   BUILTIN_GE(NEW_BUILTIN)
   BUILTIN_LE(NEW_BUILTIN)
   BUILTIN_EQ(NEW_BUILTIN)
+  BUILTIN_PRINT(NEW_BUILTIN)
   ret
 
 
@@ -149,6 +151,21 @@ eprint:
   swap
   lddo  0
   sys   10
+  pop
+  ret
+
+
+  # Prints string to standard output.
+  #
+  # Stack layout:
+  # * s0 (TOS): error message string pointer.
+print:
+  dup
+  pushu 8
+  add
+  swap
+  lddo  0
+  sys   9
   pop
   ret
 
@@ -490,6 +507,85 @@ _is_object_equal_failed:
   ret
 
 
+  # Prints the given Lisp object.
+  #
+  # Stack layout:
+  # * s0 (TOS): a Lisp object.
+print_obj:
+  # get value
+  dup
+  ldpo  OFFSET_VALUE
+  # handle by kind
+  dup
+  lddo  OFFSET_KIND
+  stv   0
+  stv   1
+  # check if is number
+  ldv   0
+  pushu OBJ_NUM
+  eq
+  bz    1f
+  pushu 10
+  sys   14
+  jmp   print
+1:
+  # check if is string
+  ldv   0
+  pushu OBJ_STR
+  eq
+  bz    1f
+  lac   quote
+  call  print
+  call  print
+  lac   quote
+  jmp   print
+1:
+  # check if is symbol
+  ldv   0
+  pushu OBJ_SYM
+  eq
+  bz    1f
+  lac   single_quote
+  call  print
+  jmp   print
+1:
+  # check if is list
+  ldv   0
+  pushu OBJ_LIST
+  eq
+  bz    1f
+  lac   left_paren
+  call  print
+  bznp  2f
+3:
+  dup
+  call  print_obj
+  ldpo  OFFSET_NEXT
+  bznp  2f
+  lac   space
+  call  print
+  jmp   3b
+2:
+  lac   right_paren
+  jmp   print
+1:
+  # must be a lambda
+  lac   lambda_header
+  call  print
+  ldv   1
+  ldpo  OFFSET_MOD_HANDLE
+  pushu 16
+  sys   14
+  call  print
+  lac   lambda_mid
+  call  print
+  pushu 10
+  sys   14
+  call  print
+  lac   lambda_end
+  jmp   print
+
+
   # Builtin function `atom?`.
 BUILTIN_ATOM(DECL_BUILTIN)
   # check argument number
@@ -733,6 +829,17 @@ BUILTIN_EQ(DECL_BUILTIN)
   jmp   new_bool
 
 
+  # Builtin function `print`.
+BUILTIN_PRINT(DECL_BUILTIN)
+  # check argument number
+  pushu 2
+  call  check_nargs
+  pop
+  call  print_obj
+  pushu 0
+  jmp   new_list
+
+
   .section consts
 fatal:
   .str  "FATAL: "
@@ -748,6 +855,22 @@ expected_num:
   .str  "expected a number\n"
 true:
   .str  "t"
+quote:
+  .str  "\""
+single_quote:
+  .str  "'"
+left_paren:
+  .str  "("
+space:
+  .str  " "
+right_paren:
+  .str  ")"
+lambda_header:
+  .str  "<lambda at module 0x"
+lambda_mid:
+  .str  ", pc "
+lambda_end:
+  .str  ">"
 
 object:
   .object 24, 8, [2]
