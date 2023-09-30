@@ -1,6 +1,5 @@
 use crate::anf::*;
 use sigma_vm::bytecode::builder::Builder;
-use sigma_vm::bytecode::consts::ObjectRef;
 use sigma_vm::bytecode::insts::Inst;
 use sigma_vm::bytecode::module::StaticModule;
 use std::mem;
@@ -46,12 +45,7 @@ impl Generator {
 /// State of a generator.
 struct State {
   builder: Builder,
-  obj_value: u64,
-  obj_ptr: u64,
-  invoke: u64,
-  panic: u64,
-  check_nargs: u64,
-  funcs: Vec<(Option<u64>, Lambda)>,
+  funcs: Vec<Func>,
 }
 
 impl State {
@@ -65,31 +59,9 @@ impl State {
   const NUM_PRESERVED_GLOBALS: u64 = 2;
 
   fn new() -> Self {
-    let mut builder = Builder::new();
-    // generate object metadata
-    let obj_value = builder.constant(ObjectRef {
-      size: 24,
-      align: 8,
-      destructor: 0,
-      offsets: &[2], // kind, value, next
-    });
-    let obj_ptr = builder.constant(ObjectRef {
-      size: 24,
-      align: 8,
-      destructor: 0,
-      offsets: &[1, 2], // kind, pointer, next
-    });
-    let invoke = builder.constant("invoke");
-    let panic = builder.constant("panic");
-    let check_nargs = builder.constant("check_nargs");
     // create state
     let mut state = Self {
-      builder,
-      obj_value,
-      obj_ptr,
-      invoke,
-      panic,
-      check_nargs,
+      builder: Builder::new(),
       funcs: Vec::new(),
     };
     // generate instructions for the module initializer
@@ -135,11 +107,8 @@ impl State {
   fn gen_funcs(&mut self) {
     while !self.funcs.is_empty() {
       let funcs = mem::take(&mut self.funcs);
-      for (label, f) in funcs {
-        if let Some(l) = label {
-          self.builder.insert_label(l);
-        }
-        f.generate(self);
+      for func in funcs {
+        func.generate(self);
       }
     }
   }
@@ -180,116 +149,29 @@ impl State {
     let error_msg = self.builder.constant(format!("{msg}\n"));
     self.builder.inst(Inst::LaC(error_msg));
     self.builder.inst(Inst::LdG(Self::BUILTIN_HANDLE));
-    self.builder.inst(Inst::CallExtC(self.panic));
+    let panic = self.builder.constant("panic");
+    self.builder.inst(Inst::CallExtC(panic));
+  }
+
+  /// Generates a call to the given builtin function.
+  fn gen_builtin_call(&mut self, name: &str) {
+    let name = self.builder.constant(name);
+    self.builder.inst(Inst::LdG(Self::BUILTIN_HANDLE));
+    self.builder.inst(Inst::CallExtC(name));
   }
 
   /// Returns the actual global variable number of the given variable.
   fn global(var: u64) -> u64 {
     Self::NUM_PRESERVED_GLOBALS + var
   }
-
-  // /// Generates a quote.
-  // fn quote(&mut self, elem: Element) {
-  //   match elem.kind {
-  //     ElemKind::Num(num) => self.num(num),
-  //     ElemKind::Str(s) => self.str(&s),
-  //     ElemKind::Sym(s) => self.sym(&s),
-  //     ElemKind::Quote(e) => {
-  //       self.list(vec![
-  //         Element {
-  //           kind: ElemKind::Str("quote".into()),
-  //           span: elem.span,
-  //         },
-  //         *e,
-  //       ]);
-  //     }
-  //     ElemKind::List(elems) => self.list(elems),
-  //   }
-  // }
-
-  /// Generates a new number value.
-  fn num(&mut self, num: f64) {
-    self.atom(self.obj_value, AtomKind::Num);
-    self.builder.inst(Inst::Dup);
-    self.builder.push_f64(num);
-    self.builder.inst(Inst::StDO(1));
-  }
-
-  /// Generates a new string value.
-  fn str(&mut self, s: &str) {
-    self.atom(self.obj_ptr, AtomKind::Str);
-    self.builder.inst(Inst::Dup);
-    self.push_str(s);
-    self.builder.inst(Inst::StDO(1));
-  }
-
-  /// Generates a new symbol value.
-  fn sym(&mut self, s: &str) {
-    self.atom(self.obj_ptr, AtomKind::Sym);
-    self.builder.inst(Inst::Dup);
-    self.push_str(s);
-    self.builder.inst(Inst::StDO(1));
-  }
-
-  /// Generates a new string, pushes its pointer to the stack.
-  fn push_str(&mut self, s: &str) {
-    let s = self.builder.constant(s);
-    self.builder.inst(Inst::LaC(s));
-  }
-
-  // /// Generates a new list.
-  // fn list(&mut self, elems: Vec<Element>) {
-  //   self.atom(self.obj_ptr, AtomKind::List);
-  //   self.builder.inst(Inst::Dup);
-  //   self.chain(elems.into_iter());
-  //   self.builder.inst(Inst::StDO(1));
-  // }
-
-  // /// Chains the given elements into a linked list.
-  // fn chain<I>(&mut self, mut elems: I)
-  // where
-  //   I: Iterator<Item = Element>,
-  // {
-  //   if let Some(elem) = elems.next() {
-  //     self.quote(elem);
-  //     self.builder.inst(Inst::Dup);
-  //     self.chain(elems);
-  //     self.builder.inst(Inst::StDO(2));
-  //   } else {
-  //     self.builder.inst(Inst::PushU(0));
-  //   }
-  // }
-
-  /// Generates a new atom, leaves the 2nd field uninitialized.
-  fn atom(&mut self, obj: u64, kind: AtomKind) {
-    self.builder.inst(Inst::NewOC(obj));
-    self.builder.inst(Inst::Dup);
-    self.builder.inst(Inst::PushU(kind as u64));
-    self.builder.inst(Inst::StDO(0));
-    self.builder.inst(Inst::Dup);
-    self.builder.inst(Inst::PushU(0));
-    self.builder.inst(Inst::StDO(2));
-  }
 }
 
-/// Kind of atom.
-///
-/// # Notes
-///
-/// This must be synchronized with implementations in `builtins.sbas`.
-enum AtomKind {
-  /// Number.
-  Num,
-  /// String.
-  Str,
-  /// Symbol.
-  Sym,
-  /// List.
-  List,
-  /// Builtin function.
-  Builtin,
-  /// Lambda.
-  Lambda,
+/// Static function, converted from a [`Lambda`].
+struct Func {
+  label: u64,
+  params: Vec<u64>,
+  captures_rev: Vec<u64>,
+  expr: Box<Expr>,
 }
 
 /// Trait for generating statements.
@@ -359,14 +241,15 @@ impl Generate for Provide {
   fn generate(self, state: &mut State) {
     for (sym, var) in self.sym_vars {
       // generate a function for the current provide
-      let func = Lambda {
+      let label = state.builder.label();
+      let func = Func {
+        label,
         params: vec![],
-        captures: vec![],
+        captures_rev: vec![],
         expr: Box::new(Expr::Value(Value::GlobalVar(var))),
       };
       // add to function list
-      let label = state.builder.label();
-      state.funcs.push((Some(label), func));
+      state.funcs.push(func);
       // export the generated function
       state.builder.export(sym, label, Some(0), 1);
     }
@@ -376,13 +259,29 @@ impl Generate for Provide {
 impl Generate for Value {
   fn generate(self, state: &mut State) {
     match self {
-      Self::Num(n) => todo!(),
-      Self::Str(s) => todo!(),
-      Self::Sym(s) => todo!(),
-      Self::List(l) => todo!(),
-      Self::Var(v) => todo!(),
-      Self::GlobalVar(g) => todo!(),
-      Self::Builtin(b) => todo!(),
+      Self::Num(n) => {
+        state.builder.push_f64(n);
+        state.gen_builtin_call("new_num")
+      }
+      Self::Str(s) => {
+        let s = state.builder.constant(s);
+        state.builder.inst(Inst::LaC(s));
+        state.gen_builtin_call("new_str")
+      }
+      Self::Sym(s) => {
+        let s = state.builder.constant(s);
+        state.builder.inst(Inst::LaC(s));
+        state.gen_builtin_call("new_sym")
+      }
+      Self::List(l) => {
+        let len = l.len() as u64;
+        l.into_iter().for_each(|v| v.generate(state));
+        state.builder.inst(Inst::PushU(len));
+        state.gen_builtin_call("new_list")
+      }
+      Self::Var(v) => state.builder.inst(Inst::LdV(v)),
+      Self::GlobalVar(g) => state.builder.inst(Inst::LdG(State::global(g))),
+      Self::Builtin(b) => b.generate(state),
       Self::Lambda(l) => l.generate(state),
     }
   }
@@ -399,24 +298,110 @@ impl Generate for CompExpr {
 
 impl Generate for Let {
   fn generate(self, state: &mut State) {
-    todo!()
+    self.def.generate(state);
+    state.builder.inst(Inst::StV(self.var));
+    self.expr.generate(state);
   }
 }
 
 impl Generate for Lambda {
   fn generate(self, state: &mut State) {
-    todo!()
+    let label = state.builder.label();
+    // generate module handle and function PC
+    state.builder.inst(Inst::LdG(State::MOD_HANDLE));
+    state.builder.pc_imm(Inst::PushU, label);
+    // generate captured variables
+    let mut captures_rev = Vec::new();
+    for capture in self.captures.into_iter().rev() {
+      state.builder.inst(Inst::LdV(capture.captured));
+      captures_rev.push(capture.id);
+    }
+    // generate lambda object
+    let len = captures_rev.len() as u64 + 2;
+    state.builder.inst(Inst::PushU(len));
+    state.gen_builtin_call("new_lambda");
+    // push the rest part as a function to state
+    state.funcs.push(Func {
+      label,
+      params: self.params,
+      captures_rev,
+      expr: self.expr,
+    });
   }
 }
 
 impl Generate for Apply {
   fn generate(self, state: &mut State) {
-    todo!()
+    let len = self.args.len() as u64;
+    self.args.into_iter().for_each(|v| v.generate(state));
+    self.func.generate(state);
+    state.builder.inst(Inst::PushU(len + 1));
+    state.gen_builtin_call("invoke");
   }
 }
 
 impl Generate for If {
   fn generate(self, state: &mut State) {
-    todo!()
+    let label_else = state.builder.label();
+    let label_end = state.builder.label();
+    self.cond.generate(state);
+    state.gen_builtin_call("to_bool");
+    state.builder.cfi(Inst::Bz, label_else);
+    self.then.generate(state);
+    state.builder.cfi(Inst::Jmp, label_end);
+    state.builder.insert_label(label_else);
+    self.else_then.generate(state);
+    state.builder.insert_label(label_end);
+  }
+}
+
+impl Generate for Builtin {
+  fn generate(self, state: &mut State) {
+    state.gen_builtin_call(match self {
+      Self::Atom => "atom",
+      Self::Number => "number",
+      Self::Equal => "equal",
+      Self::Car => "car",
+      Self::Cdr => "cdr",
+      Self::Cons => "cons",
+      Self::List => "list",
+      Self::Add => "builtin_add",
+      Self::Sub => "builtin_sub",
+      Self::Mul => "builtin_mul",
+      Self::Div => "builtin_div",
+      Self::Gt => "builtin_gt",
+      Self::Lt => "builtin_lt",
+      Self::Ge => "builtin_ge",
+      Self::Le => "builtin_le",
+      Self::Eq => "builtin_eq",
+      Self::Print => "builtin_print",
+    })
+  }
+}
+
+impl Generate for Func {
+  fn generate(self, state: &mut State) {
+    // insert label
+    state.builder.insert_label(self.label);
+    // check argument number
+    let nargs = self.params.len() as u64 + 1;
+    state.builder.inst(Inst::PushU(nargs));
+    state.gen_builtin_call("check_nargs");
+    // store captured variables
+    let len = self.captures_rev.len();
+    for (i, id) in self.captures_rev.into_iter().rev().enumerate() {
+      if i + 1 != len {
+        state.builder.inst(Inst::Dup);
+      }
+      state.builder.inst(Inst::LdPO(i as i64));
+      state.builder.inst(Inst::StV(id));
+    }
+    // store parameters
+    for id in self.params.into_iter().rev() {
+      state.builder.inst(Inst::StV(id));
+    }
+    // generate body and return
+    self.expr.generate(state);
+    state.builder.inst(Inst::Ret);
   }
 }
