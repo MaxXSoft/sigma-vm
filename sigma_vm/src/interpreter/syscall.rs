@@ -88,6 +88,7 @@ where
       10 => Self::write(state, stderr()),
       11 => Self::exit(state),
       12 => process::abort(),
+      13 => Self::bytes_eq(state),
       _ => match self.handlers.get_mut(&syscall) {
         Some(handler) => handler.handle(state),
         None => P::report_invalid_syscall().map(|_| ControlFlow::Continue),
@@ -265,5 +266,21 @@ where
   fn exit(state: VmState<P, H>) -> Result<ControlFlow, P::Error> {
     let code = P::get_int_ptr(&P::unwrap_val(state.value_stack.pop())?)?;
     process::exit(code as i32)
+  }
+
+  /// Checks if the given two bytes-like objects are equal.
+  ///
+  /// Stack layout:
+  /// * s0 (TOS): object.
+  /// * s1 (TOS): another object.
+  fn bytes_eq(state: VmState<P, H>) -> Result<ControlFlow, P::Error> {
+    // get bytes to be compared
+    let p1 = P::get_ptr(&P::unwrap_val(state.value_stack.pop())?)?;
+    let s1 = P::str(state.heap, p1)?;
+    let p2 = P::get_ptr(&P::unwrap_val(state.value_stack.pop())?)?;
+    let s2 = P::str(state.heap, p2)?;
+    // perform comparison
+    state.value_stack.push(P::int_val((s1 == s2) as u64));
+    Ok(ControlFlow::Continue)
   }
 }
