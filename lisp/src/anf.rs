@@ -151,6 +151,8 @@ pub enum Builtin {
   Le,
   /// =
   Eq,
+  /// print
+  Print,
 }
 
 /// A-normal form generator.
@@ -567,6 +569,7 @@ impl Env {
         ">=" => Some(Value::Builtin(Builtin::Ge)),
         "<=" => Some(Value::Builtin(Builtin::Le)),
         "=" => Some(Value::Builtin(Builtin::Eq)),
+        "print" => Some(Value::Builtin(Builtin::Print)),
         _ => None,
       }
     }
