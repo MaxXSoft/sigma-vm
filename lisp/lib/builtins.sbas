@@ -15,6 +15,24 @@
 #define OBJ_LIST    3   // List.
 #define OBJ_LAMBDA  4   // Lambda.
 
+  # ID and name of builtin functions.
+#define BUILTIN_ATOM(e)   e(atom,         1)
+#define BUILTIN_NUMBER(e) e(number,       2)
+#define BUILTIN_EQUAL(e)  e(equal,        3)
+#define BUILTIN_CAR(e)    e(car,          4)
+#define BUILTIN_CDR(e)    e(cdr,          5)
+#define BUILTIN_CONS(e)   e(cons,         6)
+#define BUILTIN_LIST(e)   e(list,         7)
+#define BUILTIN_ADD(e)    e(builtin_add,  8)
+#define BUILTIN_SUB(e)    e(builtin_sub,  9)
+#define BUILTIN_MUL(e)    e(builtin_mul,  10)
+#define BUILTIN_DIV(e)    e(builtin_div,  11)
+#define BUILTIN_GT(e)     e(builtin_gt,   12)
+#define BUILTIN_LT(e)     e(builtin_lt,   13)
+#define BUILTIN_GE(e)     e(builtin_ge,   14)
+#define BUILTIN_LE(e)     e(builtin_le,   15)
+#define BUILTIN_EQ(e)     e(builtin_eq,   16)
+
   # Creates a new Lisp object with a specific,
   # leaves the value field uninitialized.
 #define NEW_OBJ(obj, kind)  \
@@ -35,10 +53,42 @@ new_##name:                           \
   stdo  OFFSET_VALUE                  \
   ret
 
+  # Creates a new builtin object.
+#define NEW_BUILTIN(name, obj_id) \
+  pushu name##_impl               \
+  call  new_builtin               \
+  stg   obj_id
+
+  # Declares a new builtin function.
+#define DECL_BUILTIN(name, obj_id)  \
+name:                               \
+  ldg   obj_id                      \
+  ret                               \
+  .section exports                  \
+  .export #name, name, 0, 1         \
+  .section insts                    \
+name##_impl:
 
   .section insts
   # Store the handle of the current module to global variable.
   stg   0
+  # Initialize builtin function objects.
+  BUILTIN_ATOM(NEW_BUILTIN)
+  BUILTIN_NUMBER(NEW_BUILTIN)
+  BUILTIN_EQUAL(NEW_BUILTIN)
+  BUILTIN_CAR(NEW_BUILTIN)
+  BUILTIN_CDR(NEW_BUILTIN)
+  BUILTIN_CONS(NEW_BUILTIN)
+  BUILTIN_LIST(NEW_BUILTIN)
+  BUILTIN_ADD(NEW_BUILTIN)
+  BUILTIN_SUB(NEW_BUILTIN)
+  BUILTIN_MUL(NEW_BUILTIN)
+  BUILTIN_DIV(NEW_BUILTIN)
+  BUILTIN_GT(NEW_BUILTIN)
+  BUILTIN_LT(NEW_BUILTIN)
+  BUILTIN_GE(NEW_BUILTIN)
+  BUILTIN_LE(NEW_BUILTIN)
+  BUILTIN_EQ(NEW_BUILTIN)
   ret
 
 
@@ -49,45 +99,32 @@ new_##name:                           \
   # * s1: the Lisp object to be invoked.
   # * s2 ...: arguments of the invocation.
 invoke:
-  # store argument number
-  stv   0
-  # check argument number
-  ldv   0
-  pushu 0
-  eq
-  bz    1f
-  lac   expect_obj
-  jmp   panic
-1:
-  # store object
-  stv   1
-  # check if is a lambda
-  ldv   1
+  # check if object is a lambda
+  swap
+  dup
   lddo  OFFSET_KIND
   pushu OBJ_LAMBDA
   eq
-  bnz   invoke_lambda
-  # object is not callable
-  lac   not_callable
-  jmp   panic
-
-
-  # Calls a user-defined function.
-invoke_lambda:
+  bz    _not_callable
   # setup stack
-  ldv   1
+  stv   0
+  ldv   0
   lddo  OFFSET_CAPTURES
-  ldv   0                 # number of arguments
-  ldv   1
+  swap
+  ldv   0
   lddo  OFFSET_MOD_HANDLE
-  ldv   1
+  ldv   0
   lddo  OFFSET_VALUE      # function PC
-  # Stack layout after entered the user-defined function:
+  # Stack layout after entered the target function:
   # * s0 (TOS): number of arguments.
   # * s1: array of captured arguments.
   # * s2 ...: other arguments.
   callexts
   ret
+_not_callable:
+  # object is not callable
+  lac   not_callable
+  jmp   panic
 
 
   # Panics and abort.
@@ -187,14 +224,15 @@ new_list:
   # * s{n + 1}: function PC.
   # * s{n + 2}: module handle.
 new_lambda:
-  # create captured variable array
+  # check argument number
   pushu 2
   sub
+  bznp  2f
+  # create captured variable array
   dup
   newac ptr
   stv   0
   # store variables to array
-  bznp  2f
 1:
   swap
   ldv   0
@@ -205,8 +243,11 @@ new_lambda:
   add
   stv   0
   loop  1b
-2:
   ldv   0
+  jmp   3f
+2:
+  pushu 0
+3:
   # create new object
   NEW_OBJ(func_object, OBJ_LAMBDA)
   dups1
@@ -221,158 +262,176 @@ new_lambda:
   ret
 
 
+  # Creates a lambda object of a given builtin function.
+  #
+  # Stack layout:
+  # * s0 (TOS): builtin function PC.
+new_builtin:
+  NEW_OBJ(func_object, OBJ_LAMBDA)
+  dup
+  ldg   0
+  stdo  OFFSET_MOD_HANDLE
+  dup
+  pushu 0
+  stdo  OFFSET_CAPTURES
+  dups1
+  swap
+  stdo  OFFSET_VALUE
+  ret
+
+
   # Builtin function `atom?`.
-atom:
+BUILTIN_ATOM(DECL_BUILTIN)
   # check argument number
-  ldv   0
   pushu 2
   call  check_nargs
+  pop
   # TODO
   ret
 
 
   # Builtin function `number?`.
-number:
+BUILTIN_NUMBER(DECL_BUILTIN)
   # check argument number
-  ldv   0
   pushu 2
   call  check_nargs
+  pop
   # TODO
   ret
 
 
   # Builtin function `eq?`.
-equal:
+BUILTIN_EQUAL(DECL_BUILTIN)
   # check argument number
-  ldv   0
   pushu 3
   call  check_nargs
+  pop
   # TODO
   ret
 
 
   # Builtin function `car`.
-car:
+BUILTIN_CAR(DECL_BUILTIN)
   # check argument number
-  ldv   0
   pushu 2
   call  check_nargs
+  pop
   # TODO
   ret
 
 
   # Builtin function `cdr`.
-cdr:
+BUILTIN_CDR(DECL_BUILTIN)
   # check argument number
-  ldv   0
   pushu 2
   call  check_nargs
+  pop
   # TODO
   ret
 
 
   # Builtin function `cons`.
-cons:
+BUILTIN_CONS(DECL_BUILTIN)
   # check argument number
-  ldv   0
   pushu 3
   call  check_nargs
+  pop
   # TODO
   ret
 
 
   # Builtin function `list`.
-list:
+BUILTIN_LIST(DECL_BUILTIN)
   # TODO
   ret
 
 
   # Builtin function `+`.
-builtin_add:
+BUILTIN_ADD(DECL_BUILTIN)
   # check argument number
-  ldv   0
   pushu 3
   call  check_nargs
+  pop
   # TODO
   ret
 
 
   # Builtin function `-`.
-builtin_sub:
+BUILTIN_SUB(DECL_BUILTIN)
   # check argument number
-  ldv   0
   pushu 3
   call  check_nargs
+  pop
   # TODO
   ret
 
 
   # Builtin function `*`.
-builtin_mul:
+BUILTIN_MUL(DECL_BUILTIN)
   # check argument number
-  ldv   0
   pushu 3
   call  check_nargs
+  pop
   # TODO
   ret
 
 
   # Builtin function `/`.
-builtin_div:
+BUILTIN_DIV(DECL_BUILTIN)
   # check argument number
-  ldv   0
   pushu 3
   call  check_nargs
+  pop
   # TODO
   ret
 
 
   # Builtin function `>`.
-builtin_gt:
+BUILTIN_GT(DECL_BUILTIN)
   # check argument number
-  ldv   0
   pushu 3
   call  check_nargs
+  pop
   # TODO
   ret
 
 
   # Builtin function `<`.
-builtin_lt:
+BUILTIN_LT(DECL_BUILTIN)
   # check argument number
-  ldv   0
   pushu 3
   call  check_nargs
+  pop
   # TODO
   ret
 
 
   # Builtin function `>=`.
-builtin_ge:
+BUILTIN_GE(DECL_BUILTIN)
   # check argument number
-  ldv   0
   pushu 3
   call  check_nargs
+  pop
   # TODO
   ret
 
 
   # Builtin function `<=`.
-builtin_le:
+BUILTIN_LE(DECL_BUILTIN)
   # check argument number
-  ldv   0
   pushu 3
   call  check_nargs
+  pop
   # TODO
   ret
 
 
   # Builtin function `=`.
-builtin_eq:
+BUILTIN_EQ(DECL_BUILTIN)
   # check argument number
-  ldv   0
   pushu 3
   call  check_nargs
+  pop
   # TODO
   ret
 
@@ -380,8 +439,6 @@ builtin_eq:
   .section consts
 fatal:
   .str  "FATAL: "
-expect_obj:
-  .str  "expected Lisp object\n"
 not_callable:
   .str  "object is not callable\n"
 nargs_mismatch:
