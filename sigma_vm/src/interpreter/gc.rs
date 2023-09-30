@@ -172,9 +172,10 @@ impl GarbageCollector for MarkSweep {
         continue;
       }
       // get object metadata
-      if let Some(Meta::Obj(obj)) = heap.meta(ptr) {
+      if let Some((Meta::Obj(obj), ptr)) = heap.meta_ptr(ptr) {
         let object: &Object<[u64]> = P::object(heap, obj.ptr)?;
-        // mark object metadata and module handle
+        // mark pointer, object metadata and module handle
+        worklist.push((ptr, handle));
         worklist.push((obj.ptr, handle));
         worklist.push((obj.module, handle));
         // handle by kind
