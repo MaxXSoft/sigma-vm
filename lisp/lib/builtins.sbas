@@ -418,6 +418,78 @@ _unwrap_num_not_num:
   jmp   panic
 
 
+  # Checks if the given two objects are equal.
+  #
+  # Stack layout:
+  # * s0 (TOS): a Lisp object.
+  # * s1: another Lisp object.
+is_object_equal:
+  sta   1
+  # check kind
+  ldv   0
+  lddo  OFFSET_KIND
+  dup
+  stv   2
+  ldv   1
+  lddo  OFFSET_KIND
+  eq
+  bz    _is_object_equal_failed
+  # get values
+  ldv   0
+  ldpo  OFFSET_VALUE
+  ldv   1
+  ldpo  OFFSET_VALUE
+  # check if is number
+  ldv   2
+  pushu OBJ_NUM
+  eq
+  bz    _is_object_equal_not_num
+  eq
+  ret
+_is_object_equal_not_num:
+  # check if is list
+  ldv   2
+  pushu OBJ_NUM
+  eq
+  bz    _is_object_equal_not_list
+  # check if there is a value is zero
+  dups1
+  pushu 0
+  eq
+  swap
+  dups1
+  pushu 0
+  eq
+  or
+  bz    _is_object_equal_not_null
+  eq
+  ret
+_is_object_equal_not_null:
+  # check recursively
+  jmp   is_object_equal
+_is_object_equal_not_list:
+  # check if is lambda
+  ldv   2
+  pushu OBJ_NUM
+  eq
+  bz    _is_object_equal_not_lambda
+  eq
+  ldv   0
+  ldpo  OFFSET_MOD_HANDLE
+  ldv   1
+  ldpo  OFFSET_MOD_HANDLE
+  eq
+  and
+  ret
+_is_object_equal_not_lambda:
+  # is string or symbol, just check strings
+  sys   13
+  ret
+_is_object_equal_failed:
+  pushu 0
+  ret
+
+
   # Builtin function `atom?`.
 BUILTIN_ATOM(DECL_BUILTIN)
   # check argument number
@@ -450,8 +522,8 @@ BUILTIN_EQUAL(DECL_BUILTIN)
   pushu 3
   call  check_nargs
   pop
-  # TODO
-  ret
+  call  is_object_equal
+  jmp   new_bool
 
 
   # Builtin function `car`.
