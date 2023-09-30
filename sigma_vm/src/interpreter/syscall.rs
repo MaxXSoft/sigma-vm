@@ -1,3 +1,4 @@
+use crate::bytecode::consts::Const;
 use crate::interpreter::heap::{Heap, Meta, Ptr};
 use crate::interpreter::loader::Loader;
 use crate::interpreter::native::NativeLoader;
@@ -89,6 +90,9 @@ where
       11 => Self::exit(state),
       12 => process::abort(),
       13 => Self::bytes_eq(state),
+      14 => Self::itoa(state),
+      15 => Self::ftoa(state),
+      16 => Self::dtoa(state),
       _ => match self.handlers.get_mut(&syscall) {
         Some(handler) => handler.handle(state),
         None => P::report_invalid_syscall().map(|_| ControlFlow::Continue),
@@ -273,6 +277,9 @@ where
   /// Stack layout:
   /// * s0 (TOS): object.
   /// * s1 (TOS): another object.
+  ///
+  /// Stack layout after call:
+  /// * s0 (TOS): 0 for unequal, 1 for equal.
   fn bytes_eq(state: VmState<P, H>) -> Result<ControlFlow, P::Error> {
     // get bytes to be compared
     let p1 = P::get_ptr(&P::unwrap_val(state.value_stack.pop())?)?;
@@ -281,6 +288,51 @@ where
     let s2 = P::str(state.heap, p2)?;
     // perform comparison
     state.value_stack.push(P::int_val((s1 == s2) as u64));
+    Ok(ControlFlow::Continue)
+  }
+
+  /// Converts the given integer to string.
+  ///
+  /// Stack layout:
+  /// * s0 (TOS): integer.
+  ///
+  /// Stack layout after call:
+  /// * s0 (TOS): string.
+  fn itoa(state: VmState<P, H>) -> Result<ControlFlow, P::Error> {
+    let i = P::get_int_ptr(&P::unwrap_val(state.value_stack.pop())?)?;
+    let c = Const::from(format!("{i}"));
+    let hc = c.into_heap_const(state.heap);
+    state.value_stack.push(P::ptr_val(hc.ptr()));
+    Ok(ControlFlow::Continue)
+  }
+
+  /// Converts the given float to string.
+  ///
+  /// Stack layout:
+  /// * s0 (TOS): float.
+  ///
+  /// Stack layout after call:
+  /// * s0 (TOS): string.
+  fn ftoa(state: VmState<P, H>) -> Result<ControlFlow, P::Error> {
+    let f = P::get_f32(&P::unwrap_val(state.value_stack.pop())?)?;
+    let c = Const::from(format!("{f}"));
+    let hc = c.into_heap_const(state.heap);
+    state.value_stack.push(P::ptr_val(hc.ptr()));
+    Ok(ControlFlow::Continue)
+  }
+
+  /// Converts the given double to string.
+  ///
+  /// Stack layout:
+  /// * s0 (TOS): double.
+  ///
+  /// Stack layout after call:
+  /// * s0 (TOS): string.
+  fn dtoa(state: VmState<P, H>) -> Result<ControlFlow, P::Error> {
+    let d = P::get_f64(&P::unwrap_val(state.value_stack.pop())?)?;
+    let c = Const::from(format!("{d}"));
+    let hc = c.into_heap_const(state.heap);
+    state.value_stack.push(P::ptr_val(hc.ptr()));
     Ok(ControlFlow::Continue)
   }
 }
