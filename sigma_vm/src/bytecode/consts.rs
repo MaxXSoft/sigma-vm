@@ -422,7 +422,7 @@ impl ConstKind {
 /// Starts with an integer that represents the length of bytes,
 /// and then a byte array contains UTF-8 encoded string.
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Str<Bytes: ?Sized + Array<u8>> {
   pub len: u64,
   pub bytes: Bytes,
@@ -517,7 +517,7 @@ pub struct ObjectRef<'ofs> {
 /// Starts with an integer that represents the data length,
 /// and then a byte array contains the data.
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Raw<Bytes: ?Sized + Array<u8>> {
   pub len: u64,
   pub bytes: Bytes,
