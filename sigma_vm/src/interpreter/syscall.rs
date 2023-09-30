@@ -294,14 +294,24 @@ where
   /// Converts the given integer to string.
   ///
   /// Stack layout:
-  /// * s0 (TOS): integer.
+  /// * s0 (TOS): base.
+  /// * s1: integer.
   ///
   /// Stack layout after call:
   /// * s0 (TOS): string.
   fn itoa(state: VmState<P, H>) -> Result<ControlFlow, P::Error> {
-    let i = P::get_int_ptr(&P::unwrap_val(state.value_stack.pop())?)?;
-    let c = Const::from(format!("{i}"));
-    let hc = c.into_heap_const(state.heap);
+    let base = P::get_int_ptr(&P::unwrap_val(state.value_stack.pop())?)?;
+    let mut i = P::get_int_ptr(&P::unwrap_val(state.value_stack.pop())?)?;
+    let mut s = String::new();
+    loop {
+      let d = i % base;
+      i /= base;
+      s.push(P::unwrap_val(char::from_digit(d as u32, base as u32))?);
+      if i == 0 {
+        break;
+      }
+    }
+    let hc = Const::from(s).into_heap_const(state.heap);
     state.value_stack.push(P::ptr_val(hc.ptr()));
     Ok(ControlFlow::Continue)
   }
@@ -315,8 +325,7 @@ where
   /// * s0 (TOS): string.
   fn ftoa(state: VmState<P, H>) -> Result<ControlFlow, P::Error> {
     let f = P::get_f32(&P::unwrap_val(state.value_stack.pop())?)?;
-    let c = Const::from(format!("{f}"));
-    let hc = c.into_heap_const(state.heap);
+    let hc = Const::from(format!("{f}")).into_heap_const(state.heap);
     state.value_stack.push(P::ptr_val(hc.ptr()));
     Ok(ControlFlow::Continue)
   }
@@ -330,8 +339,7 @@ where
   /// * s0 (TOS): string.
   fn dtoa(state: VmState<P, H>) -> Result<ControlFlow, P::Error> {
     let d = P::get_f64(&P::unwrap_val(state.value_stack.pop())?)?;
-    let c = Const::from(format!("{d}"));
-    let hc = c.into_heap_const(state.heap);
+    let hc = Const::from(format!("{d}")).into_heap_const(state.heap);
     state.value_stack.push(P::ptr_val(hc.ptr()));
     Ok(ControlFlow::Continue)
   }
