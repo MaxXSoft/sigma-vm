@@ -180,6 +180,14 @@ where
         gctx.push(gctx.peek_s0()?.clone());
         PcUpdate::Next
       }
+      Inst::DupS1 => {
+        let s0 = gctx.pop()?;
+        let s1 = gctx.pop()?;
+        gctx.push(s0.clone());
+        gctx.push(s1);
+        gctx.push(s0);
+        PcUpdate::Next
+      }
       Inst::Swap => {
         let mut s0 = gctx.pop()?;
         let s1 = gctx.peek_s0_mut()?;

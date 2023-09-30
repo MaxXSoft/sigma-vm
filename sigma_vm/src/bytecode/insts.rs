@@ -121,6 +121,10 @@ def_opc_inst! {
   Pop,
   /// Duplicate s0.
   Dup,
+  /// Duplicate s0, and insert it behind the s1.
+  ///
+  /// Previous: `s1, s0 (TOS)`, After: `s0, s1, s0 (TOS)`.
+  DupS1,
   /// Swap s0 and s1.
   Swap,
   /// Load address s0, and push the signed 8-bit result to stack.
