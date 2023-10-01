@@ -52,6 +52,10 @@ where
     // generate on the ANF
     module_gen.generate_on(stmt);
   }
+  // check if there are undefined variables
+  if anf_gen.check_undefined_vars() {
+    return;
+  }
   // generate module and write to the output
   let module = module_gen.generate();
   let writer = Writer::new(&module);
