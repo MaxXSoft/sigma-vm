@@ -251,7 +251,9 @@ new_lambda:
   # create captured variable array
   dup
   newac ptr
+  dup
   stv   0
+  stv   1
   # store variables to array
 1:
   swap
@@ -263,7 +265,7 @@ new_lambda:
   add
   stv   0
   loop  1b
-  ldv   0
+  ldv   1
   jmp   3f
 2:
   pushu 0
