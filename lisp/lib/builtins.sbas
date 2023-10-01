@@ -543,6 +543,7 @@ print_obj:
   # get value
   dup
   ldpo  OFFSET_VALUE
+  swap
   # handle by kind
   dup
   lddo  OFFSET_KIND
@@ -553,8 +554,8 @@ print_obj:
   pushu OBJ_NUM
   eq
   bz    1f
-  pushu 10
-  sys   14
+  itd
+  sys   16
   jmp   print
 1:
   # check if is string
@@ -573,8 +574,6 @@ print_obj:
   pushu OBJ_SYM
   eq
   bz    1f
-  lac   single_quote
-  call  print
   jmp   print
 1:
   # check if is list
@@ -864,6 +863,8 @@ BUILTIN_PRINT(DECL_BUILTIN)
   call  check_nargs
   pop
   call  print_obj
+  lac   new_line
+  call  print
   pushu 0
   jmp   new_list
 
@@ -889,8 +890,6 @@ false:
   .str  "f"
 quote:
   .str  "\""
-single_quote:
-  .str  "'"
 left_paren:
   .str  "("
 space:
@@ -903,6 +902,8 @@ lambda_mid:
   .str  ", pc "
 lambda_end:
   .str  ">"
+new_line:
+  .str  "\n"
 
 object:
   .object 24, 8, [2]
