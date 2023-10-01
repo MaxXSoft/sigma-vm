@@ -218,6 +218,12 @@ impl Generator {
     Ok(None)
   }
 
+  /// Checks for undefined variables and reports.
+  /// Returns `true` if an undefined variable exists.
+  pub fn check_undefined_vars(&self) -> bool {
+    self.env.check_undefined_vars()
+  }
+
   /// Returns the symbol from the current element.
   fn sym(elem: &Element) -> Result<String> {
     match &elem.kind {
@@ -412,18 +418,15 @@ impl Generator {
     match &elem.kind {
       ElemKind::Num(n) => Ok(Expr::Value(Value::Num(*n))),
       ElemKind::Str(s) => Ok(Expr::Value(Value::Str(s.clone()))),
-      ElemKind::Sym(s) => self.gen_sym(s, &elem.span).map(Expr::Value),
+      ElemKind::Sym(s) => Ok(Expr::Value(self.gen_sym(s, &elem.span))),
       ElemKind::Quote(e) => Ok(Expr::Value(self.gen_quote(&e))),
       ElemKind::List(es) => self.gen_list(es, &elem.span),
     }
   }
 
   /// Generates a symbol.
-  fn gen_sym(&mut self, sym: &str, span: &Span) -> Result<Value> {
-    self
-      .env
-      .get(sym)
-      .ok_or_else(|| log_error!(span, "symbol {sym} not found"))
+  fn gen_sym(&mut self, sym: &str, span: &Span) -> Value {
+    self.env.get(sym, span)
   }
 
   /// Generates a quotation.
@@ -529,56 +532,70 @@ impl Env {
   }
 
   /// Finds the given variable in all scopes.
-  fn get(&mut self, name: &str) -> Option<Value> {
-    self.get_or_capture(name, self.scopes.len() - 1)
+  fn get(&mut self, name: &str, span: &Span) -> Value {
+    self.get_or_capture(name, span, self.scopes.len() - 1)
   }
 
   /// Finds the given variable in the given scope.
   /// If not found, finds in the outer scope, and marks it as a captured
   /// variable in the current scope.
-  fn get_or_capture(&mut self, name: &str, scope_id: usize) -> Option<Value> {
+  fn get_or_capture(&mut self, name: &str, span: &Span, scope_id: usize) -> Value {
     if let Some(id) = self.scopes[scope_id].get(name) {
-      Some(match scope_id {
+      match scope_id {
         0 => Value::GlobalVar(id),
         _ => Value::Var(id),
-      })
+      }
     } else if scope_id != 0 {
-      match self.get_or_capture(name, scope_id - 1) {
-        Some(Value::Var(id)) => {
+      match self.get_or_capture(name, span, scope_id - 1) {
+        Value::Var(id) => {
           let scope = self.scopes.get_mut(scope_id).unwrap();
-          Some(Value::Var(scope.define_captured(name.into(), id)))
+          Value::Var(scope.define_captured(name.into(), id))
         }
         value => value,
       }
     } else {
       // check if is a builtin function
       match name {
-        "atom?" => Some(Value::Builtin(Builtin::Atom)),
-        "number?" => Some(Value::Builtin(Builtin::Number)),
-        "eq?" => Some(Value::Builtin(Builtin::Equal)),
-        "car" => Some(Value::Builtin(Builtin::Car)),
-        "cdr" => Some(Value::Builtin(Builtin::Cdr)),
-        "cons" => Some(Value::Builtin(Builtin::Cons)),
-        "list" => Some(Value::Builtin(Builtin::List)),
-        "+" => Some(Value::Builtin(Builtin::Add)),
-        "-" => Some(Value::Builtin(Builtin::Sub)),
-        "*" => Some(Value::Builtin(Builtin::Mul)),
-        "/" => Some(Value::Builtin(Builtin::Div)),
-        ">" => Some(Value::Builtin(Builtin::Gt)),
-        "<" => Some(Value::Builtin(Builtin::Lt)),
-        ">=" => Some(Value::Builtin(Builtin::Ge)),
-        "<=" => Some(Value::Builtin(Builtin::Le)),
-        "=" => Some(Value::Builtin(Builtin::Eq)),
-        "print" => Some(Value::Builtin(Builtin::Print)),
-        _ => None,
+        "atom?" => Value::Builtin(Builtin::Atom),
+        "number?" => Value::Builtin(Builtin::Number),
+        "eq?" => Value::Builtin(Builtin::Equal),
+        "car" => Value::Builtin(Builtin::Car),
+        "cdr" => Value::Builtin(Builtin::Cdr),
+        "cons" => Value::Builtin(Builtin::Cons),
+        "list" => Value::Builtin(Builtin::List),
+        "+" => Value::Builtin(Builtin::Add),
+        "-" => Value::Builtin(Builtin::Sub),
+        "*" => Value::Builtin(Builtin::Mul),
+        "/" => Value::Builtin(Builtin::Div),
+        ">" => Value::Builtin(Builtin::Gt),
+        "<" => Value::Builtin(Builtin::Lt),
+        ">=" => Value::Builtin(Builtin::Ge),
+        "<=" => Value::Builtin(Builtin::Le),
+        "=" => Value::Builtin(Builtin::Eq),
+        "print" => Value::Builtin(Builtin::Print),
+        _ => {
+          // define an undefined variable
+          Value::GlobalVar(
+            self
+              .scopes
+              .first_mut()
+              .unwrap()
+              .define_undefined(name.into(), span.clone()),
+          )
+        }
       }
     }
+  }
+
+  /// Reports all undefined variables.
+  fn check_undefined_vars(&self) -> bool {
+    self.scopes.first().unwrap().check_undefined_vars()
   }
 }
 
 /// Scope of environment.
 struct Scope {
-  vars: HashMap<String, VarKind>,
+  vars: HashMap<String, Var>,
   next_var_id: u64,
 }
 
@@ -593,29 +610,47 @@ impl Scope {
 
   /// Defines a new variable. Returns the variable number.
   fn define(&mut self, name: String) -> u64 {
-    let id = self.next_var_id;
-    self.next_var_id += 1;
-    self.vars.insert(name, VarKind::Local(id));
-    id
+    match self.vars.get_mut(&name) {
+      Some(v) if matches!(v.kind, VarKind::Undefined(_)) => {
+        v.kind = VarKind::Local;
+        v.id
+      }
+      _ => {
+        let id = self.var_id();
+        self.vars.insert(name, Var::local(id));
+        id
+      }
+    }
   }
 
   /// Defines a new argument. Returns the variable number.
   fn define_arg(&mut self, name: String, i: u64) -> u64 {
     self.next_var_id = std::cmp::max(self.next_var_id, i + 1);
-    self.vars.insert(name, VarKind::Local(i));
+    self.vars.insert(name, Var::local(i));
     i
   }
 
   /// Defines a new captured variable. Returns the variable number.
   fn define_captured(&mut self, name: String, outer: u64) -> u64 {
-    let id = self.next_var_id;
-    self.next_var_id += 1;
-    self.vars.insert(name, VarKind::Captured(id, outer));
+    let id = self.var_id();
+    self.vars.insert(name, Var::captured(id, outer));
+    id
+  }
+
+  /// Defines a new undefined variable. Returns the variable number.
+  fn define_undefined(&mut self, name: String, span: Span) -> u64 {
+    let id = self.var_id();
+    self.vars.insert(name.into(), Var::undefined(id, span));
     id
   }
 
   /// Defines a new temporary variable. Returns the variable number.
   fn define_temp(&mut self) -> u64 {
+    self.var_id()
+  }
+
+  /// Returns a variable ID, and updates the internal ID.
+  fn var_id(&mut self) -> u64 {
     let id = self.next_var_id;
     self.next_var_id += 1;
     id
@@ -623,10 +658,7 @@ impl Scope {
 
   /// Finds the given variable.
   fn get(&self, name: &str) -> Option<u64> {
-    self.vars.get(name).map(|v| match v {
-      VarKind::Local(id) => *id,
-      VarKind::Captured(id, _) => *id,
-    })
+    self.vars.get(name).map(|v| v.id)
   }
 
   /// Consumes the current scope and returns a list of all captured variables
@@ -635,20 +667,67 @@ impl Scope {
     let mut captures: Vec<_> = self
       .vars
       .into_values()
-      .filter_map(|v| match v {
-        VarKind::Captured(id, captured) => Some(Captured { id, captured }),
+      .filter_map(|v| match v.kind {
+        VarKind::Captured(captured) => Some(Captured { id: v.id, captured }),
         _ => None,
       })
       .collect();
     captures.sort_by_key(|c| c.id);
     captures
   }
+
+  /// Reports all undefined variables.
+  fn check_undefined_vars(&self) -> bool {
+    let mut has_undefined = false;
+    for (name, var) in &self.vars {
+      if let VarKind::Undefined(span) = &var.kind {
+        log_error!(span, "symbol {name} not found");
+        has_undefined = true;
+      }
+    }
+    has_undefined
+  }
+}
+
+/// Variable.
+struct Var {
+  id: u64,
+  kind: VarKind,
+}
+
+impl Var {
+  /// Creates a new local variable.
+  fn local(id: u64) -> Self {
+    Self {
+      id,
+      kind: VarKind::Local,
+    }
+  }
+
+  /// Creates a new captured variable.
+  fn captured(id: u64, outer: u64) -> Self {
+    Self {
+      id,
+      kind: VarKind::Captured(outer),
+    }
+  }
+
+  /// Creates a new undefined variable.
+  fn undefined(id: u64, span: Span) -> Self {
+    Self {
+      id,
+      kind: VarKind::Undefined(span),
+    }
+  }
 }
 
 /// Kind of variable.
 enum VarKind {
-  /// Local variable, with a variable ID.
-  Local(u64),
-  /// Captured variable, with a variable ID and a captured variable ID.
-  Captured(u64, u64),
+  /// Local variable.
+  Local,
+  /// Captured variable, with a captured variable ID.
+  Captured(u64),
+  /// Undefined variable, should be defined later.
+  /// With a span of the first reference.
+  Undefined(Span),
 }
