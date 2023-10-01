@@ -159,13 +159,15 @@ impl Builder {
   pub fn push_f32(&mut self, value: f32) {
     self.inst(Inst::PushU(
       unsafe { *(&value as *const _ as *const u32) } as u64
-    ))
+    ));
+    self.inst(Inst::ITF);
   }
 
   /// Inserts a new instruction for pushing a
   /// 64-bit floating point into the value stack.
   pub fn push_f64(&mut self, value: f64) {
-    self.inst(Inst::PushU(unsafe { *(&value as *const _ as *const u64) }))
+    self.inst(Inst::PushU(unsafe { *(&value as *const _ as *const u64) }));
+    self.inst(Inst::ITD);
   }
 
   /// Replaces the instruction at the given PC.
