@@ -93,21 +93,17 @@ impl FromStr for Size {
 
   fn from_str(s: &str) -> Result<Self, Self::Err> {
     let s = s.to_ascii_lowercase();
-    let digits = match s.find(|c: char| !c.is_ascii_digit()) {
-      Some(i) => &s.as_str()[..i],
-      None => &s,
+    let (digits, unit) = match s.find(|c: char| !c.is_ascii_digit()) {
+      Some(i) => (&s.as_str()[..i], Some(&s.as_str()[i..])),
+      None => (s.as_str(), None),
     };
     let size: usize = digits.parse().unwrap();
-    if s.len() == digits.len() || s.ends_with('b') {
-      Ok(Self::Bytes(size))
-    } else if s.ends_with('k') || s.ends_with("kb") {
-      Ok(Self::Kilobytes(size))
-    } else if s.ends_with('m') || s.ends_with("mb") {
-      Ok(Self::Megabytes(size))
-    } else if s.ends_with('g') || s.ends_with("gb") {
-      Ok(Self::Gigabytes(size))
-    } else {
-      Err("size can only end with B/KB/MB/GB")
+    match unit {
+      None | Some("b") => Ok(Self::Bytes(size)),
+      Some("k") | Some("kb") => Ok(Self::Kilobytes(size)),
+      Some("m") | Some("mb") => Ok(Self::Megabytes(size)),
+      Some("g") | Some("gb") => Ok(Self::Gigabytes(size)),
+      _ => Err("size can only end with B/KB/MB/GB"),
     }
   }
 }
