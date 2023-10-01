@@ -462,11 +462,11 @@ where
         }
       }
       Inst::BzNP(opr) => {
-        let s0 = gctx.pop_int_ptr()?;
-        if s0 == 0 {
+        let s0 = gctx.pop()?;
+        if P::get_any(&s0) == 0 {
           PcUpdate::Set((self.pc as i64 + opr) as u64)
         } else {
-          gctx.push_int(s0);
+          gctx.push(s0);
           PcUpdate::Next
         }
       }
