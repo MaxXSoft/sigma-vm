@@ -862,11 +862,10 @@ BUILTIN_PRINT(DECL_BUILTIN)
   pushu 2
   call  check_nargs
   pop
+  dup
   call  print_obj
   lac   new_line
-  call  print
-  pushu 0
-  jmp   new_list
+  jmp   print
 
 
   .section consts
