@@ -339,7 +339,6 @@ impl Dump for (usize, &Inst) {
     W: Write,
   {
     let (pc, inst) = *self;
-    write!(writer, "{:?}", inst.opcode())?;
     // get operand kind
     enum Kind {
       Normal,
@@ -358,20 +357,23 @@ impl Dump for (usize, &Inst) {
       }
       _ => Kind::Normal,
     };
-    // dump operand
+    // dump opcode and operand
     if let Some(opr) = inst.operand() {
+      write!(writer, "{:<9}", format!("{:?}", inst.opcode()))?;
       match opr {
         Operand::Signed(opr) => match kind {
-          Kind::Normal => write!(writer, "\t{opr}")?,
-          Kind::Cfi => write!(writer, "\t{INST_LABEL}{}", pc as i64 + opr)?,
+          Kind::Normal => write!(writer, "{opr}")?,
+          Kind::Cfi => write!(writer, "{INST_LABEL}{}", pc as i64 + opr)?,
           _ => unreachable!(),
         },
         Operand::Unsigned(opr) => match kind {
-          Kind::Normal => write!(writer, "\t{opr}")?,
-          Kind::Const => write!(writer, "\t{CONST_LABEL}{opr}")?,
+          Kind::Normal => write!(writer, "{opr}")?,
+          Kind::Const => write!(writer, "{CONST_LABEL}{opr}")?,
           _ => unreachable!(),
         },
       }
+    } else {
+      write!(writer, "{:?}", inst.opcode())?;
     }
     writeln!(writer)
   }
