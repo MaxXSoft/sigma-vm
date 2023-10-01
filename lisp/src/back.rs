@@ -392,13 +392,17 @@ impl Generate for Func {
     state.builder.inst(Inst::PushU(nargs));
     state.gen_builtin_call("check_nargs");
     // store captured variables
-    let len = self.captures_rev.len();
-    for (i, id) in self.captures_rev.into_iter().rev().enumerate() {
-      if i + 1 != len {
-        state.builder.inst(Inst::Dup);
+    if self.captures_rev.is_empty() {
+      state.builder.inst(Inst::Pop);
+    } else {
+      let len = self.captures_rev.len();
+      for (i, id) in self.captures_rev.into_iter().rev().enumerate() {
+        if i + 1 != len {
+          state.builder.inst(Inst::Dup);
+        }
+        state.builder.inst(Inst::LdPO(i as i64));
+        state.builder.inst(Inst::StV(id));
       }
-      state.builder.inst(Inst::LdPO(i as i64));
-      state.builder.inst(Inst::StV(id));
     }
     // store parameters
     for id in self.params.into_iter().rev() {
