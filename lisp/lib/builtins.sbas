@@ -494,7 +494,7 @@ is_object_equal:
 _is_object_equal_not_num:
   # check if is list
   ldv   2
-  pushu OBJ_NUM
+  pushu OBJ_LIST
   eq
   bz    _is_object_equal_not_list
   # check if there is a value is zero
@@ -515,7 +515,7 @@ _is_object_equal_not_null:
 _is_object_equal_not_list:
   # check if is lambda
   ldv   2
-  pushu OBJ_NUM
+  pushu OBJ_LAMBDA
   eq
   bz    _is_object_equal_not_lambda
   eq
