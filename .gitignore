@@ -6,3 +6,6 @@
 
 # debugging
 debug
+
+# VS Code
+.vscode
