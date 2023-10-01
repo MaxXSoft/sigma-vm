@@ -172,6 +172,7 @@ struct Func {
   params: Vec<u64>,
   captures_rev: Vec<u64>,
   expr: Box<Expr>,
+  is_lambda: bool,
 }
 
 /// Trait for generating statements.
@@ -251,6 +252,7 @@ impl Generate for Provide {
         params: vec![],
         captures_rev: vec![],
         expr: Box::new(Expr::Value(Value::GlobalVar(var))),
+        is_lambda: false,
       };
       // add to function list
       state.funcs.push(func);
@@ -330,6 +332,7 @@ impl Generate for Lambda {
       params: self.params,
       captures_rev,
       expr: self.expr,
+      is_lambda: true,
     });
   }
 }
@@ -387,21 +390,23 @@ impl Generate for Func {
   fn generate(self, state: &mut State) {
     // insert label
     state.builder.insert_label(self.label);
-    // check argument number
-    let nargs = self.params.len() as u64 + 1;
-    state.builder.inst(Inst::PushU(nargs));
-    state.gen_builtin_call("check_nargs");
-    // store captured variables
-    if self.captures_rev.is_empty() {
-      state.builder.inst(Inst::Pop);
-    } else {
-      let len = self.captures_rev.len();
-      for (i, id) in self.captures_rev.into_iter().rev().enumerate() {
-        if i + 1 != len {
-          state.builder.inst(Inst::Dup);
+    if self.is_lambda {
+      // check argument number
+      let nargs = self.params.len() as u64 + 1;
+      state.builder.inst(Inst::PushU(nargs));
+      state.gen_builtin_call("check_nargs");
+      // store captured variables
+      if self.captures_rev.is_empty() {
+        state.builder.inst(Inst::Pop);
+      } else {
+        let len = self.captures_rev.len();
+        for (i, id) in self.captures_rev.into_iter().rev().enumerate() {
+          if i + 1 != len {
+            state.builder.inst(Inst::Dup);
+          }
+          state.builder.inst(Inst::LdPO(i as i64));
+          state.builder.inst(Inst::StV(id));
         }
-        state.builder.inst(Inst::LdPO(i as i64));
-        state.builder.inst(Inst::StV(id));
       }
     }
     // store parameters
