@@ -184,7 +184,11 @@ impl Generate for Statement {
   fn generate(self, state: &mut State) {
     match self {
       Self::Define(d) => d.generate(state),
-      Self::Expr(e) => e.generate(state),
+      Self::Expr(e) => {
+        e.generate(state);
+        // drop the value
+        state.builder.inst(Inst::Pop)
+      }
       Self::Require(r) => r.generate(state),
       Self::Provide(p) => p.generate(state),
     }
