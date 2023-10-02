@@ -36,6 +36,7 @@ main:
   # return
   pushu 0
   ret
+main_end:
 
 print_str:
   dup
@@ -58,4 +59,4 @@ end_of_list:
   .str  "]\n"
 
   .section exports
-  .export "main", main, variadic, 1
+  .export "main", main, main_end, variadic, 1
