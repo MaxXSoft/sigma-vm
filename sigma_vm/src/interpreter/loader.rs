@@ -151,6 +151,21 @@ impl Loader {
   {
     unsafe { *(heap.addr(handle) as *const Source) }
   }
+
+  /// Returns information of the given handle as a string.
+  ///
+  /// This method can be used to print the stack trace.
+  pub(super) fn module_info(&self, handle: Ptr) -> String {
+    let path = self
+      .resolved_paths
+      .iter()
+      .find_map(|(p, h)| (*h == handle).then_some(p));
+    if let Some(path) = path {
+      format!("module {}", path.display())
+    } else {
+      format!("module 0x{:x}", u64::from(handle))
+    }
+  }
 }
 
 /// Source identifier of the loaded module.
