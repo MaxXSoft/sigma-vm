@@ -86,35 +86,48 @@ impl Builder {
     self.labels.get(&label).copied()
   }
 
-  /// Inserts a new exported function, with the given name, label, and number
-  /// of arguments and return values. The exported function is variadic if
-  /// `num_args` is [`None`].
+  /// Inserts a new exported function, with the given name, label, end label
+  /// and number of arguments and return values. The exported function is
+  /// variadic if `num_args` is [`None`].
   ///
   /// Returns `true` if the insertion succeeded.
-  pub fn export(&mut self, name: String, label: u64, num_args: Option<u64>, num_rets: u64) -> bool {
+  /// Returns an error if `end_label` comes before `label`.
+  pub fn export(
+    &mut self,
+    name: String,
+    label: u64,
+    end_label: u64,
+    num_args: Option<u64>,
+    num_rets: u64,
+  ) -> Result<bool, Error> {
     if self.exports.get(&name).is_some() {
-      return false;
+      return Ok(false);
     }
     // get label PC
-    let pc = if let Some(pc) = self.labels.get(&label) {
-      *pc
-    } else {
-      self
-        .pending_labels
-        .entry(label)
-        .or_default()
-        .push(LabelKind::Export(name.clone()));
-      0
-    };
+    let (pc, size) =
+      if let Some((pc, end)) = self.labels.get(&label).zip(self.labels.get(&end_label)) {
+        if end < pc {
+          return Err(Error::InvalidExportSize(name));
+        }
+        (*pc, *end - *pc)
+      } else {
+        self
+          .pending_labels
+          .entry(label)
+          .or_default()
+          .push(LabelKind::Export(name.clone(), end_label));
+        (0, 0)
+      };
     // create call site
     let call_site = CallSite {
       pc,
+      size,
       num_args: num_args.into(),
       num_rets,
     };
     // add to exports
     self.exports.insert(name, call_site);
-    true
+    Ok(true)
   }
 
   /// Inserts a new instruction at the current PC.
@@ -203,7 +216,20 @@ impl Builder {
             assert_eq!(*i, index);
             unsafe { c.object_mut() }.unwrap().destructor = pc;
           }
-          LabelKind::Export(name) => self.exports.get_mut(&name).unwrap().pc = pc,
+          LabelKind::Export(name, end_label) => {
+            let call_site = self.exports.get_mut(&name).unwrap();
+            // get and check the end label
+            let end = *self
+              .labels
+              .get(&end_label)
+              .ok_or(Error::LabelNotFound(end_label))?;
+            if end < pc {
+              return Err(Error::InvalidExportSize(name));
+            }
+            // update PC and size
+            call_site.pc = pc;
+            call_site.size = end - pc;
+          }
           LabelKind::Cfi(i, cfi) => self.insts[i as usize] = cfi(pc as i64 - i as i64),
           LabelKind::PcImm(i, pc_imm) => self.insts[i as usize] = pc_imm(pc),
         }
@@ -225,8 +251,8 @@ enum LabelKind {
   /// with the constant index.
   Object(u64),
   /// Label corresponding to an export information,
-  /// with the name of the export.
-  Export(String),
+  /// with the name and the end label of the export.
+  Export(String, u64),
   /// Label corresponding to a control flow instruction,
   /// with its PC and constructor.
   Cfi(u64, CfInstConstructor),
@@ -246,12 +272,15 @@ pub type PcInstConstructor = fn(u64) -> Inst;
 pub enum Error {
   /// Label not found.
   LabelNotFound(u64),
+  /// Invalid export size, with the export name.
+  InvalidExportSize(String),
 }
 
 impl fmt::Display for Error {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     match self {
       Self::LabelNotFound(id) => write!(f, "label {id} not found"),
+      Self::InvalidExportSize(name) => write!(f, "export {name} has an invalid size"),
     }
   }
 }
