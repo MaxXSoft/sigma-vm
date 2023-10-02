@@ -545,8 +545,10 @@ pub struct Export {
   pub _comma1: Token![,],
   pub label: LabelRef,
   pub _comma2: Token![,],
-  pub num_args: NumArgs,
+  pub end_label: LabelRef,
   pub _comma3: Token![,],
+  pub num_args: NumArgs,
+  pub _comma4: Token![,],
   pub num_rets: Token![int],
 }
 
