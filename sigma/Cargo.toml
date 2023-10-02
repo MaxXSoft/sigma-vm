@@ -1,8 +1,8 @@
 [package]
 name = "sigma"
-version = "0.0.1"
+version = "0.0.2"
 edition = "2021"
 
 [dependencies]
 clap = { version = "4.3.21", features = ["derive"] }
-sigma_vm = { path = "../sigma_vm", version = "0.0.1" }
+sigma_vm = { path = "../sigma_vm", version = "0.0.2" }

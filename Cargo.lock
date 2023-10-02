@@ -294,7 +294,7 @@ dependencies = [
 
 [[package]]
 name = "sbas"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "clap",
  "laps",
@@ -303,7 +303,7 @@ dependencies = [
 
 [[package]]
 name = "sbdump"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "clap",
  "sigma_vm",
@@ -311,7 +311,7 @@ dependencies = [
 
 [[package]]
 name = "sigma"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "clap",
  "sigma_vm",
@@ -319,7 +319,7 @@ dependencies = [
 
 [[package]]
 name = "sigma_vm"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "leb128",
  "libloading",
