@@ -82,6 +82,7 @@ impl State {
   /// Generates the `main` function.
   fn gen_main(&mut self, stmts: Vec<Statement>) {
     let main = self.builder.label();
+    let main_end = self.builder.label();
     self.builder.insert_label(main);
     // clear all arguments
     let loop_start = self.builder.label();
@@ -99,8 +100,9 @@ impl State {
     // generate return
     self.builder.inst(Inst::PushU(0));
     self.builder.inst(Inst::Ret);
+    self.builder.insert_label(main_end);
     // export `main` function
-    self.builder.export("main".into(), main, None, 1);
+    let _ = self.builder.export("main".into(), main, main_end, None, 1);
   }
 
   /// Generates other functions.
@@ -169,6 +171,7 @@ impl State {
 /// Static function, converted from a [`Lambda`].
 struct Func {
   label: u64,
+  end_label: u64,
   params: Vec<u64>,
   captures_rev: Vec<u64>,
   expr: Box<Expr>,
@@ -247,8 +250,10 @@ impl Generate for Provide {
     for (sym, var) in self.sym_vars {
       // generate a function for the current provide
       let label = state.builder.label();
+      let end_label = state.builder.label();
       let func = Func {
         label,
+        end_label,
         params: vec![],
         captures_rev: vec![],
         expr: Box::new(Expr::Value(Value::GlobalVar(var))),
@@ -257,7 +262,7 @@ impl Generate for Provide {
       // add to function list
       state.funcs.push(func);
       // export the generated function
-      state.builder.export(sym, label, Some(0), 1);
+      let _ = state.builder.export(sym, label, end_label, Some(0), 1);
     }
   }
 }
@@ -329,6 +334,7 @@ impl Generate for Lambda {
     // push the rest part as a function to state
     state.funcs.push(Func {
       label,
+      end_label: state.builder.label(),
       params: self.params,
       captures_rev,
       expr: self.expr,
@@ -416,5 +422,6 @@ impl Generate for Func {
     // generate body and return
     self.expr.generate(state);
     state.builder.inst(Inst::Ret);
+    state.builder.insert_label(self.end_label);
   }
 }
