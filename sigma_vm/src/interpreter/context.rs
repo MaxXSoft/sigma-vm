@@ -2,9 +2,10 @@ use crate::bytecode::insts::Inst;
 use crate::bytecode::module::Module;
 use crate::interpreter::gc::ContextRoots;
 use crate::interpreter::heap::Ptr;
+use crate::interpreter::loader::Loader;
 use crate::interpreter::policy::Policy;
 use crate::interpreter::vm::{ControlFlow, GlobalHeap, Vars};
-use std::mem;
+use std::{iter, mem};
 
 /// Execution context of virtual machine.
 pub(super) struct Context<P: Policy> {
@@ -76,6 +77,17 @@ impl<P: Policy> Context<P> {
     ContextRoots {
       module: self.module,
       vars: &self.var_stack,
+    }
+  }
+
+  /// Prints stack trace of the current context to standard error.
+  pub(super) fn print_stack_trace(&self, loader: &Loader) {
+    // get information of the current module
+    let module = loader.module_info(self.module);
+    // print PC and return addresses
+    for pc in iter::once(&self.pc).chain(&self.ra_stack) {
+      // TODO: function name
+      eprintln!("  at {module}, pc 0x{pc:x} ({pc})");
     }
   }
 }
