@@ -299,6 +299,7 @@ where
 
   fn read_export(&mut self) -> Result<Box<Export<[u8]>>> {
     let pc = self.read_leb128()?;
+    let cs_size = self.read_leb128()?;
     let num_args: u64 = self.read_leb128()?;
     let num_rets = self.read_leb128()?;
     let len = self.read_leb128()?;
@@ -306,6 +307,7 @@ where
     let mut data: Box<Export<[u8]>> =
       unsafe { alloc_uninit(size, Export::<[u8]>::ALIGN, len as usize) }.map_err(Error::Layout)?;
     data.call_site.pc = pc;
+    data.call_site.size = cs_size;
     data.call_site.num_args = num_args.into();
     data.call_site.num_rets = num_rets;
     data.name.len = len;
