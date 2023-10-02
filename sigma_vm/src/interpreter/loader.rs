@@ -166,6 +166,24 @@ impl Loader {
       format!("module 0x{:x}", u64::from(handle))
     }
   }
+
+  /// Prints function name and PC at the given PC of the given handle
+  /// to standard error.
+  ///
+  /// This method can be used to print the stack trace.
+  pub(super) fn print_func(&self, handle: Ptr, pc: u64) {
+    let name = self.loaded_mods.get(&handle).and_then(|m| {
+      m.exports
+        .iter()
+        .find_map(|(name, cs)| (pc >= cs.pc && pc < cs.pc + cs.size).then_some(name))
+    });
+    match name {
+      Some(name) if name.contains(char::is_control) => eprint!("{name:?}"),
+      Some(name) => eprint!("{name}"),
+      None => eprint!("<private function>"),
+    };
+    eprint!(", pc 0x{pc:x} ({pc})");
+  }
 }
 
 /// Source identifier of the loaded module.
