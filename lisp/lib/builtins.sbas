@@ -52,7 +52,8 @@ new_##name:                           \
   dups1                               \
   swap                                \
   stdo  OFFSET_VALUE                  \
-  ret
+  ret                                 \
+new_##name##_end:
 
   # Creates a new builtin object.
 #define NEW_BUILTIN(name, obj_id) \
@@ -61,13 +62,14 @@ new_##name:                           \
   stg   obj_id
 
   # Declares a new builtin function.
-#define DECL_BUILTIN(name, obj_id)  \
-name:                               \
-  ldg   obj_id                      \
-  ret                               \
-  .section exports                  \
-  .export #name, name, 0, 1         \
-  .section insts                    \
+#define DECL_BUILTIN(name, obj_id)      \
+name:                                   \
+  ldg   obj_id                          \
+  ret                                   \
+name##_end:                             \
+  .section exports                      \
+  .export #name, name, name##_end, 0, 1 \
+  .section insts                        \
 name##_impl:
 
   .section insts
@@ -127,6 +129,7 @@ _invoke_not_callable:
   # object is not callable
   lac   not_callable
   jmp   panic
+invoke_end:
 
 
   # Panics and abort.
@@ -138,6 +141,7 @@ panic:
   call  eprint
   call  eprint
   sys   12
+panic_end:
 
 
   # Prints string to standard error.
@@ -182,6 +186,7 @@ check_nargs:
   jmp   panic
 1:
   ret
+check_nargs_end:
 
 
   # Creates a number object.
@@ -232,6 +237,7 @@ new_list:
   swap
   stdo  OFFSET_VALUE
   ret
+new_list_end:
 
 
   # Creates a lambda object.
@@ -282,6 +288,7 @@ new_lambda:
   swap
   stdo  OFFSET_MOD_HANDLE
   ret
+new_lambda_end:
 
 
   # Creates a lambda object of a given builtin function.
@@ -341,6 +348,7 @@ _to_bool_check_false:
 _to_bool_failed:
   lac   expected_bool
   jmp   panic
+to_bool_end:
 
 
   # Returns a list if the given object is a list object,
@@ -917,12 +925,12 @@ ptr:
 
 
   .section exports
-  .export "invoke", invoke, variadic, 0
-  .export "panic", panic, 1, 0
-  .export "check_nargs", check_nargs, 2, 0
-  .export "new_num", new_num, 1, 1
-  .export "new_str", new_str, 1, 1
-  .export "new_sym", new_sym, 1, 1
-  .export "new_list", new_list, variadic, 1
-  .export "new_lambda", new_lambda, variadic, 1
-  .export "to_bool", to_bool, 1, 1
+  .export "invoke", invoke, invoke_end, variadic, 0
+  .export "panic", panic, panic_end, 1, 0
+  .export "check_nargs", check_nargs, check_nargs_end, 2, 0
+  .export "new_num", new_num, new_num_end, 1, 1
+  .export "new_str", new_str, new_str_end, 1, 1
+  .export "new_sym", new_sym, new_sym_end, 1, 1
+  .export "new_list", new_list, new_list_end, variadic, 1
+  .export "new_lambda", new_lambda, new_lambda_end, variadic, 1
+  .export "to_bool", to_bool, to_bool_end, 1, 1
