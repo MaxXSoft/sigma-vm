@@ -100,7 +100,10 @@ impl Assembler {
       }
     }
     // generate static module
-    let module = self.builder.build().unwrap();
+    let module = match self.builder.build() {
+      Ok(module) => module,
+      Err(e) => return Err(log_raw_error!(span, "{e}")),
+    };
     // write module
     match Writer::new(&module).write_to(w) {
       Ok(()) => Ok(()),
@@ -119,6 +122,7 @@ impl Assembler {
     let span = export.span();
     let name = export.name.unwrap();
     let label = self.gen_inst_label_ref(export.label)?;
+    let end_label = self.gen_inst_label_ref(export.end_label)?;
     let num_args = match export.num_args {
       NumArgs::Variadic(_) => None,
       NumArgs::Num(n) => Some(n.unwrap()),
@@ -127,20 +131,33 @@ impl Assembler {
     // insert to section
     match self.cur_sec {
       Section::Exports => {
-        if !self.builder.export(name, label, num_args, num_rets) {
-          return_error!(span, "duplicate export")
+        let inserted = self
+          .builder
+          .export(name, label, end_label, num_args, num_rets);
+        match inserted {
+          Ok(false) => return_error!(span, "duplicate export"),
+          Err(e) => return_error!(span, "{e}"),
+          _ => {}
         }
       }
       Section::Custom => {
-        // get PC of label
-        let pc = match self.builder.label_pc(label) {
-          Some(pc) => pc,
+        // get PC of label and end label
+        let pc_end = self
+          .builder
+          .label_pc(label)
+          .zip(self.builder.label_pc(end_label));
+        let (pc, end) = match pc_end {
+          Some(pc_end) => pc_end,
           None => return_error!(span, "export information reference an invalid label"),
         };
+        if end < pc {
+          return_error!(span, "end label can not come before the function label");
+        }
         // write call site
         let mut bytes: Vec<u8> = vec![];
         let call_site = CallSite {
           pc,
+          size: end - pc,
           num_args: num_args.into(),
           num_rets,
         };
