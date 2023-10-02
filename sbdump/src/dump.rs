@@ -25,6 +25,7 @@ impl BytecodeDumper {
       writer,
       module: &self.module,
       exported_pcs: HashMap::new(),
+      exported_ends: HashSet::new(),
     }
     .dump()
   }
@@ -41,6 +42,7 @@ struct DumperImpl<'d, W> {
   writer: &'d mut W,
   module: &'d StaticModule,
   exported_pcs: HashMap<u64, Vec<String>>,
+  exported_ends: HashSet<usize>,
 }
 
 impl<'d, W> DumperImpl<'d, W>
@@ -81,15 +83,21 @@ where
     if !self.module.exports.is_empty() {
       writeln!(self.writer, "Section `exports`:")?;
       for (name, cs) in &self.module.exports {
-        write!(self.writer, "  .export {name:?}, inst{}, ", cs.pc)?;
+        let end = cs.pc + cs.size;
+        write!(
+          self.writer,
+          "  .export {name:?}, {INST_LABEL}{}, {INST_LABEL}{end}, ",
+          cs.pc
+        )?;
         cs.num_args.dump(self.writer)?;
         writeln!(self.writer, ", {}", cs.num_rets)?;
-        // add to exported PCs
+        // add to exported PCs and exported end labels
         self
           .exported_pcs
           .entry(cs.pc)
           .or_default()
           .push(name.clone());
+        self.exported_ends.insert(end as usize);
       }
     }
     Ok(())
@@ -100,8 +108,8 @@ where
     if self.module.insts.is_empty() {
       return Ok(());
     }
-    // get locations of all functions
-    let funcs: HashSet<_> = self
+    // get locations that should be inserted a new line before
+    let separators: HashSet<_> = self
       .module
       .insts
       .iter()
@@ -110,6 +118,7 @@ where
         Inst::Call(opr) => Some((pc as i64 + opr) as usize),
         _ => None,
       })
+      .chain(self.exported_ends.iter().copied())
       .collect();
     // dump instruction section
     writeln!(self.writer, "Section `insts`:")?;
@@ -122,7 +131,7 @@ where
         for name in names {
           Exported(name).dump(self.writer)?;
         }
-      } else if funcs.contains(&pc) && pc != 0 {
+      } else if separators.contains(&pc) && pc != 0 {
         writeln!(self.writer)?;
       }
       // dump instruction
@@ -268,7 +277,7 @@ impl Dump for Object<[u64]> {
   {
     write!(writer, "{}, {}", self.size, self.align)?;
     if self.destructor != 0 {
-      write!(writer, ", inst{}", self.destructor)?;
+      write!(writer, ", {INST_LABEL}{}", self.destructor)?;
     }
     write!(writer, ", [")?;
     for (i, offset) in self.managed_ptr.offsets.iter().enumerate() {
