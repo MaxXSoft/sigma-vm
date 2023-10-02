@@ -274,6 +274,7 @@ impl WriteData for CallSite {
     W: Write,
   {
     unsigned(writer, self.pc)?;
+    unsigned(writer, self.size)?;
     unsigned(writer, self.num_args.into())?;
     unsigned(writer, self.num_rets)?;
     Ok(())
