@@ -97,6 +97,7 @@ mod test {
       "hello".into(),
       CallSite {
         pc: 0xff112233eeaabbcc,
+        size: 128,
         num_args: 0.into(),
         num_rets: 1,
       },
@@ -105,6 +106,7 @@ mod test {
       "hi".into(),
       CallSite {
         pc: 0x998877665,
+        size: 77,
         num_args: 10.into(),
         num_rets: 4,
       },

@@ -38,6 +38,7 @@ mod test {
       let mut exports = ExportInfo::new();
       $(exports.insert($name.into(), CallSite {
         pc: $pc,
+        size: 0,
         num_args: exports!(@num_args $t),
         num_rets: $num_rets,
       });)*
