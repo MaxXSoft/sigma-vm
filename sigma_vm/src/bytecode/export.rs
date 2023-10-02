@@ -30,12 +30,13 @@ impl<Bytes: ?Sized + Array<u8>> Unsized for Export<Bytes> {
 
 /// Exported call site.
 ///
-/// With function's program counter, number of arguments
-/// and number of returned values.
+/// With function's program counter, size (number of instructions),
+/// number of arguments and number of returned values.
 #[repr(C)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CallSite {
   pub pc: u64,
+  pub size: u64,
   pub num_args: NumArgs,
   pub num_rets: u64,
 }
