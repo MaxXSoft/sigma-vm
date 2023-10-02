@@ -85,7 +85,7 @@ impl<P: Policy> Context<P> {
     // get information of the current module
     let module = loader.module_info(self.module);
     // print PC and return addresses
-    for pc in iter::once(&self.pc).chain(&self.ra_stack) {
+    for pc in iter::once(&self.pc).chain(self.ra_stack.iter().rev()) {
       // TODO: function name
       eprintln!("  at {module}, pc 0x{pc:x} ({pc})");
     }

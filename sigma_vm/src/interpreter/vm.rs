@@ -595,7 +595,7 @@ impl<'vm, P: Policy> Scheduler<'vm, P> {
   /// Prints stack trace of the current execution to standard error.
   fn print_stack_trace(&self, context: &Context<P>) {
     eprintln!("Stack backtrace:");
-    for c in iter::once(context).chain(&self.contexts) {
+    for c in iter::once(context).chain(self.contexts.iter().rev()) {
       c.print_stack_trace(&self.vm.loader);
     }
   }
