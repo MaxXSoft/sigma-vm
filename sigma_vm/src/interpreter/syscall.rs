@@ -46,6 +46,8 @@ pub enum ControlFlow {
   Terminate,
   /// Run the garbage collector, and then continue.
   GC,
+  /// Print stack trace and panic.
+  Panic,
 }
 
 /// System call resolver.
@@ -88,7 +90,7 @@ where
       9 => Self::write(state, stdout()),
       10 => Self::write(state, stderr()),
       11 => Self::exit(state),
-      12 => process::abort(),
+      12 => Ok(ControlFlow::Panic),
       13 => Self::bytes_eq(state),
       14 => Self::itoa(state),
       15 => Self::ftoa(state),

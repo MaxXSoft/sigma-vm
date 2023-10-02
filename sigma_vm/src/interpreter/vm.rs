@@ -14,7 +14,7 @@ use std::collections::HashMap;
 use std::iter::{self, Flatten};
 use std::path::{Path, PathBuf};
 use std::slice::Iter;
-use std::{mem, slice};
+use std::{mem, process, slice};
 
 /// Virtual machine for running bytecode.
 pub struct VM<P: Policy> {
@@ -584,6 +584,10 @@ impl<'vm, P: Policy> Scheduler<'vm, P> {
         self.contexts.push(Context::terminator());
       }
       ControlFlow::GC => self.gc(context.into_cont())?,
+      ControlFlow::Panic => {
+        self.print_stack_trace(&context);
+        process::abort();
+      }
     }
     Ok(())
   }
