@@ -568,7 +568,9 @@ impl Assembler {
           _ => return_error!(span, "expected a constant label"),
         },
         None => {
-          assert_eq!(self.cur_sec, Section::Insts);
+          if self.cur_sec != Section::Insts {
+            return_error!(span, "constant label reference can not appear here");
+          }
           // insert to pending labels
           let info = self
             .pending_const_labels
