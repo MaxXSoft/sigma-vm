@@ -109,7 +109,7 @@ invoke:
   lddo  OFFSET_KIND
   pushu OBJ_LAMBDA
   eq
-  bz    _invoke_not_callable
+  bz    1f
   # setup stack
   stv   0
   ldv   0
@@ -125,7 +125,7 @@ invoke:
   # * s2 ...: other arguments.
   callexts
   ret
-_invoke_not_callable:
+1:
   # object is not callable
   lac   not_callable
   jmp   panic
@@ -331,21 +331,21 @@ to_bool:
   lddo  OFFSET_KIND
   pushu OBJ_SYM
   eq
-  bz    _to_bool_failed
+  bz    2f
   dup
   ldpo  OFFSET_VALUE
   lac   true
   sys   13
-  bznp  _to_bool_check_false
+  bznp  1f
   ret
-_to_bool_check_false:
+1:
   ldpo  OFFSET_VALUE
   lac   false
   sys   13
-  bz    _to_bool_failed
+  bz    2f
   pushu 0
   ret
-_to_bool_failed:
+2:
   lac   expected_bool
   jmp   panic
 to_bool_end:
@@ -361,10 +361,10 @@ unwrap_list:
   lddo  OFFSET_KIND
   pushu OBJ_LIST
   eq
-  bz    _unwrap_list_not_list
+  bz    1f
   ldpo  OFFSET_VALUE
   ret
-_unwrap_list_not_list:
+1:
   lac   expected_list
   jmp   panic
 
@@ -374,9 +374,9 @@ _unwrap_list_not_list:
   # Stack layout:
   # * s0 (TOS): a list (not a list object).
 expect_non_empty:
-  bznp  _expect_non_empty_empty_list
+  bznp  1f
   ret
-_expect_non_empty_empty_list:
+1:
   lac   expected_non_empty_list
   jmp   panic
 
@@ -398,7 +398,7 @@ shallow_copy:
   ldv   0
   pushu OBJ_LAMBDA
   ne
-  bz    _shallow_copy_lambda
+  bz    3f
   # check if is a number
   ldv   0
   pushu OBJ_NUM
@@ -424,7 +424,7 @@ shallow_copy:
   ldv   0
   stdo  OFFSET_KIND
   ret
-_shallow_copy_lambda:
+3:
   # get field value, module handle and captured variables
   dup
   lddo  OFFSET_VALUE
@@ -464,11 +464,11 @@ unwrap_num:
   lddo  OFFSET_KIND
   pushu OBJ_NUM
   eq
-  bz    _unwrap_num_not_num
+  bz    1f
   lddo  OFFSET_VALUE
   itd
   ret
-_unwrap_num_not_num:
+1:
   lac   expected_num
   jmp   panic
 
@@ -488,7 +488,7 @@ is_object_equal:
   ldv   1
   lddo  OFFSET_KIND
   eq
-  bz    _is_object_equal_failed
+  bz    3f
   # get values
   ldv   0
   ldpo  OFFSET_VALUE
@@ -498,15 +498,15 @@ is_object_equal:
   ldv   2
   pushu OBJ_NUM
   eq
-  bz    _is_object_equal_not_num
+  bz    1f
   eq
   ret
-_is_object_equal_not_num:
+1:
   # check if is list
   ldv   2
   pushu OBJ_LIST
   eq
-  bz    _is_object_equal_not_list
+  bz    2f
   # check if there is a value is zero
   dups1
   pushu 0
@@ -516,18 +516,18 @@ _is_object_equal_not_num:
   pushu 0
   eq
   or
-  bz    _is_object_equal_not_null
+  bz    1f
   eq
   ret
-_is_object_equal_not_null:
+1:
   # check recursively
   jmp   is_object_equal
-_is_object_equal_not_list:
+2:
   # check if is lambda
   ldv   2
   pushu OBJ_LAMBDA
   eq
-  bz    _is_object_equal_not_lambda
+  bz    1f
   eq
   ldv   0
   ldpo  OFFSET_MOD_HANDLE
@@ -536,11 +536,11 @@ _is_object_equal_not_list:
   eq
   and
   ret
-_is_object_equal_not_lambda:
+1:
   # is string or symbol, just check strings
   sys   13
   ret
-_is_object_equal_failed:
+3:
   pushu 0
   ret
 
