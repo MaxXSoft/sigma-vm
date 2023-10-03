@@ -5,6 +5,7 @@ use crate::interpreter::gc::ContextRoots;
 use crate::interpreter::heap::Ptr;
 use crate::interpreter::loader::Loader;
 use crate::interpreter::policy::Policy;
+use crate::interpreter::vm::ContextTrace;
 use crate::interpreter::vm::{ControlFlow, GlobalHeap, Vars};
 use std::{iter, mem};
 
@@ -81,16 +82,14 @@ impl<P: Policy> Context<P> {
     }
   }
 
-  /// Prints stack trace of the current context to standard error.
-  pub(super) fn print_stack_trace(&self, loader: &Loader) {
-    // get information of the current module
+  /// Returns context trace of the current context.
+  pub(super) fn context_trace(&self, loader: &Loader) -> ContextTrace {
     let module = loader.module_info(self.module);
-    // print PC and return addresses
-    for pc in iter::once(self.pc).chain(self.ra_stack.iter().rev().map(|pc| *pc - 1)) {
-      eprint!("  ");
-      loader.print_func(self.module, pc);
-      eprintln!(" at {module}");
-    }
+    let funcs = iter::once(self.pc)
+      .chain(self.ra_stack.iter().rev().map(|pc| *pc - 1))
+      .map(|pc| loader.func_info(self.module, pc))
+      .collect();
+    ContextTrace::new(module, funcs)
   }
 }
 
