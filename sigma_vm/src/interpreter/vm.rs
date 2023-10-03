@@ -29,17 +29,16 @@ pub struct VM<P: Policy> {
 /// Helper macro for unwrapping a module.
 macro_rules! unwrap_module {
   ($p:ident, $m:expr, $h:expr) => {
-    $p::unwrap($m, format!("module {} not found", $h))?
+    $p::unwrap_or($m, || format!("module {} not found", $h))?
   };
 }
 
 /// Helper macro for unwrapping a call site.
 macro_rules! unwrap_call_site {
   ($p:ident, $m:expr, $h:expr, $f:expr) => {
-    $p::unwrap(
-      $m.call_site($f),
-      format!("function {} not found in module {}", $f, $h),
-    )?
+    $p::unwrap_or($m.call_site($f), || {
+      format!("function {} not found in module {}", $f, $h)
+    })?
   };
 }
 
