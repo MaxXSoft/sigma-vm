@@ -314,18 +314,17 @@ where
         PcUpdate::Next
       }
       Inst::LdV(opr) => {
-        let var = P::unwrap(
+        let var = P::unwrap_or(
           self.var_stack.last().and_then(|vs| vs.get(opr as usize)),
-          format!("local variable {opr} not found"),
+          || format!("local variable {opr} not found"),
         )?;
         gctx.push(var.clone());
         PcUpdate::Next
       }
       Inst::LdG(opr) => {
-        let var = P::unwrap(
-          gctx.global_vars.get(opr as usize),
-          format!("global variable {opr} not found"),
-        )?;
+        let var = P::unwrap_or(gctx.global_vars.get(opr as usize), || {
+          format!("global variable {opr} not found")
+        })?;
         gctx.push(var.clone());
         PcUpdate::Next
       }
@@ -743,10 +742,9 @@ impl<'vm, P: Policy> GlobalContext<'vm, P> {
 
   /// Returns a reference to the given constant.
   fn constant(&self, index: u64) -> Result<&HeapConst, P::Error> {
-    P::unwrap(
-      self.module.consts.get(index as usize),
-      format!("constant {index} not found"),
-    )
+    P::unwrap_or(self.module.consts.get(index as usize), || {
+      format!("constant {index} not found")
+    })
   }
 }
 
