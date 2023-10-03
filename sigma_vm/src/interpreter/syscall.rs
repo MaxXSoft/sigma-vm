@@ -38,6 +38,16 @@ where
   pub module_globals: &'vm mut HashMap<Ptr, Vars<P::Value>>,
 }
 
+impl<'vm, P, H> VmState<'vm, P, H>
+where
+  P: Policy<Heap = H>,
+  H: Heap,
+{
+  fn pop(&mut self, e: &'static str) -> Result<P::Value, P::Error> {
+    P::unwrap(self.value_stack.pop(), e)
+  }
+}
+
 /// Control flow after the system call.
 pub enum ControlFlow {
   /// Continue the execution.
@@ -97,7 +107,9 @@ where
       16 => Self::dtoa(state),
       _ => match self.handlers.get_mut(&syscall) {
         Some(handler) => handler.handle(state),
-        None => P::report_invalid_syscall().map(|_| ControlFlow::Continue),
+        None => {
+          P::report_err(format!("invalid system call {syscall}")).map(|_| ControlFlow::Continue)
+        }
       },
     }
   }
@@ -123,9 +135,9 @@ where
   ///
   /// Stack layout after call:
   /// * s0 (TOS): library handle or zero (failed).
-  fn native_load(&mut self, state: VmState<P, H>) -> Result<ControlFlow, P::Error> {
+  fn native_load(&mut self, mut state: VmState<P, H>) -> Result<ControlFlow, P::Error> {
     // get library path
-    let path_ptr = P::get_ptr(&P::unwrap_val(state.value_stack.pop())?)?;
+    let path_ptr = P::get_ptr(&state.pop("failed to get library path")?)?;
     let path: PathBuf = P::utf8_str(state.heap, path_ptr)?.split('/').collect();
     // load library
     let handle = Ptr::from(state.native_loader.load(state.heap, path));
@@ -138,9 +150,9 @@ where
   ///
   /// Stack layout:
   /// * s0 (TOS): library handle.
-  fn native_unload(&mut self, state: VmState<P, H>) -> Result<ControlFlow, P::Error> {
+  fn native_unload(&mut self, mut state: VmState<P, H>) -> Result<ControlFlow, P::Error> {
     // get handle
-    let handle = P::get_ptr(&P::unwrap_val(state.value_stack.pop())?)?;
+    let handle = P::get_ptr(&state.pop("failed to get library handle")?)?;
     // remove the corresponding library
     state.native_loader.unload(state.heap, handle);
     Ok(ControlFlow::Continue)
@@ -161,16 +173,16 @@ where
   /// * s1 if s0 is zero: return value n - 1.
   /// * ...
   /// * s{n} if s0 is zero: return value 0.
-  fn native_call(&self, state: VmState<P, H>) -> Result<ControlFlow, P::Error> {
+  fn native_call(&self, mut state: VmState<P, H>) -> Result<ControlFlow, P::Error> {
     // get name and handle
-    let name_ptr = P::get_ptr(&P::unwrap_val(state.value_stack.pop())?)?;
+    let name_ptr = P::get_ptr(&state.pop("failed to get function name pointer")?)?;
     let name = P::utf8_str(state.heap, name_ptr)?.to_string();
-    let handle = P::get_ptr(&P::unwrap_val(state.value_stack.pop())?)?;
+    let handle = P::get_ptr(&state.pop("failed to get library handle")?)?;
     // get arguments
-    let num_args = P::get_int_ptr(&P::unwrap_val(state.value_stack.pop())?)?;
+    let num_args = P::get_int_ptr(&state.pop("failed to get argument number")?)?;
     let mut args = vec![];
     for _ in 0..num_args {
-      args.push(P::get_any(&P::unwrap_module(state.value_stack.pop())?));
+      args.push(P::get_any(&state.pop("failed to get argument")?));
     }
     args.reverse();
     // call the native function
@@ -200,9 +212,8 @@ where
   }
 
   /// Deletes pointer s0.
-  fn del(state: VmState<P, H>) -> Result<ControlFlow, P::Error> {
-    let s0 = P::unwrap_val(state.value_stack.pop())?;
-    let ptr = P::get_ptr(&s0)?;
+  fn del(mut state: VmState<P, H>) -> Result<ControlFlow, P::Error> {
+    let ptr = P::get_ptr(&state.pop("failed to get the pointer")?)?;
     match state.heap.meta(ptr) {
       Some(Meta::Module) => {
         state.loader.unload(state.heap, ptr);
@@ -214,9 +225,8 @@ where
   }
 
   /// Unloads module handle s0.
-  fn unload(state: VmState<P, H>) -> Result<ControlFlow, P::Error> {
-    let s0 = P::unwrap_val(state.value_stack.pop())?;
-    let handle = P::get_ptr(&s0)?;
+  fn unload(mut state: VmState<P, H>) -> Result<ControlFlow, P::Error> {
+    let handle = P::get_ptr(&state.pop("failed to get module handle")?)?;
     state.loader.unload(state.heap, handle);
     state.module_globals.remove(&handle);
     Ok(ControlFlow::Continue)
@@ -225,15 +235,15 @@ where
   /// Reads bytes from the standard input.
   ///
   /// Stack layout:
-  /// * s0 (TOS): length of array.
+  /// * s0 (TOS): length to read.
   /// * s1: array.
   ///
   /// Stack layout after call:
   /// * s0 (TOS): length read, negative if error.
-  fn read(state: VmState<P, H>) -> Result<ControlFlow, P::Error> {
+  fn read(mut state: VmState<P, H>) -> Result<ControlFlow, P::Error> {
     // get byte array
-    let len = P::get_int_ptr(&P::unwrap_val(state.value_stack.pop())?)? as usize;
-    let array = P::get_ptr(&P::unwrap_val(state.value_stack.pop())?)?;
+    let len = P::get_int_ptr(&state.pop("failed to get length")?)? as usize;
+    let array = P::get_ptr(&state.pop("failed to get array pointer")?)?;
     P::check_access(state.heap, array, len, 1)?;
     let buf = unsafe { slice::from_raw_parts_mut(state.heap.addr_mut(array) as *mut u8, len) };
     // read to array
@@ -250,13 +260,13 @@ where
   ///
   /// Stack layout after call:
   /// * s0 (TOS): length wrote, negative if error.
-  fn write<W>(state: VmState<P, H>, mut w: W) -> Result<ControlFlow, P::Error>
+  fn write<W>(mut state: VmState<P, H>, mut w: W) -> Result<ControlFlow, P::Error>
   where
     W: Write,
   {
     // get byte array
-    let len = P::get_int_ptr(&P::unwrap_val(state.value_stack.pop())?)? as usize;
-    let array = P::get_ptr(&P::unwrap_val(state.value_stack.pop())?)?;
+    let len = P::get_int_ptr(&state.pop("failed to get length")?)? as usize;
+    let array = P::get_ptr(&state.pop("failed to get array pointer")?)?;
     P::check_access(state.heap, array, len, 1)?;
     let buf = unsafe { slice::from_raw_parts(state.heap.addr(array) as *const u8, len) };
     // write to writer
@@ -269,8 +279,8 @@ where
   ///
   /// Stack layout:
   /// * s0 (TOS): exit code.
-  fn exit(state: VmState<P, H>) -> Result<ControlFlow, P::Error> {
-    let code = P::get_int_ptr(&P::unwrap_val(state.value_stack.pop())?)?;
+  fn exit(mut state: VmState<P, H>) -> Result<ControlFlow, P::Error> {
+    let code = P::get_int_ptr(&state.pop("failed to get exit code")?)?;
     process::exit(code as i32)
   }
 
@@ -282,11 +292,11 @@ where
   ///
   /// Stack layout after call:
   /// * s0 (TOS): 0 for unequal, 1 for equal.
-  fn bytes_eq(state: VmState<P, H>) -> Result<ControlFlow, P::Error> {
+  fn bytes_eq(mut state: VmState<P, H>) -> Result<ControlFlow, P::Error> {
     // get bytes to be compared
-    let p1 = P::get_ptr(&P::unwrap_val(state.value_stack.pop())?)?;
+    let p1 = P::get_ptr(&state.pop("failed to get the pointer")?)?;
+    let p2 = P::get_ptr(&state.pop("failed to get the pointer")?)?;
     let s1 = P::str(state.heap, p1)?;
-    let p2 = P::get_ptr(&P::unwrap_val(state.value_stack.pop())?)?;
     let s2 = P::str(state.heap, p2)?;
     // perform comparison
     state.value_stack.push(P::int_val((s1 == s2) as u64));
@@ -301,14 +311,20 @@ where
   ///
   /// Stack layout after call:
   /// * s0 (TOS): string.
-  fn itoa(state: VmState<P, H>) -> Result<ControlFlow, P::Error> {
-    let base = P::get_int_ptr(&P::unwrap_val(state.value_stack.pop())?)?;
-    let mut i = P::get_int_ptr(&P::unwrap_val(state.value_stack.pop())?)?;
+  fn itoa(mut state: VmState<P, H>) -> Result<ControlFlow, P::Error> {
+    let base = P::get_int_ptr(&state.pop("failed to get base")?)?;
+    if base > 36 {
+      P::report_err(format!("invalid base {base}"))?;
+    }
+    let mut i = P::get_int_ptr(&state.pop("failed to get the integer")?)?;
     let mut s = String::new();
     loop {
       let d = i % base;
       i /= base;
-      s.push(P::unwrap_val(char::from_digit(d as u32, base as u32))?);
+      s.push(P::unwrap(
+        char::from_digit(d as u32, base as u32),
+        format!("invalid digit {d} for base {base}"),
+      )?);
       if i == 0 {
         break;
       }
@@ -325,8 +341,8 @@ where
   ///
   /// Stack layout after call:
   /// * s0 (TOS): string.
-  fn ftoa(state: VmState<P, H>) -> Result<ControlFlow, P::Error> {
-    let f = P::get_f32(&P::unwrap_val(state.value_stack.pop())?)?;
+  fn ftoa(mut state: VmState<P, H>) -> Result<ControlFlow, P::Error> {
+    let f = P::get_f32(&state.pop("faild to get the float")?)?;
     let hc = Const::from(format!("{f}")).into_heap_const(state.heap);
     state.value_stack.push(P::ptr_val(hc.ptr()));
     Ok(ControlFlow::Continue)
@@ -339,8 +355,8 @@ where
   ///
   /// Stack layout after call:
   /// * s0 (TOS): string.
-  fn dtoa(state: VmState<P, H>) -> Result<ControlFlow, P::Error> {
-    let d = P::get_f64(&P::unwrap_val(state.value_stack.pop())?)?;
+  fn dtoa(mut state: VmState<P, H>) -> Result<ControlFlow, P::Error> {
+    let d = P::get_f64(&state.pop("faild to get the double")?)?;
     let hc = Const::from(format!("{d}")).into_heap_const(state.heap);
     state.value_stack.push(P::ptr_val(hc.ptr()));
     Ok(ControlFlow::Continue)
