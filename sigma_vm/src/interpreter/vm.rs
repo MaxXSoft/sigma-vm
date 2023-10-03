@@ -713,3 +713,117 @@ pub(super) enum ControlFlow {
   /// Requests a system call, with a system call number.
   Syscall(i64),
 }
+
+/// Error for [`VM`].
+#[derive(Debug)]
+pub struct Error<P: Policy> {
+  error: P::Error,
+  stack_trace: StackTrace,
+}
+
+impl<P: Policy> Error<P> {
+  /// Prints the error message of the current error to standard error.
+  pub fn print_error(&self)
+  where
+    P::Error: fmt::Display,
+  {
+    eprintln!("{}", self.error)
+  }
+
+  /// Prints the stack backtrace of the current error to standard error.
+  pub fn print_stack_trace(&self) {
+    eprint!("{}", self.stack_trace)
+  }
+}
+
+impl<P: Policy> fmt::Display for Error<P>
+where
+  P::Error: fmt::Display,
+{
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    writeln!(f, "{}", self.error)?;
+    write!(f, "{}", self.stack_trace)
+  }
+}
+
+/// Stack backtrace information.
+#[derive(Debug)]
+struct StackTrace {
+  contexts: Vec<ContextTrace>,
+}
+
+impl fmt::Display for StackTrace {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    writeln!(f, "Stack backtrace:")?;
+    for context in &self.contexts {
+      write!(f, "{context}")?;
+    }
+    Ok(())
+  }
+}
+
+/// Stack backtrace information of a specific [`Context`].
+#[derive(Debug)]
+pub(super) struct ContextTrace {
+  module: ModuleInfo,
+  funcs: Vec<FuncInfo>,
+}
+
+impl ContextTrace {
+  /// Creates a new context backtrace.
+  pub(super) fn new(module: ModuleInfo, funcs: Vec<FuncInfo>) -> Self {
+    Self { module, funcs }
+  }
+}
+
+impl fmt::Display for ContextTrace {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    let module = format!("{}", self.module);
+    for func in &self.funcs {
+      writeln!(f, "  {func} at {module}")?;
+    }
+    Ok(())
+  }
+}
+
+/// Module information for stack backtrace.
+#[derive(Debug)]
+pub(super) enum ModuleInfo {
+  Path(PathBuf),
+  Handle(Ptr),
+}
+
+impl fmt::Display for ModuleInfo {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    write!(f, "module ")?;
+    match self {
+      Self::Path(path) => write!(f, "{}", path.display()),
+      Self::Handle(handle) => write!(f, "{handle}"),
+    }
+  }
+}
+
+/// Function information for stack backtrace.
+#[derive(Debug)]
+pub(super) struct FuncInfo {
+  name: Option<String>,
+  pc: u64,
+}
+
+impl FuncInfo {
+  /// Creates a new function information.
+  pub(super) fn new(name: Option<String>, pc: u64) -> Self {
+    Self { name, pc }
+  }
+}
+
+impl fmt::Display for FuncInfo {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    match &self.name {
+      Some(name) if name.contains(char::is_control) => write!(f, "{name:?}"),
+      Some(name) => write!(f, "{name}"),
+      None => write!(f, "<private function>"),
+    }?;
+    write!(f, ", pc 0x{:x} ({})", self.pc, self.pc)
+  }
+}
