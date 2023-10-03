@@ -720,10 +720,18 @@ pub(super) enum ControlFlow {
 #[derive(Debug)]
 pub struct Error<P: Policy> {
   error: P::Error,
-  stack_trace: StackTrace,
+  stack_trace: Option<StackTrace>,
 }
 
 impl<P: Policy> Error<P> {
+  /// Creates an error from the policy error, without stack trace.
+  fn from_error(error: P::Error) -> Self {
+    Self {
+      error,
+      stack_trace: None,
+    }
+  }
+
   /// Prints the error message of the current error to standard error.
   pub fn print_error(&self)
   where
@@ -734,7 +742,9 @@ impl<P: Policy> Error<P> {
 
   /// Prints the stack backtrace of the current error to standard error.
   pub fn print_stack_trace(&self) {
-    eprint!("{}", self.stack_trace)
+    if let Some(st) = &self.stack_trace {
+      eprint!("{st}");
+    }
   }
 }
 
@@ -744,7 +754,10 @@ where
 {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     writeln!(f, "{}", self.error)?;
-    write!(f, "{}", self.stack_trace)
+    if let Some(st) = &self.stack_trace {
+      write!(f, "{st}")?;
+    }
+    Ok(())
   }
 }
 
