@@ -99,6 +99,7 @@ where
 }
 
 /// Garbage collector that does nothing.
+#[derive(Debug)]
 pub struct Nothing;
 
 impl GarbageCollector for Nothing {
@@ -123,6 +124,7 @@ impl GarbageCollector for Nothing {
 }
 
 /// Mark-sweep garbage collector.
+#[derive(Debug)]
 pub struct MarkSweep;
 
 impl MarkSweep {

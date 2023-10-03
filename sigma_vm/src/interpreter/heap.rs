@@ -196,7 +196,7 @@ pub trait CheckedHeap: Heap {
 }
 
 /// Heap that uses system's allocator to allocate memory.
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct System {
   mems: BTreeMap<Ptr, Mem>,
   size: usize,
@@ -255,6 +255,7 @@ impl Heap for System {
 }
 
 /// Allocated system heap memory.
+#[derive(Debug)]
 pub struct Mem {
   data: Box<[u8]>,
   meta: Meta,
@@ -278,6 +279,7 @@ impl Mem {
 }
 
 /// Heap with memory out of bounds checking.
+#[derive(Debug)]
 pub struct Checked<H> {
   heap: H,
   ranges: BTreeMap<usize, usize>,
