@@ -2,8 +2,10 @@ use laps::ast::{NonEmptySepSeq, SepSeq};
 use laps::lexer::{int_literal, str_literal, Lexer};
 use laps::prelude::*;
 use laps::reader::Reader;
+use laps::span::Span;
 use laps::token::TokenBuffer;
 use laps::token::TokenStream;
+use sigma_vm::bytecode::insts::Opcode;
 use std::{fmt, io, str};
 
 /// Kind of token.
@@ -438,6 +440,131 @@ impl str::FromStr for InstOpcode {
   }
 }
 
+impl From<InstOpcode> for Opcode {
+  fn from(op: InstOpcode) -> Self {
+    match op {
+      InstOpcode::Nop => Self::Nop,
+      InstOpcode::PushI => Self::PushI,
+      InstOpcode::PushU => Self::PushU,
+      InstOpcode::PushPc => Self::PushPc,
+      InstOpcode::Pop => Self::Pop,
+      InstOpcode::Dup => Self::Dup,
+      InstOpcode::DupS1 => Self::DupS1,
+      InstOpcode::Swap => Self::Swap,
+      InstOpcode::LdB => Self::LdB,
+      InstOpcode::LdBU => Self::LdBU,
+      InstOpcode::LdH => Self::LdH,
+      InstOpcode::LdHU => Self::LdHU,
+      InstOpcode::LdW => Self::LdW,
+      InstOpcode::LdWU => Self::LdWU,
+      InstOpcode::LdD => Self::LdD,
+      InstOpcode::LdP => Self::LdP,
+      InstOpcode::LdBO => Self::LdBO,
+      InstOpcode::LdBUO => Self::LdBUO,
+      InstOpcode::LdHO => Self::LdHO,
+      InstOpcode::LdHUO => Self::LdHUO,
+      InstOpcode::LdWO => Self::LdWO,
+      InstOpcode::LdWUO => Self::LdWUO,
+      InstOpcode::LdDO => Self::LdDO,
+      InstOpcode::LdPO => Self::LdPO,
+      InstOpcode::LdV => Self::LdV,
+      InstOpcode::LdG => Self::LdG,
+      InstOpcode::LdC => Self::LdC,
+      InstOpcode::LaC => Self::LaC,
+      InstOpcode::StB => Self::StB,
+      InstOpcode::StH => Self::StH,
+      InstOpcode::StW => Self::StW,
+      InstOpcode::StD => Self::StD,
+      InstOpcode::StBO => Self::StBO,
+      InstOpcode::StHO => Self::StHO,
+      InstOpcode::StWO => Self::StWO,
+      InstOpcode::StDO => Self::StDO,
+      InstOpcode::StV => Self::StV,
+      InstOpcode::StG => Self::StG,
+      InstOpcode::StA => Self::StA,
+      InstOpcode::New => Self::New,
+      InstOpcode::NewO => Self::NewO,
+      InstOpcode::NewOC => Self::NewOC,
+      InstOpcode::NewA => Self::NewA,
+      InstOpcode::NewAC => Self::NewAC,
+      InstOpcode::Load => Self::Load,
+      InstOpcode::LoadC => Self::LoadC,
+      InstOpcode::LoadM => Self::LoadM,
+      InstOpcode::Bz => Self::Bz,
+      InstOpcode::BzNP => Self::BzNP,
+      InstOpcode::Bnz => Self::Bnz,
+      InstOpcode::Loop => Self::Loop,
+      InstOpcode::Jmp => Self::Jmp,
+      InstOpcode::JmpS => Self::JmpS,
+      InstOpcode::Call => Self::Call,
+      InstOpcode::CallS => Self::CallS,
+      InstOpcode::CallExt => Self::CallExt,
+      InstOpcode::CallExtS => Self::CallExtS,
+      InstOpcode::CallExtC => Self::CallExtC,
+      InstOpcode::Ret => Self::Ret,
+      InstOpcode::Sys => Self::Sys,
+      InstOpcode::Break => Self::Break,
+      InstOpcode::Not => Self::Not,
+      InstOpcode::LNot => Self::LNot,
+      InstOpcode::And => Self::And,
+      InstOpcode::Or => Self::Or,
+      InstOpcode::Xor => Self::Xor,
+      InstOpcode::Shl => Self::Shl,
+      InstOpcode::Shr => Self::Shr,
+      InstOpcode::Sar => Self::Sar,
+      InstOpcode::Sext => Self::Sext,
+      InstOpcode::Zext => Self::Zext,
+      InstOpcode::Eq => Self::Eq,
+      InstOpcode::Ne => Self::Ne,
+      InstOpcode::Lt => Self::Lt,
+      InstOpcode::Le => Self::Le,
+      InstOpcode::Gt => Self::Gt,
+      InstOpcode::Ge => Self::Ge,
+      InstOpcode::LtU => Self::LtU,
+      InstOpcode::LeU => Self::LeU,
+      InstOpcode::GtU => Self::GtU,
+      InstOpcode::GeU => Self::GeU,
+      InstOpcode::Neg => Self::Neg,
+      InstOpcode::Add => Self::Add,
+      InstOpcode::Sub => Self::Sub,
+      InstOpcode::Mul => Self::Mul,
+      InstOpcode::Div => Self::Div,
+      InstOpcode::DivU => Self::DivU,
+      InstOpcode::Mod => Self::Mod,
+      InstOpcode::ModU => Self::ModU,
+      InstOpcode::LtF => Self::LtF,
+      InstOpcode::LeF => Self::LeF,
+      InstOpcode::GtF => Self::GtF,
+      InstOpcode::GeF => Self::GeF,
+      InstOpcode::NegF => Self::NegF,
+      InstOpcode::AddF => Self::AddF,
+      InstOpcode::SubF => Self::SubF,
+      InstOpcode::MulF => Self::MulF,
+      InstOpcode::DivF => Self::DivF,
+      InstOpcode::ModF => Self::ModF,
+      InstOpcode::LtD => Self::LtD,
+      InstOpcode::LeD => Self::LeD,
+      InstOpcode::GtD => Self::GtD,
+      InstOpcode::GeD => Self::GeD,
+      InstOpcode::NegD => Self::NegD,
+      InstOpcode::AddD => Self::AddD,
+      InstOpcode::SubD => Self::SubD,
+      InstOpcode::MulD => Self::MulD,
+      InstOpcode::DivD => Self::DivD,
+      InstOpcode::ModD => Self::ModD,
+      InstOpcode::I2F => Self::I2F,
+      InstOpcode::I2D => Self::I2D,
+      InstOpcode::F2I => Self::F2I,
+      InstOpcode::F2D => Self::F2D,
+      InstOpcode::D2I => Self::D2I,
+      InstOpcode::D2F => Self::D2F,
+      InstOpcode::ITF => Self::ITF,
+      InstOpcode::ITD => Self::ITD,
+      InstOpcode::ITP => Self::ITP,
+    }
+  }
+}
+
 /// Temporary label reference.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TempLabelRef {
@@ -654,16 +781,46 @@ pub struct Bytes {
 }
 
 /// Instruction.
-#[derive(Debug, Parse)]
-#[token(Token)]
+#[derive(Debug)]
 pub struct Instruction {
-  pub opcode: Token![opcode],
+  pub opcode: InstOpcode,
+  pub op_span: Span,
   pub opr: Option<InstOperand>,
 }
 
+impl<TS> Parse<TS> for Instruction
+where
+  TS: TokenStream<Token = Token>,
+{
+  fn parse(tokens: &mut TS) -> laps::span::Result<Self> {
+    // parse opcode
+    let opcode: Token![opcode] = tokens.parse()?;
+    let op_span = opcode.span();
+    let opcode = match opcode.unwrap::<OpcOrLabel, _>() {
+      OpcOrLabel::Opcode(opcode) => opcode,
+      _ => unreachable!(),
+    };
+    // parse operand
+    let opr = if Opcode::from(opcode.clone()).operand_type().is_some() {
+      Some(tokens.parse()?)
+    } else {
+      None
+    };
+    Ok(Self {
+      opcode,
+      op_span,
+      opr,
+    })
+  }
+
+  fn maybe(tokens: &mut TS) -> laps::span::Result<bool> {
+    <Token![opcode]>::maybe(tokens)
+  }
+}
+
 impl Spanned for Instruction {
-  fn span(&self) -> laps::span::Span {
-    let mut span = self.opcode.span();
+  fn span(&self) -> Span {
+    let mut span = self.op_span.clone();
     if let Some(opr) = &self.opr {
       span.update_end(opr.span());
     }
