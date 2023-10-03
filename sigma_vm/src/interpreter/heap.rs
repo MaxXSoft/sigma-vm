@@ -106,7 +106,7 @@ impl ops::SubAssign<i64> for Ptr {
 
 impl fmt::Display for Ptr {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    write!(f, "{self:?}")
+    write!(f, "0x{:x}", self.0)
   }
 }
 
