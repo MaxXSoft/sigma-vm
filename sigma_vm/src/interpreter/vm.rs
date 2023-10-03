@@ -26,10 +26,24 @@ pub struct VM<P: Policy> {
   module_globals: HashMap<Ptr, Vars<P::Value>>,
 }
 
+/// Helper macro for mapping policy error to VM error with a stack backtrace.
+macro_rules! to_vm_error {
+  ($e:expr, $self:ident, $c:expr) => {
+    $e.map_err(|e| Error::from_error(e).with_stack_trace($self.stack_trace($c)))?
+  };
+}
+
 /// Helper macro for unwrapping a module.
 macro_rules! unwrap_module {
   ($p:ident, $m:expr, $h:expr) => {
-    $p::unwrap_or($m, || format!("module {} not found", $h))?
+    $p::unwrap_or($m, || format!("module {} not found", $h)).map_err(Error::from_error)?
+  };
+  ($p:ident, $m:expr, $h:expr, $self:ident, $c:expr) => {
+    to_vm_error!(
+      $p::unwrap_or($m, || format!("module {} not found", $h)),
+      $self,
+      $c
+    )
   };
 }
 
@@ -38,7 +52,17 @@ macro_rules! unwrap_call_site {
   ($p:ident, $m:expr, $h:expr, $f:expr) => {
     $p::unwrap_or($m.call_site($f), || {
       format!("function {} not found in module {}", $f, $h)
-    })?
+    })
+    .map_err(Error::from_error)?
+  };
+  ($p:ident, $m:expr, $h:expr, $f:expr, $self:ident, $c:expr) => {
+    to_vm_error!(
+      $p::unwrap_or($m.call_site($f), || {
+        format!("function {} not found in module {}", $f, $h)
+      }),
+      $self,
+      $c
+    )
   };
 }
 
@@ -151,7 +175,7 @@ where
   ///
   /// This method will retain the state of all contexts,
   /// call [`terminate`](VM#method.terminate) to stop the VM completely.
-  pub fn run_main<I, S>(&mut self, module: Ptr, args: I) -> Result<Vec<P::Value>, P::Error>
+  pub fn run_main<I, S>(&mut self, module: Ptr, args: I) -> Result<Vec<P::Value>, Error<P>>
   where
     I: IntoIterator<Item = S>,
     S: AsRef<str>,
@@ -170,7 +194,7 @@ where
   ///
   /// This method will retain the state of all contexts,
   /// call [`terminate`](VM#method.terminate) to stop the VM completely.
-  pub fn call<I>(&mut self, module: Ptr, func: &str, args: I) -> Result<Vec<P::Value>, P::Error>
+  pub fn call<I>(&mut self, module: Ptr, func: &str, args: I) -> Result<Vec<P::Value>, Error<P>>
   where
     I: IntoIterator<Item = P::Value>,
   {
@@ -182,7 +206,7 @@ where
     let (is_valid, expected_nargs) = match call_site.num_args {
       NumArgs::Variadic => match args.last() {
         Some(v) => {
-          let expected_nargs = P::get_int_ptr(v)?;
+          let expected_nargs = P::get_int_ptr(v).map_err(Error::from_error)?;
           let is_valid = expected_nargs + 1 == args.len() as u64;
           (is_valid, Some(expected_nargs))
         }
@@ -198,7 +222,8 @@ where
       P::report_err(format!(
         "argument number mismatch, expected {expected_nargs}, got {}",
         args.len()
-      ))?;
+      ))
+      .map_err(Error::from_error)?;
     }
     // call the target function
     self.value_stack.extend(args);
@@ -207,17 +232,17 @@ where
     // get return values
     let mut rets = vec![];
     for _ in 0..num_rets {
-      rets.push(P::unwrap(
-        self.value_stack.pop(),
-        "failed to get return value",
-      )?);
+      rets.push(
+        P::unwrap(self.value_stack.pop(), "failed to get return value")
+          .map_err(Error::from_error)?,
+      );
     }
     rets.reverse();
     Ok(rets)
   }
 
   /// Terminates all VM contexts.
-  pub fn terminate(&mut self) -> Result<(), P::Error> {
+  pub fn terminate(&mut self) -> Result<(), Error<P>> {
     Scheduler::new(self, Context::terminator()).run()
   }
 }
@@ -390,7 +415,7 @@ impl<'vm, P: Policy> Scheduler<'vm, P> {
   }
 
   /// Runs contexts, returns return values.
-  fn run(mut self) -> Result<(), P::Error>
+  fn run(mut self) -> Result<(), Error<P>>
   where
     P::Value: Clone,
   {
@@ -400,6 +425,14 @@ impl<'vm, P: Policy> Scheduler<'vm, P> {
         Some(context) => context,
         None => continue,
       };
+      // get the current module
+      let module = unwrap_module!(
+        P,
+        self.vm.loader.module(context.module),
+        context.module,
+        self,
+        &context
+      );
       // check if the module is initialized
       let globals = if let Some(globals) = self.vm.module_globals.get_mut(&context.module) {
         globals
@@ -409,13 +442,16 @@ impl<'vm, P: Policy> Scheduler<'vm, P> {
         continue;
       };
       // run the context
-      let module = unwrap_module!(P, self.vm.loader.module(context.module), context.module);
-      let cf = context.run(GlobalContext {
-        module,
-        global_heap: &mut self.vm.global_heap,
-        global_vars: globals,
-        value_stack: &mut self.vm.value_stack,
-      })?;
+      let cf = to_vm_error!(
+        context.run(GlobalContext {
+          module,
+          global_heap: &mut self.vm.global_heap,
+          global_vars: globals,
+          value_stack: &mut self.vm.value_stack,
+        }),
+        self,
+        &context
+      );
       // handle control flow
       match cf {
         ControlFlow::Stop => continue,
@@ -431,7 +467,7 @@ impl<'vm, P: Policy> Scheduler<'vm, P> {
   }
 
   /// Handles destructors and terminators.
-  fn handle_destructors(&mut self, context: Context<P>) -> Result<Option<Context<P>>, P::Error> {
+  fn handle_destructors(&mut self, context: Context<P>) -> Result<Option<Context<P>>, Error<P>> {
     // deallocate all pending pointers
     if context.destructor_kind.is_some() {
       for ptr in mem::take(&mut self.pending_ptrs) {
@@ -475,15 +511,15 @@ impl<'vm, P: Policy> Scheduler<'vm, P> {
   }
 
   /// Runs garbage collector.
-  fn gc(&mut self, context: Context<P>) -> Result<(), P::Error> {
+  fn gc(&mut self, context: Context<P>) -> Result<(), Error<P>> {
     // skip if garbage collector is already running
     // this means the module is trying to allocate memory in the destructor
     if !self.pending_ptrs.is_empty() {
       return Ok(());
     }
     // run garbage collector
-    let ptrs = self.vm.collect(&self.contexts, &context)?;
-    self.vm.global_heap.gc_success(&ptrs)?;
+    let ptrs = to_vm_error!(self.vm.collect(&self.contexts, &context), self, &context);
+    to_vm_error!(self.vm.global_heap.gc_success(&ptrs), self, &context);
     self.contexts.push(context.into_destructor());
     // schedule destructors to run
     for ptr in ptrs {
@@ -502,10 +538,11 @@ impl<'vm, P: Policy> Scheduler<'vm, P> {
 
   /// Schedules the destructor of the given pointer to run.
   /// Returns `true` if the pointer has a destructor.
-  fn schedule_destructor(&mut self, ptr: Ptr) -> Result<bool, P::Error> {
+  fn schedule_destructor(&mut self, ptr: Ptr) -> Result<bool, Error<P>> {
     if let Some(Meta::Obj(obj)) = self.vm.global_heap.heap.meta(ptr) {
       // get object metadata
-      let object = P::object(&self.vm.global_heap.heap, obj.ptr)?;
+      let object = P::object(&self.vm.global_heap.heap, obj.ptr)
+        .map_err(|e| Error::from_error(e).with_stack_trace(self.stack_trace_nc()))?;
       if object.destructor == 0 {
         // object has no destructor
         Ok(false)
@@ -539,9 +576,9 @@ impl<'vm, P: Policy> Scheduler<'vm, P> {
   }
 
   /// Loads module from the given path pointer.
-  fn load_module(&mut self, context: Context<P>, ptr: Ptr) -> Result<(), P::Error> {
+  fn load_module(&mut self, context: Context<P>, ptr: Ptr) -> Result<(), Error<P>> {
     // load module
-    let path: PathBuf = P::utf8_str(&self.vm.global_heap.heap, ptr)?
+    let path: PathBuf = to_vm_error!(P::utf8_str(&self.vm.global_heap.heap, ptr), self, &context)
       .split('/')
       .collect();
     let handle = Ptr::from(
@@ -557,9 +594,13 @@ impl<'vm, P: Policy> Scheduler<'vm, P> {
   }
 
   /// Loads module from the given memory.
-  fn load_module_mem(&mut self, context: Context<P>, ptr: Ptr, len: u64) -> Result<(), P::Error> {
+  fn load_module_mem(&mut self, context: Context<P>, ptr: Ptr, len: u64) -> Result<(), Error<P>> {
     // get byte slice
-    P::check_access(&self.vm.global_heap.heap, ptr, len as usize, 1)?;
+    to_vm_error!(
+      P::check_access(&self.vm.global_heap.heap, ptr, len as usize, 1),
+      self,
+      &context
+    );
     let addr = self.vm.global_heap.heap.addr(ptr);
     let bytes = unsafe { slice::from_raw_parts(addr as *const u8, len as usize) };
     // load module
@@ -576,12 +617,12 @@ impl<'vm, P: Policy> Scheduler<'vm, P> {
   }
 
   /// Calls an external function by the given handle and name pointer.
-  fn call_ext(&mut self, context: Context<P>, handle: Ptr, ptr: Ptr) -> Result<(), P::Error> {
+  fn call_ext(&mut self, context: Context<P>, handle: Ptr, ptr: Ptr) -> Result<(), Error<P>> {
     // get the target module
-    let module = unwrap_module!(P, self.vm.loader.module(handle), handle);
+    let module = unwrap_module!(P, self.vm.loader.module(handle), handle, self, &context);
     // get call site information
-    let name = P::utf8_str(&self.vm.global_heap.heap, ptr)?;
-    let call_site = unwrap_call_site!(P, module, handle, name);
+    let name = to_vm_error!(P::utf8_str(&self.vm.global_heap.heap, ptr), self, &context);
+    let call_site = unwrap_call_site!(P, module, handle, name, self, &context);
     // perform call
     self.contexts.push(context.into_cont());
     self.contexts.push(Context::call(handle, call_site.pc));
@@ -595,18 +636,22 @@ impl<'vm, P: Policy> Scheduler<'vm, P> {
   }
 
   /// Calls a system call with the given system call number.
-  fn syscall(&mut self, context: Context<P>, syscall: i64) -> Result<(), P::Error> {
+  fn syscall(&mut self, context: Context<P>, syscall: i64) -> Result<(), Error<P>> {
     use crate::interpreter::syscall::ControlFlow;
-    let scf = self.vm.resolver.call(
-      syscall,
-      VmState {
-        loader: &mut self.vm.loader,
-        native_loader: &mut self.vm.native_loader,
-        heap: &mut self.vm.global_heap.heap,
-        value_stack: &mut self.vm.value_stack,
-        module_globals: &mut self.vm.module_globals,
-      },
-    )?;
+    let scf = to_vm_error!(
+      self.vm.resolver.call(
+        syscall,
+        VmState {
+          loader: &mut self.vm.loader,
+          native_loader: &mut self.vm.native_loader,
+          heap: &mut self.vm.global_heap.heap,
+          value_stack: &mut self.vm.value_stack,
+          module_globals: &mut self.vm.module_globals,
+        },
+      ),
+      self,
+      &context
+    );
     match scf {
       ControlFlow::Continue => self.contexts.push(context.into_cont()),
       ControlFlow::Terminate => {
@@ -615,7 +660,7 @@ impl<'vm, P: Policy> Scheduler<'vm, P> {
       }
       ControlFlow::GC => self.gc(context.into_cont())?,
       ControlFlow::Panic => {
-        eprint!("{}", self.stack_trace(&context));
+        eprintln!("{}", self.stack_trace(&context));
         process::abort();
       }
     }
@@ -627,6 +672,19 @@ impl<'vm, P: Policy> Scheduler<'vm, P> {
     StackTrace {
       contexts: iter::once(context)
         .chain(self.contexts.iter().rev())
+        .map(|c| c.context_trace(&self.vm.loader))
+        .collect(),
+    }
+  }
+
+  /// Returns a [`StackTrace`] of the current execution,
+  /// without an additional context.
+  fn stack_trace_nc(&self) -> StackTrace {
+    StackTrace {
+      contexts: self
+        .contexts
+        .iter()
+        .rev()
         .map(|c| c.context_trace(&self.vm.loader))
         .collect(),
     }
@@ -732,6 +790,14 @@ impl<P: Policy> Error<P> {
     }
   }
 
+  /// Returns a new [`Error`] with stack backtrace information.
+  fn with_stack_trace(self, stack_trace: StackTrace) -> Self {
+    Self {
+      error: self.error,
+      stack_trace: Some(stack_trace),
+    }
+  }
+
   /// Prints the error message of the current error to standard error.
   pub fn print_error(&self)
   where
@@ -743,7 +809,7 @@ impl<P: Policy> Error<P> {
   /// Prints the stack backtrace of the current error to standard error.
   pub fn print_stack_trace(&self) {
     if let Some(st) = &self.stack_trace {
-      eprint!("{st}");
+      eprintln!("{st}");
     }
   }
 }
@@ -770,8 +836,11 @@ struct StackTrace {
 impl fmt::Display for StackTrace {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     writeln!(f, "Stack backtrace:")?;
-    for context in &self.contexts {
+    for (i, context) in self.contexts.iter().enumerate() {
       write!(f, "{context}")?;
+      if i + 1 != self.contexts.len() {
+        writeln!(f)?;
+      }
     }
     Ok(())
   }
@@ -794,8 +863,11 @@ impl ContextTrace {
 impl fmt::Display for ContextTrace {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     let module = format!("{}", self.module);
-    for func in &self.funcs {
-      writeln!(f, "  {func} at {module}")?;
+    for (i, func) in self.funcs.iter().enumerate() {
+      write!(f, "  {func} at {module}")?;
+      if i + 1 != self.funcs.len() {
+        writeln!(f)?;
+      }
     }
     Ok(())
   }
