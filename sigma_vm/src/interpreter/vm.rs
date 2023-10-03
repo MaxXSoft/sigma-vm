@@ -4,7 +4,7 @@ use crate::bytecode::module::StaticModule;
 use crate::interpreter::context::{Context, DestructorKind, GlobalContext};
 use crate::interpreter::gc::{GarbageCollector, ModuleRoots, Roots};
 use crate::interpreter::heap::{Heap, Meta, Obj, ObjKind, Ptr};
-use crate::interpreter::loader::{Error, Loader};
+use crate::interpreter::loader::{self, Loader};
 use crate::interpreter::native::NativeLoader;
 use crate::interpreter::policy::Policy;
 use crate::interpreter::syscall::{Resolver, VmState};
@@ -14,7 +14,7 @@ use std::collections::HashMap;
 use std::iter::{self, Flatten};
 use std::path::{Path, PathBuf};
 use std::slice::Iter;
-use std::{mem, process, slice};
+use std::{fmt, mem, process, slice};
 
 /// Virtual machine for running bytecode.
 pub struct VM<P: Policy> {
@@ -71,7 +71,7 @@ impl<P: Policy> VM<P> {
   }
 
   /// Loads a module from the given path.
-  pub fn load_from_path<T>(&mut self, path: T) -> Result<Ptr, Error>
+  pub fn load_from_path<T>(&mut self, path: T) -> Result<Ptr, loader::Error>
   where
     T: AsRef<Path>,
   {
@@ -79,19 +79,19 @@ impl<P: Policy> VM<P> {
   }
 
   /// Loads a module from the given bytes.
-  pub fn load_from_bytes(&mut self, bytes: &[u8]) -> Result<Ptr, Error> {
+  pub fn load_from_bytes(&mut self, bytes: &[u8]) -> Result<Ptr, loader::Error> {
     self
       .loader
       .load_from_bytes(&mut self.global_heap.heap, bytes)
   }
 
   /// Loads a module from the standard input.
-  pub fn load_from_stdin(&mut self) -> Result<Ptr, Error> {
+  pub fn load_from_stdin(&mut self) -> Result<Ptr, loader::Error> {
     self.loader.load_from_stdin(&mut self.global_heap.heap)
   }
 
   /// Creates a module from the given static module.
-  pub fn new_module(&mut self, module: StaticModule) -> Result<Ptr, Error> {
+  pub fn new_module(&mut self, module: StaticModule) -> Result<Ptr, loader::Error> {
     self.loader.new_module(&mut self.global_heap.heap, module)
   }
 
@@ -209,7 +209,7 @@ where
     for _ in 0..num_rets {
       rets.push(P::unwrap(
         self.value_stack.pop(),
-        "try to access top of empty stack",
+        "failed to get return value",
       )?);
     }
     rets.reverse();
@@ -615,18 +615,20 @@ impl<'vm, P: Policy> Scheduler<'vm, P> {
       }
       ControlFlow::GC => self.gc(context.into_cont())?,
       ControlFlow::Panic => {
-        self.print_stack_trace(&context);
+        eprint!("{}", self.stack_trace(&context));
         process::abort();
       }
     }
     Ok(())
   }
 
-  /// Prints stack trace of the current execution to standard error.
-  fn print_stack_trace(&self, context: &Context<P>) {
-    eprintln!("Stack backtrace:");
-    for c in iter::once(context).chain(self.contexts.iter().rev()) {
-      c.print_stack_trace(&self.vm.loader);
+  /// Returns a [`StackTrace`] of the current execution.
+  fn stack_trace(&self, context: &Context<P>) -> StackTrace {
+    StackTrace {
+      contexts: iter::once(context)
+        .chain(self.contexts.iter().rev())
+        .map(|c| c.context_trace(&self.vm.loader))
+        .collect(),
     }
   }
 }
