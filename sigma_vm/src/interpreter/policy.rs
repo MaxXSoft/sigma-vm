@@ -162,6 +162,7 @@ pub trait Policy {
 /// Strict policy.
 ///
 /// Checks type of values, division, and memory out of bounds.
+#[derive(Debug)]
 pub struct Strict<H, GC> {
   gc_threshold: usize,
   phantom: PhantomData<(H, GC)>,
@@ -388,6 +389,7 @@ impl fmt::Display for StrictError {
 /// Strict policy with alignment checking.
 ///
 /// Checks type of values, division, memory out of bounds and memory alignment.
+#[derive(Debug)]
 pub struct StrictAlign<H, GC> {
   strict: Strict<H, GC>,
 }
@@ -543,6 +545,7 @@ impl fmt::Display for StrictAlignError {
 /// # Notes
 ///
 /// This policy can lead to a variety of undefined behaviours.
+#[derive(Debug)]
 pub struct NoCheck<H, GC> {
   gc_threshold: usize,
   phantom: PhantomData<(H, GC)>,
