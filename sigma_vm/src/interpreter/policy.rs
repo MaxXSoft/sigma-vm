@@ -63,8 +63,15 @@ pub trait Policy {
 
   /// Unwraps an [`Option<Value>`],
   /// returns the given error message if necessary.
-  fn unwrap<V, S>(v: Option<V>, e: S) -> Result<V, Self::Error>
+  fn unwrap<V>(v: Option<V>, e: &'static str) -> Result<V, Self::Error> {
+    Self::unwrap_or(v, || e)
+  }
+
+  /// Unwraps an [`Option<Value>`],
+  /// returns the given error message if necessary.
+  fn unwrap_or<V, F, S>(v: Option<V>, f: F) -> Result<V, Self::Error>
   where
+    F: FnOnce() -> S,
     S: Into<String>;
 
   /// Checks the given integer divisor, returns an error if necessary.
@@ -264,11 +271,12 @@ where
     }
   }
 
-  fn unwrap<V, S>(v: Option<V>, e: S) -> Result<V, Self::Error>
+  fn unwrap_or<V, F, S>(v: Option<V>, f: F) -> Result<V, Self::Error>
   where
+    F: FnOnce() -> S,
     S: Into<String>,
   {
-    v.ok_or(StrictError::Other(e.into()))
+    v.ok_or_else(|| StrictError::Other(f().into()))
   }
 
   fn check_div(divisor: u64) -> Result<(), Self::Error> {
@@ -451,11 +459,12 @@ where
     Strict::<H, GC>::obj_ptr_from_const(c).map_err(StrictAlignError::Strict)
   }
 
-  fn unwrap<V, S>(v: Option<V>, e: S) -> Result<V, Self::Error>
+  fn unwrap_or<V, F, S>(v: Option<V>, f: F) -> Result<V, Self::Error>
   where
+    F: FnOnce() -> S,
     S: Into<String>,
   {
-    Strict::<H, GC>::unwrap(v, e).map_err(StrictAlignError::Strict)
+    Strict::<H, GC>::unwrap_or(v, f).map_err(StrictAlignError::Strict)
   }
 
   fn check_div(divisor: u64) -> Result<(), Self::Error> {
@@ -609,8 +618,9 @@ where
     Ok(c.ptr())
   }
 
-  fn unwrap<V, S>(v: Option<V>, _: S) -> Result<V, Self::Error>
+  fn unwrap_or<V, F, S>(v: Option<V>, _: F) -> Result<V, Self::Error>
   where
+    F: FnOnce() -> S,
     S: Into<String>,
   {
     Ok(unsafe { v.unwrap_unchecked() })
