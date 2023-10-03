@@ -318,11 +318,7 @@ impl Assembler {
       Cfi(CfInstConstructor),
       PcImmOrNormal(PcInstConstructor),
     }
-    let opcode: InstOpcode = match inst.opcode.unwrap::<OpcOrLabel, _>() {
-      OpcOrLabel::Opcode(opcode) => opcode,
-      _ => unreachable!(),
-    };
-    let kind = match opcode {
+    let kind = match inst.opcode {
       InstOpcode::Nop => InstKind::Normal(Opcode::Nop),
       InstOpcode::PushI => InstKind::Normal(Opcode::PushI),
       InstOpcode::PushU => InstKind::PcImmOrNormal(Inst::PushU),
