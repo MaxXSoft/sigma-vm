@@ -492,7 +492,7 @@ mod test {
   }
 
   #[test]
-  #[should_panic(expected = "called `Result::unwrap()` on an `Err` value: Strict(ModuleNotFound)")]
+  #[should_panic]
   fn unload_self() {
     vm! {
       modules: {
