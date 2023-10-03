@@ -321,9 +321,9 @@ where
     loop {
       let d = i % base;
       i /= base;
-      s.push(P::unwrap(
+      s.push(P::unwrap_or(
         char::from_digit(d as u32, base as u32),
-        format!("invalid digit {d} for base {base}"),
+        || format!("invalid digit {d} for base {base}"),
       )?);
       if i == 0 {
         break;
