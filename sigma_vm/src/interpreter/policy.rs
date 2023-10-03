@@ -324,9 +324,13 @@ where
 /// Value of [`Strict`] policy.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum StrictValue {
+  /// A integer.
   Int(u64),
+  /// A pointer.
   Ptr(Ptr),
+  /// A float (f32).
   Float(f32),
+  /// A double (f64).
   Double(f64),
 }
 
