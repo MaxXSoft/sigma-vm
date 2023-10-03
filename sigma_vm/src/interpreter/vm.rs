@@ -26,6 +26,23 @@ pub struct VM<P: Policy> {
   module_globals: HashMap<Ptr, Vars<P::Value>>,
 }
 
+/// Helper macro for unwrapping a module.
+macro_rules! unwrap_module {
+  ($p:ident, $m:expr, $h:expr) => {
+    $p::unwrap($m, format!("module {} not found", $h))?
+  };
+}
+
+/// Helper macro for unwrapping a call site.
+macro_rules! unwrap_call_site {
+  ($p:ident, $m:expr, $h:expr, $f:expr) => {
+    $p::unwrap(
+      $m.call_site($f),
+      format!("function {} not found in module {}", $f, $h),
+    )?
+  };
+}
+
 impl<P: Policy> VM<P> {
   /// Creates a new virtual machine.
   pub fn new(policy: P) -> Self {
@@ -159,19 +176,30 @@ where
     I: IntoIterator<Item = P::Value>,
   {
     // get call site information
-    let m = P::unwrap_module(self.loader.module(module))?;
-    let call_site = P::unwrap_module(m.call_site(func))?;
+    let m = unwrap_module!(P, self.loader.module(module), module);
+    let call_site = unwrap_call_site!(P, m, module, func);
     // check arguments
     let args: Vec<_> = args.into_iter().collect();
-    let is_valid = match call_site.num_args {
+    let (is_valid, expected_nargs) = match call_site.num_args {
       NumArgs::Variadic => match args.last() {
-        Some(v) => P::get_int_ptr(v)? + 1 == args.len() as u64,
-        None => false,
+        Some(v) => {
+          let expected_nargs = P::get_int_ptr(v)?;
+          let is_valid = expected_nargs + 1 == args.len() as u64;
+          (is_valid, Some(expected_nargs))
+        }
+        None => (false, None),
       },
-      NumArgs::PlusOne(np1) => np1.get() - 1 == args.len() as u64,
+      NumArgs::PlusOne(np1) => (np1.get() - 1 == args.len() as u64, Some(np1.get() - 1)),
     };
     if !is_valid {
-      P::report_invalid_args()?;
+      let expected_nargs = match expected_nargs {
+        Some(n) => format!("{n}"),
+        None => "variadic".into(),
+      };
+      P::report_err(format!(
+        "argument number mismatch, expected {expected_nargs}, got {}",
+        args.len()
+      ))?;
     }
     // call the target function
     self.value_stack.extend(args);
@@ -180,7 +208,10 @@ where
     // get return values
     let mut rets = vec![];
     for _ in 0..num_rets {
-      rets.push(P::unwrap_val(self.value_stack.pop())?);
+      rets.push(P::unwrap(
+        self.value_stack.pop(),
+        "try to access top of empty stack",
+      )?);
     }
     rets.reverse();
     Ok(rets)
@@ -379,7 +410,7 @@ impl<'vm, P: Policy> Scheduler<'vm, P> {
         continue;
       };
       // run the context
-      let module = P::unwrap_module(self.vm.loader.module(context.module))?;
+      let module = unwrap_module!(P, self.vm.loader.module(context.module), context.module);
       let cf = context.run(GlobalContext {
         module,
         global_heap: &mut self.vm.global_heap,
@@ -548,10 +579,10 @@ impl<'vm, P: Policy> Scheduler<'vm, P> {
   /// Calls an external function by the given handle and name pointer.
   fn call_ext(&mut self, context: Context<P>, handle: Ptr, ptr: Ptr) -> Result<(), P::Error> {
     // get the target module
-    let module = P::unwrap_module(self.vm.loader.module(handle))?;
+    let module = unwrap_module!(P, self.vm.loader.module(handle), handle);
     // get call site information
     let name = P::utf8_str(&self.vm.global_heap.heap, ptr)?;
-    let call_site = P::unwrap_module(module.call_site(name))?;
+    let call_site = unwrap_call_site!(P, module, handle, name);
     // perform call
     self.contexts.push(context.into_cont());
     self.contexts.push(Context::call(handle, call_site.pc));
