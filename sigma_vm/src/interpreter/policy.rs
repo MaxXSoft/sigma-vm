@@ -61,20 +61,19 @@ pub trait Policy {
   /// returns an error if necessary.
   fn obj_ptr_from_const(c: &HeapConst) -> Result<Ptr, Self::Error>;
 
-  /// Unwraps an [`Option<Value>`], returns an error if necessary.
-  fn unwrap_val<V>(v: Option<V>) -> Result<V, Self::Error>;
-
-  /// Unwraps an [`Option<Module>`], returns an error if necessary.
-  fn unwrap_module<M>(m: Option<M>) -> Result<M, Self::Error>;
+  /// Unwraps an [`Option<Value>`],
+  /// returns the given error message if necessary.
+  fn unwrap<V, S>(v: Option<V>, e: S) -> Result<V, Self::Error>
+  where
+    S: Into<String>;
 
   /// Checks the given integer divisor, returns an error if necessary.
   fn check_div(divisor: u64) -> Result<(), Self::Error>;
 
-  /// Reports invalid arguments.
-  fn report_invalid_args() -> Result<(), Self::Error>;
-
-  /// Reports invalid system call.
-  fn report_invalid_syscall() -> Result<(), Self::Error>;
+  /// Reports a error with the given error message.
+  fn report_err<S>(e: S) -> Result<(), Self::Error>
+  where
+    S: Into<String>;
 
   /// Creates a new heap.
   fn new_heap(&self) -> Self::Heap;
@@ -201,28 +200,35 @@ where
     match v {
       StrictValue::Int(i) => Ok(*i),
       StrictValue::Ptr(p) => Ok((*p).into()),
-      _ => Err(StrictError::TypeMismatch),
+      StrictValue::Float(_) => Err(StrictError::TypeMismatch("integer or pointer", "float")),
+      StrictValue::Double(_) => Err(StrictError::TypeMismatch("integer or pointer", "double")),
     }
   }
 
   fn get_f32(v: &Self::Value) -> Result<f32, Self::Error> {
     match v {
       StrictValue::Float(f) => Ok(*f),
-      _ => Err(StrictError::TypeMismatch),
+      StrictValue::Int(_) => Err(StrictError::TypeMismatch("float", "integer")),
+      StrictValue::Ptr(_) => Err(StrictError::TypeMismatch("float", "pointer")),
+      StrictValue::Double(_) => Err(StrictError::TypeMismatch("float", "double")),
     }
   }
 
   fn get_f64(v: &Self::Value) -> Result<f64, Self::Error> {
     match v {
       StrictValue::Double(f) => Ok(*f),
-      _ => Err(StrictError::TypeMismatch),
+      StrictValue::Int(_) => Err(StrictError::TypeMismatch("double", "integer")),
+      StrictValue::Ptr(_) => Err(StrictError::TypeMismatch("double", "pointer")),
+      StrictValue::Float(_) => Err(StrictError::TypeMismatch("double", "float")),
     }
   }
 
   fn get_ptr(v: &Self::Value) -> Result<Ptr, Self::Error> {
     match v {
       StrictValue::Ptr(p) => Ok(*p),
-      _ => Err(StrictError::TypeMismatch),
+      StrictValue::Int(_) => Err(StrictError::TypeMismatch("pointer", "integer")),
+      StrictValue::Float(_) => Err(StrictError::TypeMismatch("pointer", "float")),
+      StrictValue::Double(_) => Err(StrictError::TypeMismatch("pointer", "double")),
     }
   }
 
@@ -246,7 +252,7 @@ where
     if c.kind() == ConstKind::Str {
       Ok(c.ptr())
     } else {
-      Err(StrictError::InvalidStr)
+      Err(StrictError::InvalidConst(ConstKind::Str, c.kind()))
     }
   }
 
@@ -254,16 +260,15 @@ where
     if c.kind() == ConstKind::Object {
       Ok(c.ptr())
     } else {
-      Err(StrictError::InvalidObject)
+      Err(StrictError::InvalidConst(ConstKind::Object, c.kind()))
     }
   }
 
-  fn unwrap_val<V>(v: Option<V>) -> Result<V, Self::Error> {
-    v.ok_or(StrictError::ExpectedValue)
-  }
-
-  fn unwrap_module<M>(m: Option<M>) -> Result<M, Self::Error> {
-    m.ok_or(StrictError::ModuleNotFound)
+  fn unwrap<V, S>(v: Option<V>, e: S) -> Result<V, Self::Error>
+  where
+    S: Into<String>,
+  {
+    v.ok_or(StrictError::Other(e.into()))
   }
 
   fn check_div(divisor: u64) -> Result<(), Self::Error> {
@@ -274,30 +279,29 @@ where
     }
   }
 
-  fn report_invalid_args() -> Result<(), Self::Error> {
-    Err(StrictError::InvalidArgs)
-  }
-
-  fn report_invalid_syscall() -> Result<(), Self::Error> {
-    Err(StrictError::InvalidSyscall)
+  fn report_err<S>(e: S) -> Result<(), Self::Error>
+  where
+    S: Into<String>,
+  {
+    Err(StrictError::Other(e.into()))
   }
 
   fn new_heap(&self) -> Self::Heap {
     H::new()
   }
 
-  fn check_access(heap: &Self::Heap, p: Ptr, len: usize, _: usize) -> Result<(), Self::Error> {
+  fn check_access(heap: &Self::Heap, p: Ptr, len: usize, align: usize) -> Result<(), Self::Error> {
     if heap.is_valid(p, len) {
       Ok(())
     } else {
-      Err(StrictError::OutOfBounds)
+      Err(StrictError::OutOfBounds(p, len, align))
     }
   }
 
   fn utf8_str(heap: &Self::Heap, ptr: Ptr) -> Result<&str, Self::Error> {
     Self::str(heap, ptr)?
       .to_str()
-      .ok_or(StrictError::InvalidUtf8)
+      .ok_or(StrictError::InvalidUtf8(ptr))
   }
 
   fn layout(size: usize, align: usize) -> Result<Layout, Self::Error> {
@@ -337,47 +341,38 @@ pub enum StrictValue {
 /// Error for [`Strict`] policy.
 #[derive(Debug)]
 pub enum StrictError {
-  /// Type mismatch.
-  TypeMismatch,
-  /// Expected a value.
-  ExpectedValue,
-  /// Module not found.
-  ModuleNotFound,
+  /// Type mismatch, with expected type and actual type.
+  TypeMismatch(&'static str, &'static str),
   /// Divisor is zero.
   ZeroDivision,
-  /// Invalid arguments.
-  InvalidArgs,
-  /// Invalid system call.
-  InvalidSyscall,
-  /// Memory access out of bounds.
-  OutOfBounds,
-  /// Out of heap memory.
+  /// Memory access out of bounds, with pointer, length and alignment.
+  OutOfBounds(Ptr, usize, usize),
+  /// Out of heap memory, with heap size limit and actual size.
   OutOfHeap,
-  /// Invalid string.
-  InvalidStr,
-  /// Invalid object metadata.
-  InvalidObject,
-  /// Invalid UTF-8 string.
-  InvalidUtf8,
+  /// Invalid constant, with expected kind and actual kind.
+  InvalidConst(ConstKind, ConstKind),
+  /// Invalid UTF-8 string, with the string pointer.
+  InvalidUtf8(Ptr),
   /// Invalid allocation layout.
   InvalidLayout,
+  /// Other error.
+  Other(String),
 }
 
 impl fmt::Display for StrictError {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     match self {
-      Self::TypeMismatch => write!(f, "value type mismatch"),
-      Self::ExpectedValue => write!(f, "expected a value, got nothing"),
-      Self::ModuleNotFound => write!(f, "module not found"),
+      Self::TypeMismatch(e, a) => write!(f, "value type mismatch, expected {e}, got {a}"),
       Self::ZeroDivision => write!(f, "divisor is zero"),
-      Self::InvalidArgs => write!(f, "invalid arguments"),
-      Self::InvalidSyscall => write!(f, "invalid system call"),
-      Self::OutOfBounds => write!(f, "memory access out of bounds"),
+      Self::OutOfBounds(p, l, a) => write!(
+        f,
+        "memory access out of bounds at {p}, length {l}, alignment {a}"
+      ),
       Self::OutOfHeap => write!(f, "out of heap memory"),
-      Self::InvalidStr => write!(f, "invalid string"),
-      Self::InvalidObject => write!(f, "invalid object metadata"),
-      Self::InvalidUtf8 => write!(f, "invalid UTF-8 string"),
+      Self::InvalidConst(e, a) => write!(f, "invalid constant, expected `{e:?}`, got `{a:?}`"),
+      Self::InvalidUtf8(p) => write!(f, "invalid UTF-8 string {p}"),
       Self::InvalidLayout => write!(f, "invalid allocation layout"),
+      Self::Other(e) => write!(f, "{e}"),
     }
   }
 }
@@ -456,24 +451,22 @@ where
     Strict::<H, GC>::obj_ptr_from_const(c).map_err(StrictAlignError::Strict)
   }
 
-  fn unwrap_val<V>(v: Option<V>) -> Result<V, Self::Error> {
-    Strict::<H, GC>::unwrap_val(v).map_err(StrictAlignError::Strict)
-  }
-
-  fn unwrap_module<M>(m: Option<M>) -> Result<M, Self::Error> {
-    Strict::<H, GC>::unwrap_module(m).map_err(StrictAlignError::Strict)
+  fn unwrap<V, S>(v: Option<V>, e: S) -> Result<V, Self::Error>
+  where
+    S: Into<String>,
+  {
+    Strict::<H, GC>::unwrap(v, e).map_err(StrictAlignError::Strict)
   }
 
   fn check_div(divisor: u64) -> Result<(), Self::Error> {
     Strict::<H, GC>::check_div(divisor).map_err(StrictAlignError::Strict)
   }
 
-  fn report_invalid_args() -> Result<(), Self::Error> {
-    Strict::<H, GC>::report_invalid_args().map_err(StrictAlignError::Strict)
-  }
-
-  fn report_invalid_syscall() -> Result<(), Self::Error> {
-    Strict::<H, GC>::report_invalid_syscall().map_err(StrictAlignError::Strict)
+  fn report_err<S>(e: S) -> Result<(), Self::Error>
+  where
+    S: Into<String>,
+  {
+    Strict::<H, GC>::report_err(e).map_err(StrictAlignError::Strict)
   }
 
   fn new_heap(&self) -> Self::Heap {
@@ -483,7 +476,7 @@ where
   fn check_access(heap: &Self::Heap, p: Ptr, len: usize, align: usize) -> Result<(), Self::Error> {
     Strict::<H, GC>::check_access(heap, p, len, align).map_err(StrictAlignError::Strict)?;
     if !align.is_power_of_two() || (u64::from(p) & (align as u64 - 1)) != 0 {
-      Err(StrictAlignError::MisalignedAccess)
+      Err(StrictAlignError::MisalignedAccess(p, len, align))
     } else {
       Ok(())
     }
@@ -518,15 +511,18 @@ where
 pub enum StrictAlignError {
   /// Error returned by [`Strict`] policy.
   Strict(StrictError),
-  /// Memory access is not aligned.
-  MisalignedAccess,
+  /// Memory access is not aligned, with pointer, length and alignment.
+  MisalignedAccess(Ptr, usize, usize),
 }
 
 impl fmt::Display for StrictAlignError {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     match self {
       Self::Strict(s) => write!(f, "{s}"),
-      Self::MisalignedAccess => write!(f, "memory access is not aligned"),
+      Self::MisalignedAccess(p, l, a) => write!(
+        f,
+        "memory access is not aligned at {p}, length {l}, alignment {a}"
+      ),
     }
   }
 }
@@ -613,23 +609,21 @@ where
     Ok(c.ptr())
   }
 
-  fn unwrap_val<V>(v: Option<V>) -> Result<V, Self::Error> {
+  fn unwrap<V, S>(v: Option<V>, _: S) -> Result<V, Self::Error>
+  where
+    S: Into<String>,
+  {
     Ok(unsafe { v.unwrap_unchecked() })
-  }
-
-  fn unwrap_module<M>(m: Option<M>) -> Result<M, Self::Error> {
-    Ok(unsafe { m.unwrap_unchecked() })
   }
 
   fn check_div(_: u64) -> Result<(), Self::Error> {
     Ok(())
   }
 
-  fn report_invalid_args() -> Result<(), Self::Error> {
-    Ok(())
-  }
-
-  fn report_invalid_syscall() -> Result<(), Self::Error> {
+  fn report_err<S>(_: S) -> Result<(), Self::Error>
+  where
+    S: Into<String>,
+  {
     Ok(())
   }
 
