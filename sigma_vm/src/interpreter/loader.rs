@@ -163,7 +163,7 @@ impl Loader {
     if let Some(path) = path {
       format!("module {}", path.display())
     } else {
-      format!("module 0x{:x}", u64::from(handle))
+      format!("module {handle}")
     }
   }
 
