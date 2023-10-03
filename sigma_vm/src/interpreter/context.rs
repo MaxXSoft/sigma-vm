@@ -1,3 +1,4 @@
+use crate::bytecode::consts::HeapConst;
 use crate::bytecode::insts::Inst;
 use crate::bytecode::module::Module;
 use crate::interpreter::gc::ContextRoots;
@@ -313,23 +314,28 @@ where
         PcUpdate::Next
       }
       Inst::LdV(opr) => {
-        let locals = P::unwrap_val(self.var_stack.last())?;
-        let var = P::unwrap_val(locals.get(opr as usize))?;
+        let var = P::unwrap(
+          self.var_stack.last().and_then(|vs| vs.get(opr as usize)),
+          format!("local variable {opr} not found"),
+        )?;
         gctx.push(var.clone());
         PcUpdate::Next
       }
       Inst::LdG(opr) => {
-        let var = P::unwrap_val(gctx.global_vars.get(opr as usize))?;
+        let var = P::unwrap(
+          gctx.global_vars.get(opr as usize),
+          format!("global variable {opr} not found"),
+        )?;
         gctx.push(var.clone());
         PcUpdate::Next
       }
       Inst::LdC(opr) => {
-        let c = P::unwrap_val(gctx.module.consts.get(opr as usize))?;
+        let c = gctx.constant(opr)?;
         gctx.push(gctx.global_heap.val_from_const(c));
         PcUpdate::Next
       }
       Inst::LaC(opr) => {
-        let c = P::unwrap_val(gctx.module.consts.get(opr as usize))?;
+        let c = gctx.constant(opr)?;
         gctx.push_ptr(c.ptr());
         PcUpdate::Next
       }
@@ -387,7 +393,10 @@ where
       }
       Inst::StV(opr) => {
         let v = gctx.pop()?;
-        let locals = P::unwrap_val(self.var_stack.last_mut())?;
+        let locals = P::unwrap(
+          self.var_stack.last_mut(),
+          "failed to access local variables",
+        )?;
         locals.set_or_create(opr as usize, v);
         PcUpdate::Next
       }
@@ -399,7 +408,11 @@ where
       Inst::StA(opr) => {
         for index in (0..=opr as usize).rev() {
           let v = gctx.pop()?;
-          P::unwrap_val(self.var_stack.last_mut())?.set_or_create(index, v);
+          let locals = P::unwrap(
+            self.var_stack.last_mut(),
+            "failed to access local variables",
+          )?;
+          locals.set_or_create(index, v);
         }
         PcUpdate::Next
       }
@@ -426,7 +439,7 @@ where
         if gctx.global_heap.should_collect() {
           return ControlFlow::GC.into();
         }
-        let c = P::unwrap_val(gctx.module.consts.get(opr as usize))?;
+        let c = gctx.constant(opr)?;
         let obj_ptr = P::obj_ptr_from_const(c)?;
         let ptr = gctx.global_heap.new_object(obj_ptr, self.module)?;
         gctx.push_ptr(ptr);
@@ -447,7 +460,7 @@ where
           return ControlFlow::GC.into();
         }
         let len = gctx.pop_int_ptr()?;
-        let c = P::unwrap_val(gctx.module.consts.get(opr as usize))?;
+        let c = gctx.constant(opr)?;
         let obj_ptr = P::obj_ptr_from_const(c)?;
         let ptr = gctx.global_heap.new_array(obj_ptr, len, self.module)?;
         gctx.push_ptr(ptr);
@@ -458,7 +471,7 @@ where
         return ControlFlow::LoadModule(ptr).into();
       }
       Inst::LoadC(opr) => {
-        let c = P::unwrap_val(gctx.module.consts.get(opr as usize))?;
+        let c = gctx.constant(opr)?;
         let ptr = P::str_ptr_from_const(c)?;
         return ControlFlow::LoadModule(ptr).into();
       }
@@ -523,7 +536,7 @@ where
       }
       Inst::CallExtC(opr) => {
         let handle = gctx.pop_ptr()?;
-        let c = P::unwrap_val(gctx.module.consts.get(opr as usize))?;
+        let c = gctx.constant(opr)?;
         let ptr = P::str_ptr_from_const(c)?;
         return ControlFlow::CallExt(handle, ptr).into();
       }
@@ -656,6 +669,8 @@ pub(super) struct GlobalContext<'vm, P: Policy> {
 }
 
 impl<'vm, P: Policy> GlobalContext<'vm, P> {
+  const EMPTY_STACK_ERR: &'static str = "try to access top of empty stack";
+
   /// Returns the instruction at the given PC.
   fn inst(&self, pc: u64) -> Inst {
     self.module.insts[pc as usize]
@@ -688,7 +703,7 @@ impl<'vm, P: Policy> GlobalContext<'vm, P> {
 
   /// Pops a value from the value stack.
   fn pop(&mut self) -> Result<P::Value, P::Error> {
-    P::unwrap_val(self.value_stack.pop())
+    P::unwrap(self.value_stack.pop(), Self::EMPTY_STACK_ERR)
   }
 
   /// Pops an integer/pointer from the value stack.
@@ -718,12 +733,20 @@ impl<'vm, P: Policy> GlobalContext<'vm, P> {
 
   /// Peeks the last value in the value stack.
   fn peek_s0(&self) -> Result<&P::Value, P::Error> {
-    P::unwrap_val(self.value_stack.last())
+    P::unwrap(self.value_stack.last(), Self::EMPTY_STACK_ERR)
   }
 
   /// Peeks the last mutable value in the value stack.
   fn peek_s0_mut(&mut self) -> Result<&mut P::Value, P::Error> {
-    P::unwrap_val(self.value_stack.last_mut())
+    P::unwrap(self.value_stack.last_mut(), Self::EMPTY_STACK_ERR)
+  }
+
+  /// Returns a reference to the given constant.
+  fn constant(&self, index: u64) -> Result<&HeapConst, P::Error> {
+    P::unwrap(
+      self.module.consts.get(index as usize),
+      format!("constant {index} not found"),
+    )
   }
 }
 
