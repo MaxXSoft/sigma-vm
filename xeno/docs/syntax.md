@@ -72,19 +72,15 @@ Expr := Prefix {PathExpr Prefix};
 Prefix := {PathExpr} Factor;
 Factor := Block | NonBlock;
 Block := "{" {Statement} "}";
-NonBlock := Loop | While | Break | Continue | If | Match | Return
-          | Literal | Underscore | Bang | Paren | TupleExpr | ArrayExpr
-          | StructExpr | Call | PathExpr | Access | Closure | Expand
-          | Type;
-Loop := [Label ":"] "loop" Block;
+NonBlock := While | Break | Continue | If | Return | Literal | Underscore
+          | Bang | Paren | TupleExpr | ArrayExpr | StructExpr | Call
+          | PathExpr | Access | Closure | Expand | Type;
 While := [Label ":"] "while" Cond Block;
 Label := "@" IDENT;
 Cond := Expr | Let;
 Break := "break" [Label];
 Continue := "continue" [Label];
 If := "if" Cond Block ["else" (If | Block)];
-Match := "match" Expr "{" MatchArm {MatchArm} "}";
-MatchArm := ConcretePat "=>" (Block [","] | NonBlock ",");
 Return := "return" [Expr];
 
 Literal := INT | FLOAT | CHAR | BYTE | STR | RAW_STR | BYTES;
