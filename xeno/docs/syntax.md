@@ -19,7 +19,7 @@ NativeBody := "{" {FuncDecl} "}";
 
 Trait := ["pub"] "trait" IDENT [ImplicitParams] [Params] [Inherit] [Where] TraitBody;
 Inherit := ":" PathExpr {"+" PathExpr};
-TraitBody := "{" {FuncDecl [FuncBody]} "}";
+TraitBody := "{" {FuncDecl | FuncDef} "}";
 
 Impl := "impl" [ImplicitParams] [PathExpr "for"] PathExpr [Where] ImplBody;
 ImplBody := "{" {FuncDef} "}";
