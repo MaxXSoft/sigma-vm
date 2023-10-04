@@ -74,7 +74,7 @@ Factor := Block | NonBlock;
 Block := "{" {Statement} "}";
 NonBlock := While | Break | Continue | If | Return | Literal | Underscore
           | Bang | Paren | TupleExpr | ArrayExpr | StructExpr | Call
-          | PathExpr | Access | Closure | Expand | Type;
+          | PathExpr | Access | Try | Closure | Expand | Type;
 While := [Label ":"] "while" Cond Block;
 Label := "@" IDENT;
 Cond := Expr | Let;
@@ -95,6 +95,7 @@ Call := Expr CallArgs;
 CallArgs := ImplicitArgs | Args | ImplicitArgs Args;
 PathExpr := IDENT [ImplicitArgs] [Args] ["." PathExpr];
 Access := Expr "." PathExpr;
+Try := Expr "?";
 Closure := "fn" [ImplicitClosureParams] [ClosureParams] ["->" Type] [Where] Expr;
 ImplicitClosureParams := "[" [ClosureParam {"," ClosureParam} [","]] "]";
 ClosureParams := "(" [ClosureParam {"," ClosureParam} [","]] ")";
