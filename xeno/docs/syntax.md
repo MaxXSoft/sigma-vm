@@ -44,7 +44,7 @@ StructType := "struct" "{" [StructField {"," StructField} [","]] "}";
 StructField := ["pub"] IDENT ":" Type;
 EnumType := "enum" "{" [EnumField {"," EnumField} [","]] "}";
 EnumField := IDENT [TupleType] ["=" Expr];
-ArrayType := "[" Type ";" Expr "]";
+ArrayType := "[" Type "]";
 TupleType := "(" [Types] ")";
 Types := ["..."] Type {"," ["..."] Type} [","];
 FuncType := "fn" [ImplicitParamsType] [ParamsType] ["->" Type];
