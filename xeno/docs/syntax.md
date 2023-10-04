@@ -3,7 +3,7 @@
 ```ebnf
 CompUnit := {[Anno] Item};
 Anno := "@" IDENT {TOKEN};
-Item := Import | Static | FuncDef | NativeFuncDecl | Trait | Impl;
+Item := Import | Static | FuncDef | NativeDecl | Trait | Impl;
 
 Import := "import" (Path | Paths);
 Path := IDENT {"." IDENT} ["." (Paths | "*")];
@@ -11,10 +11,11 @@ Paths := "{" Path {"," Path} [","] "}";
 
 Static := ["pub"] "static" ["mut"] IDENT ":" Type "=" Expr;
 
-FuncDef := ["pub"] FuncDecl Block;
-FuncDecl := "fn" IDENT [ImplicitParams] [Params] ["->" Type] [Where];
+FuncDef := FuncDecl Block;
+FuncDecl := ["pub"] "fn" IDENT [ImplicitParams] [Params] ["->" Type] [Where];
 
-NativeFuncDecl := ["pub"] "native" FuncDecl;
+NativeDecl := "native" Path NativeBody;
+NativeBody := "{" {FuncDecl} "}";
 
 Trait := ["pub"] "trait" IDENT [ImplicitParams] [Params] [Inherit] [Where] TraitBody;
 Inherit := ":" PathExpr {"+" PathExpr};
