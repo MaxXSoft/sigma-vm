@@ -1,37 +1,59 @@
+use laps::lexer::{char_literal, str_literal};
 use laps::prelude::*;
 use std::{fmt, num, str};
 
 /// Kind of token.
-#[derive(Debug)]
+#[token_kind]
+#[derive(Debug, Tokenize)]
 pub enum TokenKind {
   /// Whitespaces.
+  #[skip(r"\s+")]
   _Skip,
   /// Integer literal.
+  #[regex(r"(0b[01]+|0o[0-7]+|0x[0-9a-fA-F]+|[0-9]+)([iIuU](8|16|32|64))?")]
   Int(Int),
   /// Floating-point literal.
+  #[regex(r"[0-9]+(\.([0-9]+([eE][+-]?[0-9]+)?([fF](32|64))?)?|([eE][+-]?[0-9]+)([fF](32|64))?|([fF](32|64)))")]
   Float(Float),
   /// Character literal.
+  #[regex(
+    r#"'([^'\\\n\r\t]|\\'|\\"|\\x[0-7][0-9a-fA-F]|\\n|\\r|\\t|\\\\|\\0|\\u\{[0-9a-fA-F]{1,6}\})'"#,
+    char_literal
+  )]
   Char(char),
   /// Byte literal.
+  #[regex(
+    r#"b'([\x20-\x26\x28-\x5b\x5d-\x7e]|\\x[0-9a-fA-F]{2}|\\n|\\r|\\t|\\\\|\\0|\\'|\\")'"#,
+    parse_byte
+  )]
   Byte(u8),
   /// String literal.
+  #[regex(
+    r#""([^'\\\n\r\t]|\\'|\\"|\\x[0-7][0-9a-fA-F]|\\n|\\r|\\t|\\\\|\\0|\\u\{[0-9a-fA-F]{1,6}\})*""#
+  )]
   Str(Str),
   /// Raw string literal.
+  #[regex(r####"r"[^"]*"|r#"([^"]|"[^#])*"#|r##"([^"]|"[^#]|"#[^#])*"##|r###"([^"]|"[^#]|"#[^#]|"##[^#])*"###"####)]
   RawStr(RawStr),
   /// Bytes literal.
+  #[regex(r#"b"([\x20-\x26\x28-\x5b\x5d-\x7e]|\\x[0-9a-fA-F]{2}|\\n|\\r|\\t|\\\\|\\0|\\'|\\")*""#)]
   Bytes(Bytes),
   /// Pre-defined operator-like identifiers.
+  #[regex(r"\+|-|\*|/|%|&|\||!|\^|<<|>>|&&|\|\||==|!=|<|<=|>|>=|=|\+=|-=|\*=|/=|%=|&=|\|=|\^=|<<=|>>=|\(|\)|\[|\]|\{|\}|\.|\.\.|\.\.\.|->|,|:|@|_|\?")]
   PreDefOp(PreDefOp),
   /// Other operator-like identifiers.
+  #[regex(r"[~!@#$%^&*()_\-+={}\[\]|\\:;<,>.?/]+")]
   Op(Op),
   /// Other identifiers.
+  #[regex(r#"[^\s~!@#$%^&*()_\-+={}\[\]|\\:;<,>.?/0-9][^\s~!@#$%^&*()\-+={}\[\]|\\:;<,>.?/]*"#)]
   Ident(String),
   /// End-of-file.
+  #[eof]
   Eof,
 }
 
 /// Integer literal.
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Int {
   /// 8-bit signed integer.
   I8(i8),
@@ -105,7 +127,7 @@ impl str::FromStr for Int {
 }
 
 /// Floating-point literal.
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Float {
   F32(f32),
   F64(f64),
@@ -139,8 +161,13 @@ impl str::FromStr for Float {
   }
 }
 
+/// Parses a byte literal from the given string.
+fn parse_byte(s: &str) -> Option<u8> {
+  char_literal(&s[1..]).map(|c| c as u8)
+}
+
 /// String literal.
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Str(pub String);
 
 impl fmt::Display for Str {
@@ -149,8 +176,16 @@ impl fmt::Display for Str {
   }
 }
 
+impl str::FromStr for Str {
+  type Err = ();
+
+  fn from_str(s: &str) -> Result<Self, Self::Err> {
+    str_literal(s).map(Self).ok_or(())
+  }
+}
+
 /// Raw string literal.
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct RawStr(pub String);
 
 impl fmt::Display for RawStr {
@@ -163,12 +198,14 @@ impl str::FromStr for RawStr {
   type Err = ();
 
   fn from_str(s: &str) -> Result<Self, Self::Err> {
-    todo!()
+    str_literal(&s[s.find('"').unwrap()..=s.rfind('"').unwrap()])
+      .map(Self)
+      .ok_or(())
   }
 }
 
 /// Bytes literal.
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Bytes(pub Vec<u8>);
 
 impl fmt::Display for Bytes {
@@ -181,12 +218,12 @@ impl str::FromStr for Bytes {
   type Err = ();
 
   fn from_str(s: &str) -> Result<Self, Self::Err> {
-    todo!()
+    str_literal(&s[1..]).map(|s| Self(s.into_bytes())).ok_or(())
   }
 }
 
 /// Pre-defined operator.
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum PreDefOp {
   /// +
   Add,
@@ -388,7 +425,7 @@ impl str::FromStr for PreDefOp {
 }
 
 /// Operator-like identifier.
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Op(pub String);
 
 impl fmt::Display for Op {
