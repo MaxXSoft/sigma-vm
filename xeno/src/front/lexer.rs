@@ -2,6 +2,9 @@ use laps::lexer::{char_literal, str_literal};
 use laps::prelude::*;
 use std::{fmt, num, str};
 
+/// Type of token.
+pub type Token = laps::token::Token<TokenKind>;
+
 /// Kind of token.
 #[token_kind]
 #[derive(Debug, Tokenize)]
