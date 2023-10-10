@@ -73,8 +73,8 @@ Prefix := {PathExpr} Factor;
 Factor := Block | NonBlock;
 Block := "{" {Statement} "}";
 NonBlock := While | Break | Continue | If | Return | Literal | Underscore
-          | Bang | Paren | TupleExpr | ArrayExpr | StructExpr | Call
-          | PathExpr | Access | Try | Closure | Expand | Type;
+          | Paren | TupleExpr | ArrayExpr | StructExpr | Call | PathExpr
+          | Access | Try | Closure | Expand | Type;
 While := [Label ":"] "while" Cond Block;
 Label := "@" IDENT;
 Cond := Expr | Let;
@@ -85,7 +85,6 @@ Return := "return" [Expr];
 
 Literal := INT | FLOAT | CHAR | BYTE | STR | RAW_STR | BYTES;
 Underscore := "_";
-Bang := "!";
 Paren := "(" Expr ")";
 TupleExpr := "(" [Expr "," {Expr ","} [Expr]] ")";
 ArrayExpr := "[" [Expr {"," Expr} [","]] "]";
