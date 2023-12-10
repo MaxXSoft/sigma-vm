@@ -9,13 +9,13 @@ The compiler reads Lisp program from a file or standard input, parses it into AS
 First compile built-in functions:
 
 ```
-cargo run --bin lisp -- -p lisp/lib/builtins.sbas -o builtins.sbc
+cargo run --bin sbas -- -p lisp/lib/builtins.sbas -o builtins.sbc
 ```
 
 Then compile a Lisp program:
 
 ```
-cargo run --bin lisp -- lisp/examples/fib.sbas -o fib.sbc
+cargo run --bin lisp -- lisp/examples/fib.lisp -o fib.sbc
 ```
 
 And run the compiled program with `sigma` (enable release build for speed):
@@ -27,7 +27,7 @@ cargo run --bin sigma -r -- fib.sbc
 Or compile and run the program with a single command:
 
 ```
-cargo run --bin lisp -- lisp/examples/fib.sbas | cargo run --bin sigma -r
+cargo run --bin lisp -- lisp/examples/fib.lisp | cargo run --bin sigma -r
 ```
 
 When running the program, Sigma VM will load the built-ins from `builtins.sbc`, so make sure that `builtins.sbc` is located in the current working directory. You can also specify the library search path by running:
