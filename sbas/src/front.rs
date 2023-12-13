@@ -1,5 +1,5 @@
 use laps::ast::{NonEmptySepSeq, SepSeq};
-use laps::lexer::{int_literal, str_literal, Lexer};
+use laps::lexer::{signed_int_literal, str_literal, Lexer};
 use laps::prelude::*;
 use laps::reader::Reader;
 use laps::span::Span;
@@ -31,8 +31,10 @@ pub enum TokenKind {
   #[regex(r"([0-9]|[1-9][0-9]+|0x[0-9a-fA-F]+|0b[01]+|0o[0-7]+)(f|b)")]
   TempLabelRef(TempLabelRef),
   /// Integer.
-  // TODO: handle sign
-  #[regex(r"-?([0-9]|[1-9][0-9]+|0x[0-9a-fA-F]+|0b[01]+|0o[0-7]+)", int_literal)]
+  #[regex(
+    r"-?([0-9]|[1-9][0-9]+|0x[0-9a-fA-F]+|0b[01]+|0o[0-7]+)",
+    signed_int_literal
+  )]
   Int(u64),
   /// Floating point.
   #[regex(r"-?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?")]
