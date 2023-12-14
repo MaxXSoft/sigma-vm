@@ -51,7 +51,10 @@ impl Assembler {
   /// Generates on the given statement.
   pub fn generate(&mut self, stmt: Statement) -> Result<()> {
     match stmt {
-      Statement::SectionDecl(sec) => Ok(self.gen_section(sec)),
+      Statement::SectionDecl(sec) => {
+        self.gen_section(sec);
+        Ok(())
+      }
       Statement::Export(e) => self.gen_export(e),
       Statement::IntConst(c) => self.gen_int_const(c),
       Statement::FloatConst(c) => self.gen_float_const(c),
@@ -107,7 +110,7 @@ impl Assembler {
     // write module
     match Writer::new(&module).write_to(w) {
       Ok(()) => Ok(()),
-      Err(e) => return Err(log_raw_error!(span, "failed to write bytecode file: {e}")),
+      Err(e) => Err(log_raw_error!(span, "failed to write bytecode file: {e}")),
     }
   }
 
@@ -186,7 +189,7 @@ impl Assembler {
         IntConstKind::I32(_) => self.insert_to_const(value as i32),
         IntConstKind::U32(_) => self.insert_to_const(value as u32),
         IntConstKind::I64(_) => self.insert_to_const(value as i64),
-        IntConstKind::U64(_) => self.insert_to_const(value as u64),
+        IntConstKind::U64(_) => self.insert_to_const(value),
       },
       Section::Custom => match int_const.kind {
         IntConstKind::I8(_) => self.insert_to_custom(value as i8),
@@ -196,7 +199,7 @@ impl Assembler {
         IntConstKind::I32(_) => self.insert_to_custom(value as i32),
         IntConstKind::U32(_) => self.insert_to_custom(value as u32),
         IntConstKind::I64(_) => self.insert_to_custom(value as i64),
-        IntConstKind::U64(_) => self.insert_to_custom(value as u64),
+        IntConstKind::U64(_) => self.insert_to_custom(value),
       },
       _ => return_error!(span, "integer constant can not appear here"),
     }
@@ -211,11 +214,11 @@ impl Assembler {
     match self.cur_sec {
       Section::Consts => match float_const.kind {
         FloatConstKind::F32(_) => self.insert_to_const(value as f32),
-        FloatConstKind::F64(_) => self.insert_to_const(value as f64),
+        FloatConstKind::F64(_) => self.insert_to_const(value),
       },
       Section::Custom => match float_const.kind {
         FloatConstKind::F32(_) => self.insert_to_custom(value as f32),
-        FloatConstKind::F64(_) => self.insert_to_custom(value as f64),
+        FloatConstKind::F64(_) => self.insert_to_custom(value),
       },
       _ => return_error!(span, "floating point constant can not appear here"),
     }

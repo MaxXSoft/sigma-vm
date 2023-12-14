@@ -30,7 +30,7 @@ pub enum Expr {
   /// Value (atomic expression).
   Value(Value),
   /// Complex expression.
-  CompExpr(CompExpr),
+  Comp(CompExpr),
   /// Let binding.
   Let(Let),
 }
@@ -173,45 +173,42 @@ impl Generator {
   /// Generates on the given element.
   pub fn generate(&mut self, elem: Element) -> Result<Option<Statement>> {
     // handle by kind
-    match elem.kind {
-      ElemKind::List(es) => {
-        // get the first element
-        let first = es
-          .first()
-          .ok_or_else(|| return_error!(elem.span, "list can not be empty"))?;
-        // handle by kind
-        match &first.kind {
-          ElemKind::Num(_) | ElemKind::Str(_) => {
-            return_error!(first.span, "element is not callable")
+    if let ElemKind::List(es) = elem.kind {
+      // get the first element
+      let first = es
+        .first()
+        .ok_or_else(|| return_error!(elem.span, "list can not be empty"))?;
+      // handle by kind
+      match &first.kind {
+        ElemKind::Num(_) | ElemKind::Str(_) => {
+          return_error!(first.span, "element is not callable")
+        }
+        ElemKind::Sym(s) => match s.as_str() {
+          "define" => {
+            return self
+              .gen_define(&es[1..], elem.span)
+              .map(|d| Some(Statement::Define(d)))
           }
-          ElemKind::Sym(s) => match s.as_str() {
-            "define" => {
-              return self
-                .gen_define(&es[1..], elem.span)
-                .map(|d| Some(Statement::Define(d)))
-            }
-            "lambda" => {}
-            "cond" => {
-              return self
-                .gen_cond(&es[1..], &elem.span)
-                .map(|e| Some(Statement::Expr(e)))
-            }
-            "require" => {
-              return self
-                .gen_require(&es[1..], elem.span)
-                .map(|d| Some(Statement::Require(d)))
-            }
-            "provide" => {
-              return self
-                .gen_provide(&es[1..], elem.span)
-                .map(|d| Some(Statement::Provide(d)))
-            }
-            _ => return self.gen_apply(&es).map(|e| Some(Statement::Expr(e))),
-          },
+          "lambda" => {}
+          "cond" => {
+            return self
+              .gen_cond(&es[1..], &elem.span)
+              .map(|e| Some(Statement::Expr(e)))
+          }
+          "require" => {
+            return self
+              .gen_require(&es[1..], elem.span)
+              .map(|d| Some(Statement::Require(d)))
+          }
+          "provide" => {
+            return self
+              .gen_provide(&es[1..], elem.span)
+              .map(|d| Some(Statement::Provide(d)))
+          }
           _ => return self.gen_apply(&es).map(|e| Some(Statement::Expr(e))),
-        };
-      }
-      _ => {}
+        },
+        _ => return self.gen_apply(&es).map(|e| Some(Statement::Expr(e))),
+      };
     }
     // unhandled, just ignore
     log_warning!(elem.span, "ignored this expression");
@@ -242,7 +239,7 @@ impl Generator {
     let expr = self.gen_expr(&elems[1])?;
     // update exportable symbols
     let exportable = match &expr {
-      Expr::Value(Value::GlobalVar(g)) => self.exportable_vars.values().find(|v| g == *v).is_some(),
+      Expr::Value(Value::GlobalVar(g)) => self.exportable_vars.values().any(|v| g == v),
       Expr::Value(Value::Var(_)) => unreachable!(),
       Expr::Value(_) => true,
       _ => false,
@@ -336,7 +333,7 @@ impl Generator {
       Ok(conds.into_iter().rev().fold(else_then, |e, (bs, cond, t)| {
         Self::gen_let(
           bs,
-          Expr::CompExpr(CompExpr::If(If {
+          Expr::Comp(CompExpr::If(If {
             cond,
             then: Box::new(t),
             else_then: Box::new(e),
@@ -364,7 +361,7 @@ impl Generator {
     // generate expression
     Ok(Self::gen_let(
       bindings,
-      Expr::CompExpr(CompExpr::Apply(Apply {
+      Expr::Comp(CompExpr::Apply(Apply {
         func: new_elems.remove(0),
         args: new_elems,
       })),
@@ -375,7 +372,7 @@ impl Generator {
   fn extract(&mut self, expr: Expr) -> (Vec<(u64, CompExpr)>, Value) {
     match expr {
       Expr::Value(v) => (vec![], v),
-      Expr::CompExpr(c) => {
+      Expr::Comp(c) => {
         let temp = self.env.define_temp();
         (vec![(temp, c)], Value::Var(temp))
       }
@@ -388,7 +385,7 @@ impl Generator {
     let mut bindings = vec![(l.var, l.def)];
     let value = match *l.expr {
       Expr::Value(v) => v,
-      Expr::CompExpr(c) => {
+      Expr::Comp(c) => {
         let temp = self.env.define_temp();
         bindings.push((temp, c));
         Value::Var(temp)
@@ -419,7 +416,7 @@ impl Generator {
       ElemKind::Num(n) => Ok(Expr::Value(Value::Num(*n))),
       ElemKind::Str(s) => Ok(Expr::Value(Value::Str(s.clone()))),
       ElemKind::Sym(s) => Ok(Expr::Value(self.gen_sym(s, &elem.span))),
-      ElemKind::Quote(e) => Ok(Expr::Value(self.gen_quote(&e))),
+      ElemKind::Quote(e) => Ok(Expr::Value(Self::gen_quote(e))),
       ElemKind::List(es) => self.gen_list(es, &elem.span),
     }
   }
@@ -430,13 +427,13 @@ impl Generator {
   }
 
   /// Generates a quotation.
-  fn gen_quote(&mut self, elem: &Element) -> Value {
+  fn gen_quote(elem: &Element) -> Value {
     match &elem.kind {
       ElemKind::Num(n) => Value::Num(*n),
       ElemKind::Str(s) => Value::Str(s.clone()),
       ElemKind::Sym(s) => Value::Sym(s.clone()),
-      ElemKind::Quote(e) => Value::List(vec![Value::Sym("quote".into()), self.gen_quote(&e)]),
-      ElemKind::List(es) => Value::List(es.iter().map(|e| self.gen_quote(e)).collect()),
+      ElemKind::Quote(e) => Value::List(vec![Value::Sym("quote".into()), Self::gen_quote(e)]),
+      ElemKind::List(es) => Value::List(es.iter().map(Self::gen_quote).collect()),
     }
   }
 
@@ -640,7 +637,7 @@ impl Scope {
   /// Defines a new undefined variable. Returns the variable number.
   fn define_undefined(&mut self, name: String, span: Span) -> u64 {
     let id = self.var_id();
-    self.vars.insert(name.into(), Var::undefined(id, span));
+    self.vars.insert(name, Var::undefined(id, span));
     id
   }
 

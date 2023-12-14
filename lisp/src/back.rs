@@ -212,7 +212,7 @@ impl Generate for Expr {
   fn generate(self, state: &mut State) {
     match self {
       Self::Value(v) => v.generate(state),
-      Self::CompExpr(c) => c.generate(state),
+      Self::Comp(c) => c.generate(state),
       Self::Let(l) => l.generate(state),
     }
   }

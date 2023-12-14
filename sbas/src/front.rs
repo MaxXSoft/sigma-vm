@@ -210,6 +210,7 @@ impl str::FromStr for OpcOrLabel {
 }
 
 /// Opcode of instruction.
+#[allow(clippy::upper_case_acronyms)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InstOpcode {
   Nop,
@@ -663,7 +664,7 @@ token_ast! {
 #[token(Token)]
 enum StatementOrEof {
   LineNum(Token![line_num]),
-  Statement(Statement),
+  Statement(Box<Statement>),
   Eof(Token![eof]),
 }
 
@@ -856,7 +857,7 @@ impl Spanned for Instruction {
   }
 }
 
-//// Instruction operand.
+/// Instruction operand.
 #[derive(Debug, Parse, Spanned)]
 #[token(Token)]
 pub enum InstOperand {
@@ -926,7 +927,7 @@ impl<R> Parser<R> {
   }
 
   /// Parses the next statement.
-  pub fn parse(&mut self) -> laps::span::Result<Option<Statement>>
+  pub fn parse(&mut self) -> laps::span::Result<Option<Box<Statement>>>
   where
     R: io::Read,
   {

@@ -245,6 +245,12 @@ impl Builder {
   }
 }
 
+impl Default for Builder {
+  fn default() -> Self {
+    Self::new()
+  }
+}
+
 /// Kind of a pending label.
 enum LabelKind {
   /// Label corresponding to an object metadata,

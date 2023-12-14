@@ -94,7 +94,7 @@ where
       Err(_) => return,
     };
     // assemble
-    if assembler.generate(stmt).is_err() {
+    if assembler.generate(*stmt).is_err() {
       return;
     }
   }
