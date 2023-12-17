@@ -4,6 +4,6 @@ version = "0.0.2"
 edition = "2021"
 
 [dependencies]
-laps = { version = "0.1.4", features = ["macros"] }
+laps = { version = "0.1.5", features = ["macros"] }
 sigma_vm = { path = "../sigma_vm", version = "0.0.2" }
 clap = { version = "4.3.21", features = ["derive"] }
