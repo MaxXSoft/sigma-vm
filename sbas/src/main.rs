@@ -4,9 +4,7 @@ mod front;
 use clap::Parser;
 use laps::input::InputStream;
 use laps::reader::Reader;
-use laps::span::FileType;
 use std::io::{stdout, Read, Write};
-use std::path::Path;
 use std::process::{exit, Command, Stdio};
 use std::{env, fmt, fs};
 
@@ -33,22 +31,18 @@ fn main() {
   let args = CommandLineArgs::parse();
   // preprocess the input file
   match &args.assembly {
-    Some(path) => preprocess(
-      &args,
-      ok_or_exit(Reader::from_path(path)),
-      FileType::File(Box::from(Path::new(path))),
-    ),
-    None => preprocess(&args, Reader::from_stdin(), FileType::Stdin),
+    Some(path) => preprocess(&args, ok_or_exit(Reader::from_path(path))),
+    None => preprocess(&args, Reader::from_stdin()),
   }
 }
 
-// TODO: use `reader.span().file_type()`.
-fn preprocess<R>(args: &CommandLineArgs, reader: Reader<R>, file_type: FileType)
+fn preprocess<R>(args: &CommandLineArgs, reader: Reader<R>)
 where
   R: Read,
 {
   if args.preprocess {
     // read from the reader
+    let file_type = reader.span().file_type().clone();
     let mut buf = Vec::new();
     ok_or_exit(reader.into_inner().read_to_end(&mut buf));
     // detect C compiler
