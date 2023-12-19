@@ -8,3 +8,6 @@ members = [
   "xeno",
   "lisp",
 ]
+
+[profile.dev.build-override]
+opt-level = 3
