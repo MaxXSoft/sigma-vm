@@ -1,4 +1,5 @@
 use crate::front::lexer::{PreDefOp, Token, TokenKind};
+use laps::ast::{NonEmptySepSeq, OptPrefix, OptTokenPrefix};
 use laps::prelude::*;
 
 token_ast! {
@@ -94,80 +95,262 @@ token_ast! {
   }
 }
 
-// /// Annotated item.
-// #[derive(Debug, Parse, Spanned)]
-// #[token(Token)]
-// pub struct AnnotatedItem {
-//   anno: Option<Anno>,
-//   item: Item,
-// }
+/// Annotated item.
+pub type AnnotatedItem = OptPrefix<Anno, Item>;
 
-// /// Annotation.
-// #[derive(Debug, Parse, Spanned)]
-// #[token(Token)]
-// pub struct Anno {
-//   pub _at: Token![@],
-//   pub ident: Token![ident],
-//   // TODO: support annotation macro.
-// }
+/// Annotation.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub struct Anno {
+  pub _at: Token![@],
+  pub ident: Token![ident],
+  // TODO: support annotation macro.
+}
 
-// /// Item.
-// #[derive(Debug, Parse, Spanned)]
-// #[token(Token)]
-// pub enum Item {
-//   /// Import.
-//   Import(Import),
-//   /// Static variable definition.
-//   Static(Static),
-//   /// Function definition.
-//   FuncDef(FuncDef),
-//   /// Native declarations.
-//   NativeDecl(NativeDecl),
-//   /// Trait.
-//   Trait(Trait),
-//   /// Implementation.
-//   Impl(Impl),
-// }
+/// Item.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub enum Item {
+  /// Import.
+  Import(Import),
+  /// Static variable definition.
+  Static(OptPub<Static>),
+  /// Function definition.
+  FuncDef(FuncDef),
+  /// Native declarations.
+  NativeDecl(NativeDecl),
+  /// Trait.
+  Trait(OptPub<Trait>),
+  /// Implementation.
+  Impl(Impl),
+}
 
-// /// Import.
-// #[derive(Debug, Parse, Spanned)]
-// #[token(Token)]
-// pub struct Import {
-//   pub _import: Token![import],
-//   //
-// }
+/// Item that starts with an optional `pub`.
+pub type OptPub<T> = OptTokenPrefix<Token![pub], T>;
 
-// /// Static variable definition.
-// #[derive(Debug, Parse, Spanned)]
-// #[token(Token)]
-// pub struct Static {
-//   //
-// }
+/// Import.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub struct Import {
+  pub _import: Token![import],
+  pub path: ImportPath,
+}
 
-// /// Function definition.
-// #[derive(Debug, Parse, Spanned)]
-// #[token(Token)]
-// pub struct FuncDef {
-//   //
-// }
+/// Path of import.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub enum ImportPath {
+  Path(Path),
+  Paths(Paths),
+}
 
-// /// Native declarations.
-// #[derive(Debug, Parse, Spanned)]
-// #[token(Token)]
-// pub struct NativeDecl {
-//   //
-// }
+/// Path.
+#[derive(Debug, Parse)]
+#[token(Token)]
+pub struct Path {
+  pub ident: Token![ident],
+  pub segs: Vec<PathSeg>,
+  pub end: Option<PathEnd>,
+}
 
-// /// Trait.
-// #[derive(Debug, Parse, Spanned)]
-// #[token(Token)]
-// pub struct Trait {
-//   //
-// }
+impl Spanned for Path {
+  fn span(&self) -> laps::span::Span {
+    let span = self.ident.span();
+    if let Some(end) = &self.end {
+      span.into_end_updated(end.span())
+    } else if let Some(seg) = self.segs.last() {
+      span.into_end_updated(seg.span())
+    } else {
+      span
+    }
+  }
+}
 
-// /// Implementation.
-// #[derive(Debug, Parse, Spanned)]
-// #[token(Token)]
-// pub struct Impl {
-//   //
-// }
+/// A segment of path.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+#[starts_with(Token![.], Token![ident])]
+pub struct PathSeg {
+  pub _dot: Token![.],
+  pub ident: Token![ident],
+}
+
+/// End of path.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub struct PathEnd {
+  pub _dot: Token![.],
+  pub paths_or_wildcard: PathsOrWildcard,
+}
+
+/// Paths or wildcard.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub enum PathsOrWildcard {
+  Paths(Paths),
+  Wildcard(Token![*]),
+}
+
+/// Paths.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub struct Paths {
+  pub _lbr: Token![lbr],
+  pub path: NonEmptySepSeq<Path, Token![,]>,
+  pub _comma: Option<Token![,]>,
+  pub _rbr: Token![rbr],
+}
+
+/// Static variable definition.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub struct Static {
+  pub _static: Token![static],
+  pub _mut: Option<Token![mut]>,
+  pub ident: Token![ident],
+  pub _colon: Token![:],
+  pub ty: Type,
+  pub _assign: Token![=],
+  pub expr: Expr,
+}
+
+/// Function definition.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub struct FuncDef {
+  pub decl: OptPub<FuncDecl>,
+  pub body: Block,
+}
+
+/// Function declarations.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub struct FuncDecl {
+  pub _fn: Token![fn],
+  pub ident: Token![ident],
+  pub implicit_params: Option<ImplicitParams>,
+  pub params: Option<Params>,
+  pub ret_ty: Option<RetType>,
+  pub where_clause: Option<Where>,
+}
+
+/// Function return type.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub struct RetType {
+  pub _arrow: Token![->],
+  pub ty: Type,
+}
+
+/// Native declarations.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub struct NativeDecl {
+  pub _native: Token![native],
+  pub lib: Path,
+  pub _lbr: Token![lbr],
+  pub decls: Vec<OptPub<FuncDecl>>,
+  pub _rbr: Token![rbr],
+}
+
+/// Trait.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub struct Trait {
+  pub _trait: Token![trait],
+  pub ident: Token![ident],
+  pub implicit_params: Option<ImplicitParams>,
+  pub params: Option<Params>,
+  pub inherit: Option<Inherit>,
+  pub where_clause: Option<Where>,
+  pub _lbr: Token![lbr],
+  pub methods: Vec<Method>,
+  pub _rbr: Token![rbr],
+}
+
+/// Inherit of trait.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub struct Inherit {
+  pub _colon: Token![:],
+  pub traits: NonEmptySepSeq<PathExpr, Token![+]>,
+}
+
+/// Method of trait.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub struct Method {
+  decl: FuncDecl,
+  body: Option<Block>,
+}
+
+/// Implementation.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub struct Impl {
+  pub _impl: Token![impl],
+  pub implicit_params: Option<ImplicitParams>,
+  pub impl_trait: Option<ImplTrait>,
+  pub ty: PathExpr,
+  pub where_clause: Option<Where>,
+  pub _lbr: Token![lbr],
+  pub defs: Vec<FuncDef>,
+  pub _rbr: Token![rbr],
+}
+
+/// Trait to be implemented.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub struct ImplTrait {
+  pub name: PathExpr,
+  pub _for: Token![for],
+}
+
+/// Implicit parameters.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub struct ImplicitParams {
+  //
+}
+
+/// Parameters.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub struct Params {
+  //
+}
+
+/// Where clause.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub struct Where {
+  //
+}
+
+/// Type.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub struct Type {
+  //
+}
+
+/// Expression.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub struct Expr {
+  //
+}
+
+/// Block.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub struct Block {
+  //
+}
+
+/// Path expression.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub struct PathExpr {
+  //
+}
