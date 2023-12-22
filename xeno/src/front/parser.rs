@@ -1,5 +1,5 @@
 use crate::front::lexer::{PreDefOp, Token, TokenKind};
-use laps::ast::{NonEmptyOptSepSeq, NonEmptySepSeq, OptPrefix, OptTokenPrefix};
+use laps::ast::{NonEmptyOptSepSeq, NonEmptySepSeq, OptPrefix, OptSepSeq, OptTokenPrefix};
 use laps::prelude::*;
 
 token_ast! {
@@ -276,27 +276,170 @@ pub struct Impl {
 #[derive(Debug, Parse, Spanned)]
 #[token(Token)]
 pub struct ImplicitParams {
-  //
+  pub _lbk: Token![lbk],
+  pub params: OptSepSeq<ImplicitParam, Token![,]>,
+  pub _rbk: Token![rbk],
+}
+
+/// Implicit parameter.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub struct ImplicitParam {
+  pub rep_ident: OptPrefix<Token![...], Token![ident]>,
+  pub ty: Option<(Token![:], Type)>,
+  pub default: Option<(Token![=], Expr)>,
+}
+
+/// Implicit arguments.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub struct ImplicitArgs {
+  pub _lbk: Token![lbk],
+  pub params: OptSepSeq<Expr, Token![,]>,
+  pub _rbk: Token![rbk],
 }
 
 /// Parameters.
 #[derive(Debug, Parse, Spanned)]
 #[token(Token)]
 pub struct Params {
-  //
+  pub _lpr: Token![lpr],
+  pub params: OptSepSeq<Param, Token![,]>,
+  pub _rpr: Token![rpr],
+}
+
+/// Parameter.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub struct Param {
+  pub rep_ident: OptPrefix<Token![...], Token![ident]>,
+  pub _colon: Token![:],
+  pub ty: Type,
+}
+
+/// Arguments.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub struct Args {
+  pub _lpr: Token![lpr],
+  pub params: OptSepSeq<Expr, Token![,]>,
+  pub _rpr: Token![rpr],
 }
 
 /// Where clause.
 #[derive(Debug, Parse, Spanned)]
 #[token(Token)]
 pub struct Where {
-  //
+  pub _where: Token![where],
+  pub bounds: NonEmptyOptSepSeq<Bound, Token![,]>,
+}
+
+/// Bound.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub enum Bound {
+  Trait(TraitBound),
+  Type(TypeBound),
+}
+
+/// Trait bound.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub struct TraitBound {
+  pub ty: PathExpr,
+  pub _colon: Token![:],
+  pub bounds: NonEmptySepSeq<PathExpr, Token![+]>,
+}
+
+/// Type bound.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub struct TypeBound {
+  pub ty: PathExpr,
+  pub _colon: Token![:],
+  pub bound: PathExpr,
 }
 
 /// Type.
 #[derive(Debug, Parse, Spanned)]
 #[token(Token)]
-pub struct Type {
+pub enum Type {
+  Prim(PrimType),
+  Struct(StructType),
+  Enum(EnumType),
+  Array(ArrayType),
+  Tuple(TupleType),
+  Func(FuncType),
+  TypeOf(TypeOfType),
+  Trait(TraitType),
+  SelfTy(Token![Self]),
+}
+
+/// Primitive type.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub enum PrimType {
+  I8(Token![i8]),
+  I16(Token![i16]),
+  I32(Token![i32]),
+  I64(Token![i64]),
+  U8(Token![u8]),
+  U16(Token![u16]),
+  U32(Token![u32]),
+  U64(Token![u64]),
+  F32(Token![f32]),
+  F64(Token![f64]),
+  Char(Token![char]),
+  Str(Token![str]),
+  Never(Token![!]),
+}
+
+/// Structure type.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub struct StructType {
+  //
+}
+
+/// Enumerate type.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub struct EnumType {
+  //
+}
+
+/// Array type.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub struct ArrayType {
+  //
+}
+
+/// Tuple type.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub struct TupleType {
+  //
+}
+
+/// Function type.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub struct FuncType {
+  //
+}
+
+/// Type of type.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub struct TypeOfType {
+  //
+}
+
+/// Trait type.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub struct TraitType {
   //
 }
 
