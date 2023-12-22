@@ -1,5 +1,5 @@
 use crate::front::lexer::{PreDefOp, Token, TokenKind};
-use laps::ast::{NonEmptySepSeq, OptPrefix, OptTokenPrefix};
+use laps::ast::{NonEmptyOptSepSeq, NonEmptySepSeq, OptPrefix, OptTokenPrefix};
 use laps::prelude::*;
 
 token_ast! {
@@ -149,8 +149,8 @@ pub enum ImportPath {
 #[token(Token)]
 pub struct Path {
   pub ident: Token![ident],
-  pub segs: Vec<PathSeg>,
-  pub end: Option<PathEnd>,
+  pub segs: Vec<(Token![.], Token![ident])>,
+  pub end: Option<(Token![.], PathsOrWildcard)>,
 }
 
 impl Spanned for Path {
@@ -166,23 +166,6 @@ impl Spanned for Path {
   }
 }
 
-/// A segment of path.
-#[derive(Debug, Parse, Spanned)]
-#[token(Token)]
-#[starts_with(Token![.], Token![ident])]
-pub struct PathSeg {
-  pub _dot: Token![.],
-  pub ident: Token![ident],
-}
-
-/// End of path.
-#[derive(Debug, Parse, Spanned)]
-#[token(Token)]
-pub struct PathEnd {
-  pub _dot: Token![.],
-  pub paths_or_wildcard: PathsOrWildcard,
-}
-
 /// Paths or wildcard.
 #[derive(Debug, Parse, Spanned)]
 #[token(Token)]
@@ -196,8 +179,7 @@ pub enum PathsOrWildcard {
 #[token(Token)]
 pub struct Paths {
   pub _lbr: Token![lbr],
-  pub path: NonEmptySepSeq<Path, Token![,]>,
-  pub _comma: Option<Token![,]>,
+  pub path: NonEmptyOptSepSeq<Path, Token![,]>,
   pub _rbr: Token![rbr],
 }
 
@@ -230,16 +212,8 @@ pub struct FuncDecl {
   pub ident: Token![ident],
   pub implicit_params: Option<ImplicitParams>,
   pub params: Option<Params>,
-  pub ret_ty: Option<RetType>,
+  pub ret_ty: Option<(Token![->], Type)>,
   pub where_clause: Option<Where>,
-}
-
-/// Function return type.
-#[derive(Debug, Parse, Spanned)]
-#[token(Token)]
-pub struct RetType {
-  pub _arrow: Token![->],
-  pub ty: Type,
 }
 
 /// Native declarations.
@@ -290,20 +264,12 @@ pub struct Method {
 pub struct Impl {
   pub _impl: Token![impl],
   pub implicit_params: Option<ImplicitParams>,
-  pub impl_trait: Option<ImplTrait>,
+  pub impl_trait: Option<(PathExpr, Token![for])>,
   pub ty: PathExpr,
   pub where_clause: Option<Where>,
   pub _lbr: Token![lbr],
   pub defs: Vec<FuncDef>,
   pub _rbr: Token![rbr],
-}
-
-/// Trait to be implemented.
-#[derive(Debug, Parse, Spanned)]
-#[token(Token)]
-pub struct ImplTrait {
-  pub name: PathExpr,
-  pub _for: Token![for],
 }
 
 /// Implicit parameters.
