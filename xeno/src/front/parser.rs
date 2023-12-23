@@ -105,7 +105,7 @@ pub type AnnotatedItem = OptPrefix<Anno, Item>;
 #[token(Token)]
 pub struct Anno {
   pub _at: Token![@],
-  pub ident: Token![ident],
+  pub ident: Ident,
   // TODO: support annotation macro.
 }
 
@@ -150,8 +150,8 @@ pub enum ImportPath {
 #[derive(Debug, Parse)]
 #[token(Token)]
 pub struct Path {
-  pub ident: Token![ident],
-  pub segs: Vec<(Token![.], Token![ident])>,
+  pub ident: Ident,
+  pub segs: Vec<(Token![.], Ident)>,
   pub end: Option<(Token![.], PathsOrWildcard)>,
 }
 
@@ -191,7 +191,7 @@ pub struct Paths {
 pub struct Static {
   pub _static: Token![static],
   pub _mut: Option<Token![mut]>,
-  pub ident: Token![ident],
+  pub ident: Ident,
   pub _colon: Token![:],
   pub ty: Type,
   pub _assign: Token![=],
@@ -211,7 +211,7 @@ pub struct FuncDef {
 #[token(Token)]
 pub struct FuncDecl {
   pub _fn: Token![fn],
-  pub ident: Token![ident],
+  pub ident: Ident,
   pub implicit_params: Option<ImplicitParams>,
   pub params: Option<Params>,
   pub ret_ty: Option<(Token![->], Type)>,
@@ -234,7 +234,7 @@ pub struct NativeDecl {
 #[token(Token)]
 pub struct Trait {
   pub _trait: Token![trait],
-  pub ident: Token![ident],
+  pub ident: Ident,
   pub implicit_params: Option<ImplicitParams>,
   pub params: Option<Params>,
   pub inherit: Option<Inherit>,
@@ -288,7 +288,7 @@ pub struct ImplicitParams {
 #[derive(Debug, Parse, Spanned)]
 #[token(Token)]
 pub struct ImplicitParam {
-  pub rep_ident: OptPrefix<Token![...], Token![ident]>,
+  pub rep_ident: OptPrefix<Token![...], Ident>,
   pub ty: Option<(Token![:], Type)>,
   pub default: Option<(Token![=], Expr)>,
 }
@@ -315,7 +315,7 @@ pub struct Params {
 #[derive(Debug, Parse, Spanned)]
 #[token(Token)]
 pub struct Param {
-  pub rep_ident: OptPrefix<Token![...], Token![ident]>,
+  pub rep_ident: OptPrefix<Token![...], Ident>,
   pub _colon: Token![:],
   pub ty: Type,
 }
@@ -411,7 +411,7 @@ pub struct StructType {
 #[derive(Debug, Parse, Spanned)]
 #[token(Token)]
 pub struct StructField {
-  pub ident: Token![ident],
+  pub ident: Ident,
   pub _colon: Token![:],
   pub ty: Type,
 }
@@ -430,7 +430,7 @@ pub struct EnumType {
 #[derive(Debug, Parse, Spanned)]
 #[token(Token)]
 pub struct EnumVariant {
-  pub ident: Token![ident],
+  pub ident: Ident,
   pub tuple: Option<TupleType>,
   pub value: Option<(Token![=], Expr)>,
 }
@@ -565,7 +565,7 @@ pub enum Pattern {
 #[token(Token)]
 #[spanned_end(Option)]
 pub struct VarPat {
-  pub ident: Token![ident],
+  pub ident: Ident,
   pub pat: Option<(Token![@], Box<ConcretePat>)>,
 }
 
@@ -602,7 +602,7 @@ pub struct StructPat {
 #[token(Token)]
 pub enum FieldPat {
   #[spanned_end(Option)]
-  Field(Token![ident], Option<(Token![:], ConcretePat)>),
+  Field(Ident, Option<(Token![:], ConcretePat)>),
   Any(Token![..]),
 }
 
@@ -643,21 +643,21 @@ pub enum CallArgs {
 }
 
 /// Binary expression.
-pub type BinaryExpr = NonEmptySepSeq<Prefix, Op>;
+pub type BinaryExpr = NonEmptySepSeq<Prefix, Ident>;
 
 /// Prefix expression.
 #[derive(Debug, Parse, Spanned)]
 #[token(Token)]
 #[spanned_start(Vec)]
 pub struct Prefix {
-  pub ops: Vec<Op>,
+  pub ops: Vec<Ident>,
   pub factor: Factor,
 }
 
 /// Operator.
 #[derive(Debug, Parse, Spanned)]
 #[token(Token)]
-pub enum Op {
+pub enum Ident {
   Add(Token![+]),
   Sub(Token![-]),
   Mul(Token![*]),
@@ -747,7 +747,7 @@ pub struct WhileLabel {
 #[token(Token)]
 pub struct Label {
   pub _at: Token![@],
-  pub ident: Token![ident],
+  pub ident: Ident,
 }
 
 /// Condition expression.
@@ -870,7 +870,7 @@ pub struct ClosureParams {
 #[token(Token)]
 #[spanned_end(Option)]
 pub struct ClosureParam {
-  pub ident: Token![ident],
+  pub ident: Ident,
   pub ty: Option<(Token![:], Type)>,
 }
 
@@ -906,7 +906,7 @@ pub type PathExpr = NonEmptySepSeq<PathExprSeg, Token![.]>;
 #[derive(Debug, Parse, Spanned)]
 #[token(Token)]
 pub struct PathExprSeg {
-  pub ident: Token![ident],
+  pub ident: Ident,
   pub implicit_args: Option<ImplicitArgs>,
   pub args: Option<Args>,
 }
@@ -925,6 +925,6 @@ pub struct StructExpr {
 #[token(Token)]
 pub enum FieldExpr {
   #[spanned_end(Option)]
-  Field(Token![ident], Option<(Token![:], Expr)>),
+  Field(Ident, Option<(Token![:], Expr)>),
   Fill(Token![..], Expr),
 }
