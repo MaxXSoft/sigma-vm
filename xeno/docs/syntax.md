@@ -2,22 +2,22 @@
 
 ```ebnf
 CompUnit := {[Anno] Item};
-Anno := "@" IDENT {TOKEN};
+Anno := "@" Ident {TOKEN};
 Item := Import | Static | FuncDef | NativeDecl | Trait | Impl;
 
 Import := "import" (Path | Paths);
-Path := IDENT {"." IDENT} ["." (Paths | "*")];
+Path := Ident {"." Ident} ["." (Paths | "*")];
 Paths := "{" Path {"," Path} [","] "}";
 
-Static := ["pub"] "static" ["mut"] IDENT ":" Type "=" Expr;
+Static := ["pub"] "static" ["mut"] Ident ":" Type "=" Expr;
 
 FuncDef := FuncDecl Block;
-FuncDecl := ["pub"] "fn" IDENT [ImplicitParams] [Params] ["->" Type] [Where];
+FuncDecl := ["pub"] "fn" Ident [ImplicitParams] [Params] ["->" Type] [Where];
 
 NativeDecl := "native" Path NativeBody;
 NativeBody := "{" {FuncDecl} "}";
 
-Trait := ["pub"] "trait" IDENT [ImplicitParams] [Params] [Inherit] [Where] TraitBody;
+Trait := ["pub"] "trait" Ident [ImplicitParams] [Params] [Inherit] [Where] TraitBody;
 Inherit := ":" PathExpr {"+" PathExpr};
 TraitBody := "{" {FuncDecl | FuncDef} "}";
 
@@ -25,10 +25,10 @@ Impl := "impl" [ImplicitParams] [PathExpr "for"] PathExpr [Where] ImplBody;
 ImplBody := "{" {FuncDef} "}";
 
 ImplicitParams := "[" [ImplicitParam {"," ImplicitParam} [","]] "]";
-ImplicitParam := (["..."] IDENT | Param) ["=" Expr];
+ImplicitParam := (["..."] Ident | Param) ["=" Expr];
 ImplicitArgs := "[" [Expr {"," Expr} [","]] "]";
 Params := "(" [Param {"," Param} [","]] ")";
-Param := ["..."] IDENT ":" Type;
+Param := ["..."] Ident ":" Type;
 Args := "(" [Expr {"," Expr} [","]] ")";
 
 Where := "where" Bound {"," Bound} [","];
@@ -41,9 +41,9 @@ Type := PrimType | StructType | EnumType | ArrayType | TupleType
 PrimType := "i8" | "i16" | "i32" | "i64" | "u8" | "u16" | "u32" | "u64"
           | "f32" | "f64" | "char" | "str" | "!";
 StructType := "struct" "{" [StructField {"," StructField} [","]] "}";
-StructField := ["pub"] IDENT ":" Type;
+StructField := ["pub"] Ident ":" Type;
 EnumType := "enum" "{" [EnumVariant {"," EnumVariant} [","]] "}";
-EnumVariant := IDENT [TupleType] ["=" Expr];
+EnumVariant := Ident [TupleType] ["=" Expr];
 ArrayType := "[" Type "]";
 TupleType := "(" [Types] ")";
 Types := ["..."] Type {"," ["..."] Type} [","];
@@ -61,11 +61,11 @@ Let := "let" ["mut"] ConcretePat [":" Type] "=" Expr;
 
 ConcretePat := VarPat | Underscore | TuplePat | ArrayPat | StructPat | EnumPat;
 Pattern := ".." | ConcretePat;
-VarPat := IDENT ["@" ConcretePat];
+VarPat := Ident ["@" ConcretePat];
 TuplePat := "(" [Pattern {"," Pattern} [","]] ")";
 ArrayPat := "[" [Pattern {"," Pattern} [","]] "]";
 StructPat := PathExpr "{" [FieldPat {"," FieldPat} [","]] "}";
-FieldPat := IDENT [":" ConcretePat] | "..";
+FieldPat := Ident [":" ConcretePat] | "..";
 EnumPat := PathExpr [TuplePat];
 
 Expr := BinaryExpr {Suffix};
@@ -73,16 +73,16 @@ Suffix := CallArgs | Access | Try;
 CallArgs := ImplicitArgs [Args] | Args;
 Access := "." PathExpr;
 Try := "?";
-BinaryExpr := Prefix {Op Prefix};
-Prefix := {Op} Factor;
-Op := PRE_DEF_OPS | IDENT;
+BinaryExpr := Prefix {Ident Prefix};
+Prefix := {Ident} Factor;
+Ident := PRE_DEF_OPS | OP_LIKE | IDENT;
 
 Factor := Block | While | Break | Continue | If | Return | Literal
         | Underscore | ParenOrTupleExpr | ArrayExpr | Closure | Expand
         | TypeExpr | PathOrStructExpr;
 Block := "{" [Statement {";" Statement} [";"]] "}";
 While := [Label ":"] "while" Cond Block;
-Label := "@" IDENT;
+Label := "@" Ident;
 Cond := Expr | Let;
 Break := "break" [Label];
 Continue := "continue" [Label];
@@ -96,11 +96,11 @@ ArrayExpr := "[" [Expr {"," Expr} [","]] "]";
 Closure := "fn" [ImplicitClosureParams] [ClosureParams] ["->" Type] [Where] Expr;
 ImplicitClosureParams := "[" [ClosureParam {"," ClosureParam} [","]] "]";
 ClosureParams := "(" [ClosureParam {"," ClosureParam} [","]] ")";
-ClosureParam := IDENT [":" Type];
+ClosureParam := Ident [":" Type];
 Expand := "..." Expr;
 TypeExpr := "type" Type;
 PathOrStructExpr := PathExpr [StructExpr];
-PathExpr := IDENT [ImplicitArgs] [Args] ["." PathExpr];
+PathExpr := Ident [ImplicitArgs] [Args] ["." PathExpr];
 StructExpr := "{" [FieldExpr {"," FieldExpr} [","]] "}";
-FieldExpr := IDENT [":" Expr] | ".." Expr;
+FieldExpr := Ident [":" Expr] | ".." Expr;
 ```
