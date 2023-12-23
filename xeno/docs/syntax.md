@@ -42,8 +42,8 @@ PrimType := "i8" | "i16" | "i32" | "i64" | "u8" | "u16" | "u32" | "u64"
           | "f32" | "f64" | "char" | "str" | "!";
 StructType := "struct" "{" [StructField {"," StructField} [","]] "}";
 StructField := ["pub"] IDENT ":" Type;
-EnumType := "enum" "{" [EnumField {"," EnumField} [","]] "}";
-EnumField := IDENT [TupleType] ["=" Expr];
+EnumType := "enum" "{" [EnumVariant {"," EnumVariant} [","]] "}";
+EnumVariant := IDENT [TupleType] ["=" Expr];
 ArrayType := "[" Type "]";
 TupleType := "(" [Types] ")";
 Types := ["..."] Type {"," ["..."] Type} [","];
