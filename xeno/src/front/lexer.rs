@@ -42,7 +42,7 @@ pub enum TokenKind {
   #[regex(r#"b"([\x20-\x26\x28-\x5b\x5d-\x7e]|\\x[0-9a-fA-F]{2}|\\n|\\r|\\t|\\\\|\\0|\\'|\\")*""#)]
   Bytes(Bytes),
   /// Pre-defined operator-like identifiers.
-  #[regex(r"\+|-|\*|/|%|&|\||!|\^|<<|>>|&&|\|\||==|!=|<|<=|>|>=|=|\+=|-=|\*=|/=|%=|&=|\|=|\^=|<<=|>>=|\(|\)|\[|\]|\{|\}|\.|\.\.|\.\.\.|->|,|:|@|_|\?")]
+  #[regex(r"\+|-|\*|/|%|&|\||!|\^|<<|>>|&&|\|\||==|!=|<|<=|>|>=|=|\+=|-=|\*=|/=|%=|&=|\|=|\^=|<<=|>>=|\(|\)|\[|\]|\{|\}|\.|\.\.|\.\.\.|->|,|:|@|_|\?|;")]
   PreDefOp(PreDefOp),
   /// Other operator-like identifiers.
   #[regex(r"[~!@#$%^&*()_\-+={}\[\]|\\:;<,>.?/]+")]
@@ -318,6 +318,8 @@ pub enum PreDefOp {
   Underscore,
   /// ?
   Question,
+  /// ;
+  Semicolon,
 }
 
 impl fmt::Display for PreDefOp {
@@ -368,6 +370,7 @@ impl fmt::Display for PreDefOp {
       Self::At => write!(f, "@"),
       Self::Underscore => write!(f, "_"),
       Self::Question => write!(f, "?"),
+      Self::Semicolon => write!(f, ";"),
     }
   }
 }
@@ -422,6 +425,7 @@ impl str::FromStr for PreDefOp {
       "@" => Ok(Self::At),
       "_" => Ok(Self::Underscore),
       "?" => Ok(Self::Question),
+      ";" => Ok(Self::Semicolon),
       _ => unreachable!(),
     }
   }
