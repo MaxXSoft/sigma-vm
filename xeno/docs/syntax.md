@@ -59,22 +59,28 @@ SelfType := "Self";
 Statement := Item | Let | Expr;
 Let := "let" ["mut"] ConcretePat [":" Type] "=" Expr;
 
-ConcretePat := VarPat | TuplePat | ArrayPat | StructPat | EnumPat;
+ConcretePat := VarPat | Underscore | TuplePat | ArrayPat | StructPat | EnumPat;
 Pattern := ".." | ConcretePat;
-VarPat := IDENT ["@" ConcretePat] | Underscore;
+VarPat := IDENT ["@" ConcretePat];
 TuplePat := "(" [Pattern {"," Pattern} [","]] ")";
 ArrayPat := "[" [Pattern {"," Pattern} [","]] "]";
 StructPat := PathExpr "{" [FieldPat {"," FieldPat} [","]] "}";
 FieldPat := IDENT [":" ConcretePat] | "..";
 EnumPat := PathExpr [TuplePat];
 
-Expr := Prefix {PathExpr Prefix};
-Prefix := {PathExpr} Factor;
-Factor := Block | NonBlock;
-Block := "{" {Statement} "}";
-NonBlock := While | Break | Continue | If | Return | Literal | Underscore
-          | Paren | TupleExpr | ArrayExpr | StructExpr | Call | PathExpr
-          | Access | Try | Closure | Expand | Type;
+Expr := BinaryExpr {Suffix};
+Suffix := CallArgs | Access | Try;
+CallArgs := ImplicitArgs [Args] | Args;
+Access := "." PathExpr;
+Try := "?";
+BinaryExpr := Prefix {Op Prefix};
+Prefix := {Op} Factor;
+Op := PRE_DEF_OPS | IDENT;
+
+Factor := Block | While | Break | Continue | If | Return | Literal
+        | Underscore | ParenOrTupleExpr | ArrayExpr | Closure | Expand
+        | TypeExpr | PathOrStructExpr;
+Block := "{" [Statement {";" Statement} [";"]] "}";
 While := [Label ":"] "while" Cond Block;
 Label := "@" IDENT;
 Cond := Expr | Let;
@@ -85,19 +91,16 @@ Return := "return" [Expr];
 
 Literal := INT | FLOAT | CHAR | BYTE | STR | RAW_STR | BYTES;
 Underscore := "_";
-Paren := "(" Expr ")";
-TupleExpr := "(" [Expr "," {Expr ","} [Expr]] ")";
+ParenOrTupleExpr := "(" [Expr {"," Expr} [","]] ")";
 ArrayExpr := "[" [Expr {"," Expr} [","]] "]";
-StructExpr := PathExpr "{" [FieldExpr {"," FieldExpr} [","]] "}";
-FieldExpr := IDENT [":" Expr] | ".." Expr;
-Call := Expr CallArgs;
-CallArgs := ImplicitArgs | Args | ImplicitArgs Args;
-PathExpr := IDENT [ImplicitArgs] [Args] ["." PathExpr];
-Access := Expr "." PathExpr;
-Try := Expr "?";
 Closure := "fn" [ImplicitClosureParams] [ClosureParams] ["->" Type] [Where] Expr;
 ImplicitClosureParams := "[" [ClosureParam {"," ClosureParam} [","]] "]";
 ClosureParams := "(" [ClosureParam {"," ClosureParam} [","]] ")";
 ClosureParam := IDENT [":" Type];
-Expand := "..." [PathExpr] Paren;
+Expand := "..." Expr;
+TypeExpr := "type" Type;
+PathOrStructExpr := PathExpr [StructExpr];
+PathExpr := IDENT [ImplicitArgs] [Args] ["." PathExpr];
+StructExpr := "{" [FieldExpr {"," FieldExpr} [","]] "}";
+FieldExpr := IDENT [":" Expr] | ".." Expr;
 ```
