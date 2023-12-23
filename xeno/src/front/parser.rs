@@ -1,5 +1,5 @@
 use crate::front::lexer::{PreDefOp, Token, TokenKind};
-use laps::ast::{NonEmptyOptSepSeq, NonEmptySepSeq, OptPrefix, OptSepSeq, OptTokenPrefix};
+use laps::ast::{NonEmptyOptSepSeq, NonEmptySepSeq, OptPrefix, OptSepSeq, OptTokenPrefix, NonEmptySeq};
 use laps::prelude::*;
 
 token_ast! {
@@ -57,6 +57,7 @@ token_ast! {
     [@] => { kind: TokenKind::PreDefOp(PreDefOp::At) },
     [_] => { kind: TokenKind::PreDefOp(PreDefOp::Underscore) },
     [?] => { kind: TokenKind::PreDefOp(PreDefOp::Question) },
+    [;] => { kind: TokenKind::PreDefOp(PreDefOp::Semicolon) },
     [op] => { kind: TokenKind::Op(_), prompt: "operator-like identifier" },
     [pub] => { kind: TokenKind::Ident(s) if s == "pub", prompt: "pub" },
     [import] => { kind: TokenKind::Ident(s) if s == "import", prompt: "import" },
@@ -89,6 +90,7 @@ token_ast! {
     [break] => { kind: TokenKind::Ident(s) if s == "break", prompt: "break" },
     [continue] => { kind: TokenKind::Ident(s) if s == "continue", prompt: "continue" },
     [if] => { kind: TokenKind::Ident(s) if s == "if", prompt: "if" },
+    [else] => { kind: TokenKind::Ident(s) if s == "else", prompt: "else" },
     [return] => { kind: TokenKind::Ident(s) if s == "return", prompt: "return" },
     [ident] => { kind: TokenKind::Ident(_), prompt: "identifier" },
     [eof] => { kind: TokenKind::Eof },
@@ -253,6 +255,7 @@ pub struct Inherit {
 /// Method of trait.
 #[derive(Debug, Parse, Spanned)]
 #[token(Token)]
+#[spanned_end(Option)]
 pub struct Method {
   decl: FuncDecl,
   body: Option<Block>,
@@ -331,18 +334,18 @@ pub struct Args {
 #[token(Token)]
 pub struct Where {
   pub _where: Token![where],
-  pub bounds: NonEmptyOptSepSeq<Bound, Token![,]>,
+  pub bounds: NonEmptyOptSepSeq<WhereBound, Token![,]>,
 }
 
-/// Bound.
+/// Bound of where clause.
 #[derive(Debug, Parse, Spanned)]
 #[token(Token)]
-pub enum Bound {
+pub enum WhereBound {
   Trait(TraitBound),
   Type(TypeBound),
 }
 
-/// Trait bound.
+/// Trait bound of where clause.
 #[derive(Debug, Parse, Spanned)]
 #[token(Token)]
 pub struct TraitBound {
@@ -351,7 +354,7 @@ pub struct TraitBound {
   pub bounds: NonEmptySepSeq<PathExpr, Token![+]>,
 }
 
-/// Type bound.
+/// Type bound of where clause.
 #[derive(Debug, Parse, Spanned)]
 #[token(Token)]
 pub struct TypeBound {
@@ -398,68 +401,530 @@ pub enum PrimType {
 #[derive(Debug, Parse, Spanned)]
 #[token(Token)]
 pub struct StructType {
-  //
+  pub _struct: Token![struct],
+  pub _lbr: Token![lbr],
+  pub fields: OptSepSeq<OptPrefix<Token![pub], StructField>, Token![,]>,
+  pub _rbr: Token![rbr],
+}
+
+/// Field of structure type.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub struct StructField {
+  pub ident: Token![ident],
+  pub _colon: Token![:],
+  pub ty: Type,
 }
 
 /// Enumerate type.
 #[derive(Debug, Parse, Spanned)]
 #[token(Token)]
 pub struct EnumType {
-  //
+  pub _enum: Token![enum],
+  pub _lbr: Token![lbr],
+  pub variants: OptSepSeq<EnumVariant, Token![,]>,
+  pub _rbr: Token![rbr],
+}
+
+/// Variant of enumerate type.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub struct EnumVariant {
+  pub ident: Token![ident],
+  pub tuple: Option<TupleType>,
+  pub value: Option<(Token![=], Expr)>,
 }
 
 /// Array type.
 #[derive(Debug, Parse, Spanned)]
 #[token(Token)]
 pub struct ArrayType {
-  //
+  pub _lbk: Token![lbk],
+  pub ty: Box<Type>,
+  pub _rbk: Token![rbk],
 }
 
 /// Tuple type.
 #[derive(Debug, Parse, Spanned)]
 #[token(Token)]
 pub struct TupleType {
-  //
+  pub _lpr: Token![lpr],
+  pub tys: RepTypes,
+  pub _rpr: Token![rpr],
+}
+
+/// List of repeatable types.
+pub type RepTypes = OptSepSeq<RepType, Token![,]>;
+
+/// Repeatable type.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+#[spanned_start(Option)]
+pub struct RepType {
+  pub rep: Option<Token![...]>,
+  pub ty: Type,
 }
 
 /// Function type.
 #[derive(Debug, Parse, Spanned)]
 #[token(Token)]
 pub struct FuncType {
-  //
+  pub _fn: Token![fn],
+  pub implicit_params: Option<ImplicitParamsType>,
+  pub params: Option<ParamsType>,
+  pub ret_ty: Option<(Token![->], Box<Type>)>,
+}
+
+/// Type for implicit parameters.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub struct ImplicitParamsType {
+  pub _lbk: Token![lbk],
+  pub tys: RepTypes,
+  pub _rbk: Token![rbk],
+}
+
+/// Type for parameters.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub struct ParamsType {
+  pub _lpr: Token![lpr],
+  pub tys: RepTypes,
+  pub _rpr: Token![rpr],
 }
 
 /// Type of type.
 #[derive(Debug, Parse, Spanned)]
 #[token(Token)]
+#[spanned_end(Option)]
 pub struct TypeOfType {
-  //
+  pub _type: Token![type],
+  pub bound: Option<TotBound>,
 }
 
-/// Trait type.
+/// Bound of type-of-type.
 #[derive(Debug, Parse, Spanned)]
 #[token(Token)]
-pub struct TraitType {
-  //
+pub enum TotBound {
+  Trait(TraitTotBound),
+  Value(ValueTotBound),
+}
+
+/// Trait type bound of type-of-type.
+pub type TraitTotBound = NonEmptySeq<(Token![+], PathExpr)>;
+
+/// Value type bound of type-of-type.
+pub type ValueTotBound = (Token![:], TraitType);
+
+/// Trait type.
+pub type TraitType = NonEmptySepSeq<PathExpr, Token![+]>;
+
+/// Statement.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub enum Statement {
+  Item(Item),
+  Let(Let),
+  Expr(Expr),
+}
+
+/// Let statement.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub struct Let {
+  pub _let: Token![let],
+  pub _mut: Option<Token![mut]>,
+  pub pat: ConcretePat,
+  pub ty: Option<(Token![:], Type)>,
+  pub _assign: Token![=],
+  pub value: Expr,
+}
+
+/// Concrete pattern.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub enum ConcretePat {
+  Var(VarPat),
+  Dummy(Token![_]),
+  Tuple(TuplePat),
+  Array(ArrayPat),
+  Struct(StructPat),
+  Enum(EnumPat),
+}
+
+/// Pattern.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub enum Pattern {
+  Any(Token![..]),
+  Concrete(ConcretePat),
+}
+
+/// Variable pattern.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+#[spanned_end(Option)]
+pub struct VarPat {
+  pub ident: Token![ident],
+  pub pat: Option<(Token![@], Box<ConcretePat>)>,
+}
+
+/// Tuple pattern.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub struct TuplePat {
+  pub _lpr: Token![lpr],
+  pub pats: OptSepSeq<Pattern, Token![,]>,
+  pub _rpr: Token![rpr],
+}
+
+/// Array pattern.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub struct ArrayPat {
+  pub _lbk: Token![lbk],
+  pub pats: OptSepSeq<Pattern, Token![,]>,
+  pub _rbk: Token![rbk],
+}
+
+/// Structure pattern.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub struct StructPat {
+  pub ty: PathExpr,
+  pub _lbr: Token![lbr],
+  pub pats: OptSepSeq<FieldPat, Token![,]>,
+  pub _rbr: Token![rbr],
+}
+
+/// Field pattern of structure.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub enum FieldPat {
+  #[spanned_end(Option)]
+  Field(Token![ident], Option<(Token![:], ConcretePat)>),
+  Any(Token![..]),
+}
+
+/// Enumerate pattern.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+#[spanned_end(Option)]
+pub struct EnumPat {
+  pub ty: PathExpr,
+  pub pat: Option<TuplePat>,
 }
 
 /// Expression.
 #[derive(Debug, Parse, Spanned)]
 #[token(Token)]
+#[spanned_end(Vec)]
 pub struct Expr {
-  //
+  pub bin: BinaryExpr,
+  pub suffixes: Vec<Suffix>,
+}
+
+/// Suffix of expression.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub enum Suffix {
+  CallArgs(CallArgs),
+  Access(Token![.], PathExpr),
+  Try(Token![?]),
+}
+
+/// Argument list of function call.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub enum CallArgs {
+  #[spanned_end(Option)]
+  Implicit(ImplicitArgs, Option<Args>),
+  Args(Args),
+}
+
+/// Binary expression.
+pub type BinaryExpr = NonEmptySepSeq<Prefix, Op>;
+
+/// Prefix expression.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+#[spanned_start(Vec)]
+pub struct Prefix {
+  pub ops: Vec<Op>,
+  pub factor: Factor,
+}
+
+/// Operator.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub enum Op {
+  Add(Token![+]),
+  Sub(Token![-]),
+  Mul(Token![*]),
+  Div(Token![/]),
+  Mod(Token![%]),
+  And(Token![&]),
+  Or(Token![|]),
+  Not(Token![!]),
+  Xor(Token![^]),
+  Shl(Token![<<]),
+  Shr(Token![>>]),
+  LogicAnd(Token![&&]),
+  LogicOr(Token![||]),
+  Eq(Token![==]),
+  Ne(Token![!=]),
+  Lt(Token![<]),
+  Le(Token![<=]),
+  Gt(Token![>]),
+  Ge(Token![>=]),
+  Asign(Token![=]),
+  AddAsign(Token![+=]),
+  SubAssign(Token![-=]),
+  MulAssign(Token![*=]),
+  DivAssign(Token![/=]),
+  ModAssign(Token![%=]),
+  AndAssign(Token![&=]),
+  OrAssign(Token![|=]),
+  XorAssign(Token![^=]),
+  ShlAssign(Token![<<=]),
+  ShrAssign(Token![>>=]),
+  AnyPat(Token![..]),
+  Arrow(Token![->]),
+  Comma(Token![,]),
+  Colon(Token![:]),
+  Op(Token![op]),
+  Ident(Token![ident]),
+}
+
+/// Factor expression.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub enum Factor {
+  Block(Block),
+  While(OptPrefix<WhileLabel, While>),
+  Break(Break),
+  Continue(Continue),
+  If(If),
+  Return(Return),
+  Literal(Literal),
+  Underscore(Token![_]),
+  ParenOrTuple(ParenOrTupleExpr),
+  Array(ArrayExpr),
+  Closure(Closure),
+  Expand(Expand),
+  Type(TypeExpr),
+  PathOrStruct(PathOrStructExpr),
 }
 
 /// Block.
 #[derive(Debug, Parse, Spanned)]
 #[token(Token)]
 pub struct Block {
-  //
+  pub _lbr: Token![lbr],
+  pub stmts: OptSepSeq<Statement, Token![;]>,
+  pub _rbr: Token![rbr],
+}
+
+/// While loop.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub struct While {
+  pub _while: Token![while],
+  pub cond: Cond,
+  pub body: Block,
+}
+
+/// Label of while loop.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub struct WhileLabel {
+  pub label: Label,
+  pub _colon: Token![:],
+}
+
+/// Label reference.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub struct Label {
+  pub _at: Token![@],
+  pub ident: Token![ident],
+}
+
+/// Condition expression.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub enum Cond {
+  Expr(Expr),
+  Let(Let),
+}
+
+/// Break expression.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+#[spanned_end(Option)]
+pub struct Break {
+  pub _break: Token![break],
+  pub label: Option<Label>,
+}
+
+/// Continue expression.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+#[spanned_end(Option)]
+pub struct Continue {
+  pub _continue: Token![continue],
+  pub label: Option<Label>,
+}
+
+/// If expression.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+#[spanned_end(Option)]
+pub struct If {
+  pub _if: Token![if],
+  pub cond: Cond,
+  pub body: Block,
+  pub else_if: Option<(Token![else], Else)>,
+}
+
+/// Else part of if expression.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub enum Else {
+  If(Box<If>),
+  Body(Block),
+}
+
+/// Return expression.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+#[spanned_end(Option)]
+pub struct Return {
+  pub _return: Token![return],
+  pub value: Option<Expr>,
+}
+
+/// Literal expression.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub enum Literal {
+  Int(Token![int]),
+  Float(Token![float]),
+  Char(Token![ch]),
+  Byte(Token![byte]),
+  Str(Token![string]),
+  RawStr(Token![rawstr]),
+  Bytes(Token![bytes]),
+}
+
+/// Parentheses expression or tuple expression.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub struct ParenOrTupleExpr {
+  pub _lpr: Token![lpr],
+  pub value: OptSepSeq<Expr, Token![,]>,
+  pub _rpr: Token![rpr],
+}
+
+/// Array expression.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub struct ArrayExpr {
+  pub _lbk: Token![lbk],
+  pub value: OptSepSeq<Expr, Token![,]>,
+  pub _rbk: Token![rbk],
+}
+
+/// Closure.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub struct Closure {
+  pub _fn: Token![fn],
+  pub implicit_params: Option<ImplicitClosureParams>,
+  pub params: Option<ClosureParams>,
+  pub ret_type: Option<(Token![->], Type)>,
+  pub where_clause: Option<Where>,
+  pub body: Expr,
+}
+
+/// Implicit parameters of closure.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub struct ImplicitClosureParams {
+  pub _lbk: Token![lbk],
+  pub value: OptSepSeq<ClosureParam, Token![,]>,
+  pub _rbk: Token![rbk],
+}
+
+/// Parameters of closure.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub struct ClosureParams {
+  pub _lpr: Token![lpr],
+  pub value: OptSepSeq<ClosureParam, Token![,]>,
+  pub _rpr: Token![rpr],
+}
+
+/// Parameter of closure.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+#[spanned_end(Option)]
+pub struct ClosureParam {
+  pub ident: Token![ident],
+  pub ty: Option<(Token![:], Type)>,
+}
+
+/// Expand expression.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub struct Expand {
+  pub _rep: Token![...],
+  pub value: Expr,
+}
+
+/// Type expression.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub struct TypeExpr {
+  pub _type: Token![type],
+  pub ty: Type,
+}
+
+/// Path expression or structure expression.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+#[spanned_end(Option)]
+pub struct PathOrStructExpr {
+  pub path: PathExpr,
+  pub struct_expr: Option<StructExpr>,
 }
 
 /// Path expression.
+pub type PathExpr = NonEmptySepSeq<PathExprSeg, Token![.]>;
+
+/// Segment of path expression.
 #[derive(Debug, Parse, Spanned)]
 #[token(Token)]
-pub struct PathExpr {
-  //
+pub struct PathExprSeg {
+  pub ident: Token![ident],
+  pub implicit_args: Option<ImplicitArgs>,
+  pub args: Option<Args>,
+}
+
+/// Structure expression (actually the trailing part).
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub struct StructExpr {
+  pub _lbr: Token![lbr],
+  pub fields: OptSepSeq<FieldExpr, Token![,]>,
+  pub _rbr: Token![rbr],
+}
+
+/// Field of structure expression.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub enum FieldExpr {
+  #[spanned_end(Option)]
+  Field(Token![ident], Option<(Token![:], Expr)>),
+  Fill(Token![..], Expr),
 }
