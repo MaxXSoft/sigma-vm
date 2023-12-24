@@ -62,6 +62,7 @@ token_ast! {
     [;] => { kind: TokenKind::PreDefOp(PreDefOp::Semicolon) },
     [op] => { kind: TokenKind::Op(_), prompt: "operator-like identifier" },
     [pub] => { kind: TokenKind::Ident(s) if s == "pub", prompt: "pub" },
+    [package] => { kind: TokenKind::Ident(s) if s == "package", prompt: "package" },
     [import] => { kind: TokenKind::Ident(s) if s == "import", prompt: "import" },
     [static] => { kind: TokenKind::Ident(s) if s == "static", prompt: "static" },
     [mut] => { kind: TokenKind::Ident(s) if s == "mut", prompt: "mut" },
@@ -115,8 +116,10 @@ pub struct Anno {
 #[derive(Debug, Parse, Spanned)]
 #[token(Token)]
 pub enum Item {
+  /// Package.
+  Package(OptPub<Package>),
   /// Import.
-  Import(Import),
+  Import(OptPub<Import>),
   /// Static variable definition.
   Static(OptPub<Static>),
   /// Function definition.
@@ -132,58 +135,59 @@ pub enum Item {
 /// Item that starts with an optional `pub`.
 pub type OptPub<T> = OptTokenPrefix<Token![pub], T>;
 
+/// Package.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub struct Package {
+  pub _package: Token![package],
+  pub path: Path,
+  pub _lbr: Token![lbr],
+  pub items: Vec<Item>,
+  pub _rbr: Token![rbr],
+}
+
+/// Path.
+pub type Path = NonEmptySepSeq<Ident, Token![.]>;
+
 /// Import.
 #[derive(Debug, Parse, Spanned)]
 #[token(Token)]
 pub struct Import {
   pub _import: Token![import],
-  pub path: ImportPath,
+  pub path: ImportPathOrPaths,
 }
 
-/// Path of import.
+/// Path or paths of import.
 #[derive(Debug, Parse, Spanned)]
 #[token(Token)]
-pub enum ImportPath {
-  Path(Path),
-  Paths(Paths),
+pub enum ImportPathOrPaths {
+  Path(ImportPath),
+  Paths(ImportPaths),
 }
 
-/// Path.
-#[derive(Debug, Parse)]
+/// Import path.
+#[derive(Debug, Parse, Spanned)]
 #[token(Token)]
-pub struct Path {
-  pub ident: Ident,
-  pub segs: Vec<(Token![.], Ident)>,
+pub struct ImportPath {
+  pub path: Path,
+  #[try_span]
   pub end: Option<(Token![.], PathsOrWildcard)>,
 }
 
-impl Spanned for Path {
-  fn span(&self) -> laps::span::Span {
-    let span = self.ident.span();
-    if let Some(end) = &self.end {
-      span.into_end_updated(end.span())
-    } else if let Some(seg) = self.segs.last() {
-      span.into_end_updated(seg.span())
-    } else {
-      span
-    }
-  }
-}
-
-/// Paths or wildcard.
+/// Import paths or wildcard.
 #[derive(Debug, Parse, Spanned)]
 #[token(Token)]
 pub enum PathsOrWildcard {
-  Paths(Paths),
+  Paths(ImportPaths),
   Wildcard(Token![*]),
 }
 
-/// Paths.
+/// Import paths.
 #[derive(Debug, Parse, Spanned)]
 #[token(Token)]
-pub struct Paths {
+pub struct ImportPaths {
   pub _lbr: Token![lbr],
-  pub path: NonEmptyOptSepSeq<Path, Token![,]>,
+  pub path: NonEmptyOptSepSeq<ImportPath, Token![,]>,
   pub _rbr: Token![rbr],
 }
 
