@@ -658,21 +658,21 @@ pub enum CallArgs {
 }
 
 /// Binary expression.
-pub type BinaryExpr = NonEmptySepSeq<Prefix, Ident>;
+pub type BinaryExpr = NonEmptySepSeq<Prefix, Op>;
 
 /// Prefix expression.
 #[derive(Debug, Parse, Spanned)]
 #[token(Token)]
 pub struct Prefix {
   #[try_span]
-  pub ops: Vec<Ident>,
+  pub ops: Vec<Op>,
   pub factor: Factor,
 }
 
 /// Operator.
 #[derive(Debug, Parse, Spanned)]
 #[token(Token)]
-pub enum Ident {
+pub enum Op {
   Add(Token![+]),
   Sub(Token![-]),
   Mul(Token![*]),
@@ -708,6 +708,13 @@ pub enum Ident {
   Comma(Token![,]),
   Colon(Token![:]),
   Op(Token![op]),
+}
+
+/// Identifier.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub enum Ident {
+  Op(Op),
   Ident(Token![ident]),
 }
 
