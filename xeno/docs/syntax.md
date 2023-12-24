@@ -76,9 +76,10 @@ Suffix := CallArgs | Access | Try;
 CallArgs := ImplicitArgs [Args] | Args;
 Access := "." PathExpr;
 Try := "?";
-BinaryExpr := Prefix {Ident Prefix};
-Prefix := {Ident} Factor;
-Ident := PRE_DEF_OPS | OP_LIKE | IDENT;
+BinaryExpr := Prefix {Op Prefix};
+Prefix := {Op} Factor;
+Op := PRE_DEF_OPS | OP_LIKE;
+Ident := Op | IDENT;
 
 Factor := Block | While | Break | Continue | If | Return | Literal
         | Underscore | ParenOrTupleExpr | ArrayExpr | Closure | Expand
