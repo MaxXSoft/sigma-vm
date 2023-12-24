@@ -165,9 +165,9 @@ checksum = "95505c38b4572b2d910cecb0281560f54b440a19336cbbcb27bf6ce6adc6f5a8"
 
 [[package]]
 name = "laps"
-version = "0.1.5"
+version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e254d2e7925f401e2c63bd20ea8f18482a94abe383d6b9de7c05af126ff138eb"
+checksum = "af7d1fc15129dcdcb419687bad7839463c43dd54a38acad575c98d650cb77f02"
 dependencies = [
  "colored",
  "laps_macros",
@@ -176,9 +176,9 @@ dependencies = [
 
 [[package]]
 name = "laps_macros"
-version = "0.1.3"
+version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9979efd6452bf86f88e0015b9998eb17722fc8a4e47084ce10c8f724204ebfa9"
+checksum = "70ae359599e90fa75e0013b4ec007a8f871d89a5a9fbc0ad6b4ca8361cd5c148"
 dependencies = [
  "laps_regex",
  "proc-macro2",
@@ -188,9 +188,9 @@ dependencies = [
 
 [[package]]
 name = "laps_regex"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "72e332ec63f2f9e38197f6d183bd6787c185e66be1f3162e22e4b0d3e89507ff"
+checksum = "3ac189cecd1d636397ad01072c22d9c3abf3511b40f43c4588a315a9d0195894"
 dependencies = [
  "rayon",
  "regex-syntax",
