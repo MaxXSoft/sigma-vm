@@ -3,11 +3,14 @@
 ```ebnf
 CompUnit := {[Anno] Item};
 Anno := "@" Ident {TOKEN};
-Item := Import | Static | FuncDef | NativeDecl | Trait | Impl;
+Item := Package | Import | Static | FuncDef | NativeDecl | Trait | Impl;
 
-Import := "import" (Path | Paths);
-Path := Ident {"." Ident} ["." (Paths | "*")];
-Paths := "{" Path {"," Path} [","] "}";
+Package := ["pub"] "package" Path "{" {Item} "}";
+Path := Ident {"." Ident};
+
+Import := ["pub"] "import" (ImportPath | ImportPaths);
+ImportPath := Path ["." (ImportPaths | "*")];
+ImportPaths := "{" ImportPath {"," ImportPath} [","] "}";
 
 Static := ["pub"] "static" ["mut"] Ident ":" Type "=" Expr;
 
