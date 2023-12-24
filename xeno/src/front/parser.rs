@@ -1,5 +1,7 @@
 use crate::front::lexer::{PreDefOp, Token, TokenKind};
-use laps::ast::{NonEmptyOptSepSeq, NonEmptySepSeq, OptPrefix, OptSepSeq, OptTokenPrefix, NonEmptySeq};
+use laps::ast::{
+  NonEmptyOptSepSeq, NonEmptySepSeq, NonEmptySeq, OptPrefix, OptSepSeq, OptTokenPrefix,
+};
 use laps::prelude::*;
 
 token_ast! {
@@ -212,9 +214,13 @@ pub struct FuncDef {
 pub struct FuncDecl {
   pub _fn: Token![fn],
   pub ident: Ident,
+  #[try_span]
   pub implicit_params: Option<ImplicitParams>,
+  #[try_span]
   pub params: Option<Params>,
+  #[try_span]
   pub ret_ty: Option<(Token![->], Type)>,
+  #[try_span]
   pub where_clause: Option<Where>,
 }
 
@@ -255,9 +261,9 @@ pub struct Inherit {
 /// Method of trait.
 #[derive(Debug, Parse, Spanned)]
 #[token(Token)]
-#[spanned_end(Option)]
 pub struct Method {
   decl: FuncDecl,
+  #[try_span]
   body: Option<Block>,
 }
 
@@ -289,7 +295,9 @@ pub struct ImplicitParams {
 #[token(Token)]
 pub struct ImplicitParam {
   pub rep_ident: OptPrefix<Token![...], Ident>,
+  #[try_span]
   pub ty: Option<(Token![:], Type)>,
+  #[try_span]
   pub default: Option<(Token![=], Expr)>,
 }
 
@@ -431,7 +439,9 @@ pub struct EnumType {
 #[token(Token)]
 pub struct EnumVariant {
   pub ident: Ident,
+  #[try_span]
   pub tuple: Option<TupleType>,
+  #[try_span]
   pub value: Option<(Token![=], Expr)>,
 }
 
@@ -459,8 +469,8 @@ pub type RepTypes = OptSepSeq<RepType, Token![,]>;
 /// Repeatable type.
 #[derive(Debug, Parse, Spanned)]
 #[token(Token)]
-#[spanned_start(Option)]
 pub struct RepType {
+  #[try_span]
   pub rep: Option<Token![...]>,
   pub ty: Type,
 }
@@ -470,8 +480,11 @@ pub struct RepType {
 #[token(Token)]
 pub struct FuncType {
   pub _fn: Token![fn],
+  #[try_span]
   pub implicit_params: Option<ImplicitParamsType>,
+  #[try_span]
   pub params: Option<ParamsType>,
+  #[try_span]
   pub ret_ty: Option<(Token![->], Box<Type>)>,
 }
 
@@ -496,9 +509,9 @@ pub struct ParamsType {
 /// Type of type.
 #[derive(Debug, Parse, Spanned)]
 #[token(Token)]
-#[spanned_end(Option)]
 pub struct TypeOfType {
   pub _type: Token![type],
+  #[try_span]
   pub bound: Option<TotBound>,
 }
 
@@ -563,9 +576,9 @@ pub enum Pattern {
 /// Variable pattern.
 #[derive(Debug, Parse, Spanned)]
 #[token(Token)]
-#[spanned_end(Option)]
 pub struct VarPat {
   pub ident: Ident,
+  #[try_span]
   pub pat: Option<(Token![@], Box<ConcretePat>)>,
 }
 
@@ -601,26 +614,25 @@ pub struct StructPat {
 #[derive(Debug, Parse, Spanned)]
 #[token(Token)]
 pub enum FieldPat {
-  #[spanned_end(Option)]
-  Field(Ident, Option<(Token![:], ConcretePat)>),
+  Field(Ident, #[try_span] Option<(Token![:], ConcretePat)>),
   Any(Token![..]),
 }
 
 /// Enumerate pattern.
 #[derive(Debug, Parse, Spanned)]
 #[token(Token)]
-#[spanned_end(Option)]
 pub struct EnumPat {
   pub ty: PathExpr,
+  #[try_span]
   pub pat: Option<TuplePat>,
 }
 
 /// Expression.
 #[derive(Debug, Parse, Spanned)]
 #[token(Token)]
-#[spanned_end(Vec)]
 pub struct Expr {
   pub bin: BinaryExpr,
+  #[try_span]
   pub suffixes: Vec<Suffix>,
 }
 
@@ -637,8 +649,7 @@ pub enum Suffix {
 #[derive(Debug, Parse, Spanned)]
 #[token(Token)]
 pub enum CallArgs {
-  #[spanned_end(Option)]
-  Implicit(ImplicitArgs, Option<Args>),
+  Implicit(ImplicitArgs, #[try_span] Option<Args>),
   Args(Args),
 }
 
@@ -648,8 +659,8 @@ pub type BinaryExpr = NonEmptySepSeq<Prefix, Ident>;
 /// Prefix expression.
 #[derive(Debug, Parse, Spanned)]
 #[token(Token)]
-#[spanned_start(Vec)]
 pub struct Prefix {
+  #[try_span]
   pub ops: Vec<Ident>,
   pub factor: Factor,
 }
@@ -761,29 +772,29 @@ pub enum Cond {
 /// Break expression.
 #[derive(Debug, Parse, Spanned)]
 #[token(Token)]
-#[spanned_end(Option)]
 pub struct Break {
   pub _break: Token![break],
+  #[try_span]
   pub label: Option<Label>,
 }
 
 /// Continue expression.
 #[derive(Debug, Parse, Spanned)]
 #[token(Token)]
-#[spanned_end(Option)]
 pub struct Continue {
   pub _continue: Token![continue],
+  #[try_span]
   pub label: Option<Label>,
 }
 
 /// If expression.
 #[derive(Debug, Parse, Spanned)]
 #[token(Token)]
-#[spanned_end(Option)]
 pub struct If {
   pub _if: Token![if],
   pub cond: Cond,
   pub body: Block,
+  #[try_span]
   pub else_if: Option<(Token![else], Else)>,
 }
 
@@ -798,9 +809,9 @@ pub enum Else {
 /// Return expression.
 #[derive(Debug, Parse, Spanned)]
 #[token(Token)]
-#[spanned_end(Option)]
 pub struct Return {
   pub _return: Token![return],
+  #[try_span]
   pub value: Option<Expr>,
 }
 
@@ -868,9 +879,9 @@ pub struct ClosureParams {
 /// Parameter of closure.
 #[derive(Debug, Parse, Spanned)]
 #[token(Token)]
-#[spanned_end(Option)]
 pub struct ClosureParam {
   pub ident: Ident,
+  #[try_span]
   pub ty: Option<(Token![:], Type)>,
 }
 
@@ -893,9 +904,9 @@ pub struct TypeExpr {
 /// Path expression or structure expression.
 #[derive(Debug, Parse, Spanned)]
 #[token(Token)]
-#[spanned_end(Option)]
 pub struct PathOrStructExpr {
   pub path: PathExpr,
+  #[try_span]
   pub struct_expr: Option<StructExpr>,
 }
 
@@ -907,7 +918,9 @@ pub type PathExpr = NonEmptySepSeq<PathExprSeg, Token![.]>;
 #[token(Token)]
 pub struct PathExprSeg {
   pub ident: Ident,
+  #[try_span]
   pub implicit_args: Option<ImplicitArgs>,
+  #[try_span]
   pub args: Option<Args>,
 }
 
@@ -924,7 +937,6 @@ pub struct StructExpr {
 #[derive(Debug, Parse, Spanned)]
 #[token(Token)]
 pub enum FieldExpr {
-  #[spanned_end(Option)]
-  Field(Ident, Option<(Token![:], Expr)>),
+  Field(Ident, #[try_span] Option<(Token![:], Expr)>),
   Fill(Token![..], Expr),
 }
