@@ -1,13 +1,6 @@
 [workspace]
 resolver = "2"
-members = [
-  "sigma_vm",
-  "sigma",
-  "sbas",
-  "sbdump",
-  "xeno",
-  "lisp",
-]
+members = ["sigma_vm", "sigma", "sbas", "sbdump", "xeno", "lisp", "xenoc"]
 
 [profile.dev.build-override]
 opt-level = 3
