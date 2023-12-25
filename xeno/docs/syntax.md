@@ -83,7 +83,7 @@ Op := PRE_DEF_OPS | OP_LIKE;
 Factor := Block | While | Break | Continue | If | Return | Literal
         | Underscore | ParenOrTupleExpr | ArrayExpr | Closure | Expand
         | TypeExpr | PathOrStructExpr;
-Block := "{" [Statement {";" Statement} [";"]] "}";
+Block := "{" {Statement [";"]} "}";
 While := [Label ":"] "while" Cond Block;
 Label := "@" Ident;
 Cond := Expr | Let;
