@@ -2,7 +2,10 @@ use crate::front::lexer::{PreDefOp, Token, TokenKind};
 use laps::ast::{
   NonEmptyOptSepSeq, NonEmptySepSeq, NonEmptySeq, OptPrefix, OptSepSeq, OptTokenPrefix,
 };
+use laps::lexer::Lexer;
 use laps::prelude::*;
+use laps::reader::Reader;
+use laps::token::TokenBuffer;
 
 token_ast! {
   #[derive(Debug)]
@@ -100,8 +103,13 @@ token_ast! {
   }
 }
 
-/// Annotated item.
-pub type AnnotatedItem = OptPrefix<Anno, Item>;
+/// Annotated item or end of file.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub enum AnnotatedItemOrEof {
+  AnnotatedItem(OptPrefix<Anno, Item>),
+  Eof(Token![eof]),
+}
 
 /// Annotation.
 #[derive(Debug, Parse, Spanned)]
@@ -943,4 +951,26 @@ pub struct StructExpr {
 pub enum FieldExpr {
   Field(Ident, #[try_span] Option<(Token![:], Expr)>),
   Fill(Token![..], Expr),
+}
+
+/// Parser.
+pub struct Parser<R> {
+  tokens: TokenBuffer<Lexer<Reader<R>, TokenKind>, Token>,
+}
+
+impl<R> Parser<R> {
+  /// Creates a new parser from the given reader.
+  pub fn new(reader: Reader<R>) -> Self {
+    Self {
+      tokens: TokenBuffer::new(TokenKind::lexer(reader)),
+    }
+  }
+
+  /// Parses the next annotated item or EOF from the reader.
+  pub fn parse(&mut self) -> laps::span::Result<AnnotatedItemOrEof>
+  where
+    R: std::io::Read,
+  {
+    self.tokens.parse()
+  }
 }
