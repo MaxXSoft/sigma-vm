@@ -632,12 +632,17 @@ pub struct EnumPat {
 }
 
 /// Expression.
+pub type Expr = NonEmptySepSeq<Prefix, Ident>;
+
+/// Prefix expression.
 #[derive(Debug, Parse, Spanned)]
 #[token(Token)]
-pub struct Expr {
-  pub bin: BinaryExpr,
+pub struct Prefix {
   #[try_span]
-  pub suffixes: Vec<Suffix>,
+  pub ops: Vec<Op>,
+  pub factor: Factor,
+  #[try_span]
+  pub suffix: Vec<Suffix>,
 }
 
 /// Suffix of expression.
@@ -657,16 +662,12 @@ pub enum CallArgs {
   Args(Args),
 }
 
-/// Binary expression.
-pub type BinaryExpr = NonEmptySepSeq<Prefix, Op>;
-
-/// Prefix expression.
+/// Identifier.
 #[derive(Debug, Parse, Spanned)]
 #[token(Token)]
-pub struct Prefix {
-  #[try_span]
-  pub ops: Vec<Op>,
-  pub factor: Factor,
+pub enum Ident {
+  Op(Op),
+  Ident(Token![ident]),
 }
 
 /// Operator.
@@ -708,14 +709,6 @@ pub enum Op {
   Comma(Token![,]),
   Colon(Token![:]),
   Op(Token![op]),
-}
-
-/// Identifier.
-#[derive(Debug, Parse, Spanned)]
-#[token(Token)]
-pub enum Ident {
-  Op(Op),
-  Ident(Token![ident]),
 }
 
 /// Factor expression.
