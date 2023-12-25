@@ -736,7 +736,7 @@ pub enum Factor {
 #[token(Token)]
 pub struct Block {
   pub _lbr: Token![lbr],
-  pub stmts: OptSepSeq<Statement, Token![;]>,
+  pub stmts: Vec<(Statement, Option<Token![;]>)>,
   pub _rbr: Token![rbr],
 }
 
