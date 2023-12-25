@@ -71,15 +71,14 @@ StructPat := PathExpr "{" [FieldPat {"," FieldPat} [","]] "}";
 FieldPat := Ident [":" ConcretePat] | "..";
 EnumPat := PathExpr [TuplePat];
 
-Expr := BinaryExpr {Suffix};
+Expr := Prefix {Ident Prefix};
+Prefix := {Op} Factor {Suffix};
 Suffix := CallArgs | Access | Try;
 CallArgs := ImplicitArgs [Args] | Args;
 Access := "." PathExpr;
 Try := "?";
-BinaryExpr := Prefix {Op Prefix};
-Prefix := {Op} Factor;
-Op := PRE_DEF_OPS | OP_LIKE;
 Ident := Op | IDENT;
+Op := PRE_DEF_OPS | OP_LIKE;
 
 Factor := Block | While | Break | Continue | If | Return | Literal
         | Underscore | ParenOrTupleExpr | ArrayExpr | Closure | Expand
