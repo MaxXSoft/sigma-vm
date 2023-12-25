@@ -497,5 +497,7 @@ dependencies = [
 name = "xenoc"
 version = "0.0.1"
 dependencies = [
+ "clap",
+ "laps",
  "xeno",
 ]

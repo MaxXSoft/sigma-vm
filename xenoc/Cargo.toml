@@ -5,3 +5,5 @@ edition = "2021"
 
 [dependencies]
 xeno = { path = "../xeno", version = "0.0.1" }
+clap = { version = "4.3.21", features = ["derive"] }
+laps = { version = "0.1.6" }
