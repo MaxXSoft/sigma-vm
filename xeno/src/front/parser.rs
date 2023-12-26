@@ -107,7 +107,7 @@ token_ast! {
 #[derive(Debug, Parse, Spanned)]
 #[token(Token)]
 pub enum AnnotatedItemOrEof {
-  AnnotatedItem(OptPrefix<Anno, Item>),
+  AnnotatedItem(OptPrefix<Anno, ItemWithSemicolon>),
   Eof(Token![eof]),
 }
 
@@ -118,6 +118,15 @@ pub struct Anno {
   pub _at: Token![@],
   pub ident: Ident,
   // TODO: support annotation macro.
+}
+
+/// Item with one or more optional semicolons.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub struct ItemWithSemicolon {
+  pub item: Item,
+  #[try_span]
+  pub semicolons: Vec<Token![;]>,
 }
 
 /// Item.
@@ -150,7 +159,7 @@ pub struct Package {
   pub _package: Token![package],
   pub path: Path,
   pub _lbr: Token![lbr],
-  pub items: Vec<Item>,
+  pub items: Vec<ItemWithSemicolon>,
   pub _rbr: Token![rbr],
 }
 
@@ -744,8 +753,16 @@ pub enum Factor {
 #[token(Token)]
 pub struct Block {
   pub _lbr: Token![lbr],
-  pub stmts: Vec<(Statement, Option<Token![;]>)>,
+  pub stmts: Vec<BlockStatement>,
   pub _rbr: Token![rbr],
+}
+
+/// Statement in block.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub enum BlockStatement {
+  Statement(Statement, #[try_span] Option<Token![;]>),
+  Semicolon(Token![;]),
 }
 
 /// While loop.
