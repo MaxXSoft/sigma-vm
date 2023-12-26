@@ -35,7 +35,7 @@ where
   let mut parser = Parser::new(reader);
   loop {
     match parser.parse() {
-      Ok(AnnotatedItemOrEof::AnnotatedItem(a)) => println!("{a:?}"),
+      Ok(AnnotatedItemOrEof::AnnotatedItem(a)) => println!("{a:#?}"),
       Ok(AnnotatedItemOrEof::Eof(_)) => break,
       Err(_) => {
         span.log_summary();
