@@ -1,11 +1,12 @@
 # Syntax of Xeno
 
 ```ebnf
-CompUnit := {[Anno] Item};
+CompUnit := {[Anno] ItemWithSemicolon};
 Anno := "@" Ident {TOKEN};
+ItemWithSemicolon := Item {";"};
 Item := Package | Import | Static | FuncDef | NativeDecl | Trait | Impl;
 
-Package := ["pub"] "package" Path "{" {Item} "}";
+Package := ["pub"] "package" Path "{" {ItemWithSemicolon} "}";
 Path := Ident {"." Ident};
 
 Import := ["pub"] "import" (ImportPath | ImportPaths);
@@ -83,7 +84,8 @@ Op := PRE_DEF_OPS | OP_LIKE;
 Factor := Block | While | Break | Continue | If | Return | Literal
         | Underscore | ParenOrTupleExpr | ArrayExpr | Closure | Expand
         | TypeExpr | PathOrStructExpr;
-Block := "{" {Statement [";"]} "}";
+Block := "{" {BlockStatement} "}";
+BlockStatement := Statement [";"] | ";";
 While := [Label ":"] "while" Cond Block;
 Label := "@" Ident;
 Cond := Expr | Let;
