@@ -1,6 +1,6 @@
 use crate::front::lexer::{PreDefOp, Token, TokenKind};
 use laps::ast::{
-  NonEmptyOptSepSeq, NonEmptySepSeq, NonEmptySeq, OptPrefix, OptSepSeq, OptTokenPrefix,
+  NonEmptyOptSepSeq, NonEmptySepSeq, NonEmptySeq, OptPrefix, OptSepSeq, OptTokenPrefix, TokenPrefix,
 };
 use laps::lexer::Lexer;
 use laps::prelude::*;
@@ -164,7 +164,22 @@ pub struct Package {
 }
 
 /// Path.
-pub type Path = NonEmptySepSeq<Ident, Token![.]>;
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub struct Path {
+  pub first: Ident,
+  #[try_span]
+  pub rest: Vec<TokenPrefix<Token![.], Ident>>,
+}
+
+/// Segment of path.
+// TODO: change `maybe`.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub struct PathSeg {
+  pub _dot: Token![.],
+  pub ident: Ident,
+}
 
 /// Import.
 #[derive(Debug, Parse, Spanned)]
