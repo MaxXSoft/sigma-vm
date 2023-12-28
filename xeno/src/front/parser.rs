@@ -137,7 +137,7 @@ pub enum Item {
   /// Package.
   Package(OptPub<Package>),
   /// Import.
-  Import(OptPub<Import>),
+  Import(Import),
   /// Static variable definition.
   Static(OptPub<Static>),
   /// Function definition.
