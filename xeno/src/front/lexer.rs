@@ -42,7 +42,7 @@ pub enum TokenKind {
   #[regex(r#"b"([\x20-\x26\x28-\x5b\x5d-\x7e]|\\x[0-9a-fA-F]{2}|\\n|\\r|\\t|\\\\|\\0|\\'|\\")*""#)]
   Bytes(Bytes),
   /// Pre-defined operator-like identifiers.
-  #[regex(r"\+|-|\*|/|%|&|\||!|\^|<<|>>|&&|\|\||==|!=|<|<=|>|>=|=|\+=|-=|\*=|/=|%=|&=|\|=|\^=|<<=|>>=|\(|\)|\[|\]|\{|\}|\.|\.\.|\.\.\.|->|,|:|@|_|\?|;")]
+  #[regex(r"\+|-|\*|/|%|&|\||!|\^|<<|>>|&&|\|\||==|!=|<|<=|>|>=|=|\+=|-=|\*=|/=|%=|&=|\|=|\^=|<<=|>>=|\(|\)|\[|\]|\{|\}|\.|\.\.|\.\.\.|\.\*|->|,|:|@|_|\?|;")]
   PreDefOp(PreDefOp),
   /// Other operator-like identifiers.
   #[regex(r"[~!@#$%^&*_\-+=|\\:;<,>.?/]+")]
@@ -306,6 +306,8 @@ pub enum PreDefOp {
   AnyPat,
   /// ...
   Repeat,
+  /// .*
+  Wildcard,
   /// ->
   Arrow,
   /// ,
@@ -364,6 +366,7 @@ impl fmt::Display for PreDefOp {
       Self::Dot => write!(f, "."),
       Self::AnyPat => write!(f, ".."),
       Self::Repeat => write!(f, "..."),
+      Self::Wildcard => write!(f, ".*"),
       Self::Arrow => write!(f, "->"),
       Self::Comma => write!(f, ","),
       Self::Colon => write!(f, ":"),
@@ -419,6 +422,7 @@ impl str::FromStr for PreDefOp {
       "." => Ok(Self::Dot),
       ".." => Ok(Self::AnyPat),
       "..." => Ok(Self::Repeat),
+      ".*" => Ok(Self::Wildcard),
       "->" => Ok(Self::Arrow),
       "," => Ok(Self::Comma),
       ":" => Ok(Self::Colon),
