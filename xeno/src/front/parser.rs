@@ -56,6 +56,7 @@ token_ast! {
     [.] => { kind: TokenKind::PreDefOp(PreDefOp::Dot) },
     [..] => { kind: TokenKind::PreDefOp(PreDefOp::AnyPat) },
     [...] => { kind: TokenKind::PreDefOp(PreDefOp::Repeat) },
+    [.*] => { kind: TokenKind::PreDefOp(PreDefOp::Wildcard) },
     [->] => { kind: TokenKind::PreDefOp(PreDefOp::Arrow) },
     [,] => { kind: TokenKind::PreDefOp(PreDefOp::Comma) },
     [:] => { kind: TokenKind::PreDefOp(PreDefOp::Colon) },
@@ -172,15 +173,6 @@ pub struct Path {
   pub rest: Vec<TokenPrefix<Token![.], Ident>>,
 }
 
-/// Segment of path.
-// TODO: change `maybe`.
-#[derive(Debug, Parse, Spanned)]
-#[token(Token)]
-pub struct PathSeg {
-  pub _dot: Token![.],
-  pub ident: Ident,
-}
-
 /// Import.
 #[derive(Debug, Parse, Spanned)]
 #[token(Token)]
@@ -203,15 +195,15 @@ pub enum ImportPathOrPaths {
 pub struct ImportPath {
   pub path: Path,
   #[try_span]
-  pub end: Option<(Token![.], PathsOrWildcard)>,
+  pub end: Option<PathsOrWildcard>,
 }
 
 /// Import paths or wildcard.
 #[derive(Debug, Parse, Spanned)]
 #[token(Token)]
 pub enum PathsOrWildcard {
-  Paths(ImportPaths),
-  Wildcard(Token![*]),
+  Paths(Token![.], ImportPaths),
+  Wildcard(Token![.*]),
 }
 
 /// Import paths.
