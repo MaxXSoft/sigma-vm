@@ -9,7 +9,7 @@ Item := Package | Import | Static | FuncDef | NativeDecl | Trait | Impl;
 Package := ["pub"] "package" Path "{" {ItemWithSemicolon} "}";
 Path := Ident {"." Ident};
 
-Import := ["pub"] "import" (ImportPath | ImportPaths);
+Import := "import" (ImportPath | ImportPaths);
 ImportPath := Path ["." (ImportPaths | "*")];
 ImportPaths := "{" ImportPath {"," ImportPath} [","] "}";
 
