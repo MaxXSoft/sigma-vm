@@ -16,7 +16,7 @@ pub enum TokenKind {
   #[regex(r#"# [0-9]+ "<stdin>"\n"#)]
   LineNum(LineNum),
   /// Spaces and comments.
-  #[skip(r"\s+|#.*\n|#.*")]
+  #[skip(r"\s+|#.*")]
   _Skip,
   /// Directive.
   #[regex(r"\.[a-z0-9]+")]

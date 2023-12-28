@@ -7,7 +7,7 @@ use std::{fmt, io, str};
 #[derive(Debug, Tokenize)]
 enum TokenKind {
   /// Spaces and comments.
-  #[skip(r"\s+|;.*\n|;.*")]
+  #[skip(r"\s+|;.*")]
   _Skip,
   /// Quote.
   #[regex(r"'")]
