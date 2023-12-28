@@ -9,8 +9,8 @@ pub type Token = laps::token::Token<TokenKind>;
 #[token_kind]
 #[derive(Debug, Tokenize)]
 pub enum TokenKind {
-  /// Whitespaces.
-  #[skip(r"\s+")]
+  /// Whitespaces and comments.
+  #[skip(r"\s+|//.*|/\*([^*]|\*[^/])*\*+/")]
   _Skip,
   /// Integer literal.
   #[regex(r"(0b[01]+|0o[0-7]+|0x[0-9a-fA-F]+|[0-9]+)([iIuU](8|16|32|64))?")]
