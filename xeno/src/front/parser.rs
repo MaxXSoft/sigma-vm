@@ -495,13 +495,7 @@ pub struct TupleType {
 pub type RepTypes = OptSepSeq<RepType, Token![,]>;
 
 /// Repeatable type.
-#[derive(Debug, Parse, Spanned)]
-#[token(Token)]
-pub struct RepType {
-  #[try_span]
-  pub rep: Option<Token![...]>,
-  pub ty: Type,
-}
+pub type RepType = OptPrefix<Token![...], Type>;
 
 /// Function type.
 #[derive(Debug, Parse, Spanned)]
@@ -661,12 +655,9 @@ pub type Expr = NonEmptySepSeq<Prefix, Ident>;
 /// Prefix expression.
 #[derive(Debug, Parse, Spanned)]
 #[token(Token)]
-pub struct Prefix {
-  #[try_span]
-  pub ops: Vec<Op>,
-  pub factor: Factor,
-  #[try_span]
-  pub suffix: Vec<Suffix>,
+pub enum Prefix {
+  With(Op, Box<Self>),
+  No(Factor, #[try_span] Vec<Suffix>),
 }
 
 /// Suffix of expression.
