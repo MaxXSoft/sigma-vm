@@ -4,4 +4,4 @@ version = "0.0.1"
 edition = "2021"
 
 [dependencies]
-laps = { version = "0.1.6", features = ["macros"] }
+laps = { version = "0.1.7", features = ["macros"] }
