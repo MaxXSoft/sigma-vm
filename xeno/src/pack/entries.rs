@@ -1,5 +1,9 @@
+use std::num::NonZeroU64;
+
 /// ID of an entry.
-pub type EntryId = u64;
+///
+/// The ID zero is always preserved for the root entry.
+pub type EntryId = NonZeroU64;
 
 /// Entry.
 #[derive(Debug)]
@@ -20,11 +24,14 @@ pub enum Entry {
   Type(Type),
   /// Reference of entry in another compile unit.
   Ref(Ref),
+  /// HIR, for representing function definitions and values.
+  Hir(Hir),
 }
 
 /// Root entry.
 ///
 /// A compile unit must have exactly one root entry.
+/// The ID of the root entry must be zero.
 #[derive(Debug)]
 pub struct Root {
   /// The package path of the current compile unit (dot-delimited).
@@ -56,14 +63,28 @@ pub struct Static {
 pub struct Func {
   /// Name of the function.
   pub name: String,
+  /// Kind of the function.
+  pub kind: FuncKind,
+}
+
+/// Kind of function.
+#[derive(Debug)]
+pub enum FuncKind {
+  /// Specialized function.
+  Specialized(FuncData),
+  /// Generic function, with an ID of HIR entry.
+  Generic(EntryId),
+}
+
+/// Data of function.
+#[derive(Debug)]
+pub struct FuncData {
   /// Implicit parameters.
   pub implicit_params: Vec<ImplicitParam>,
   /// Parameters.
   pub params: Vec<Param>,
   /// ID of return type.
   pub ret_ty: EntryId,
-  /// Bounds.
-  pub bounds: Vec<Bound>,
 }
 
 /// Implicit parameter.
@@ -71,8 +92,8 @@ pub struct Func {
 pub struct ImplicitParam {
   /// ID of parameter type.
   pub ty: EntryId,
-  /// Optional.
-  pub opt: bool,
+  /// Default value.
+  pub default: Option<EntryId>,
 }
 
 /// Parameter.
@@ -82,15 +103,11 @@ pub struct Param {
   pub ty: EntryId,
 }
 
-/// Bound.
-#[derive(Debug)]
-pub struct Bound {
-  // TODO
-}
-
 /// Trait entry.
 #[derive(Debug)]
 pub struct Trait {
+  /// Name of the trait.
+  pub name: String,
   // TODO
 }
 
@@ -109,5 +126,14 @@ pub struct Type {
 /// Reference entry.
 #[derive(Debug)]
 pub struct Ref {
+  /// Path of the referenced entry (dot-delimited).
+  pub path: String,
+  /// ID of the referenced entry.
+  pub id: EntryId,
+}
+
+/// HIR entry.
+#[derive(Debug)]
+pub struct Hir {
   // TODO
 }
