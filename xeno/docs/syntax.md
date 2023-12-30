@@ -36,7 +36,7 @@ Param := ["..."] Ident ":" Type;
 Args := "(" [Expr {"," Expr} [","]] ")";
 
 Where := "where" Bound {"," Bound} [","];
-Bound := TraitBound | TypeBound;
+Bound := ["..."] (TraitBound | TypeBound);
 TraitBound := PathExpr ":" PathExpr {"+" PathExpr};
 TypeBound := PathExpr "=" Expr;
 
