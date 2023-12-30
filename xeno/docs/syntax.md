@@ -4,9 +4,9 @@
 CompUnit := {[Anno] ItemWithSemicolon};
 Anno := "@" Ident {TOKEN};
 ItemWithSemicolon := Item {";"};
-Item := Package | Import | Static | FuncDef | NativeDecl | Trait | Impl;
+Item := Pack | Import | Static | FuncDef | NativeDecl | Trait | Impl;
 
-Package := ["pub"] "package" Path "{" {ItemWithSemicolon} "}";
+Pack := ["pub"] "pack" Path "{" {ItemWithSemicolon} "}";
 Path := Ident {"." Ident};
 
 Import := "import" (ImportPath | ImportPaths);
