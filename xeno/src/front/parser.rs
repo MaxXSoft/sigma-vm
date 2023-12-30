@@ -99,6 +99,7 @@ token_ast! {
     [if] => { kind: TokenKind::Ident(s) if s == "if", prompt: "`if`" },
     [else] => { kind: TokenKind::Ident(s) if s == "else", prompt: "`else`" },
     [return] => { kind: TokenKind::Ident(s) if s == "return", prompt: "`return`" },
+    [as] => { kind: TokenKind::Ident(s) if s == "as", prompt: "`as`" },
     [ident] => { kind: TokenKind::Ident(_), prompt: "identifier" },
     [eof] => { kind: TokenKind::Eof },
   }
@@ -667,6 +668,7 @@ pub enum Suffix {
   CallArgs(CallArgs),
   Access(Token![.], PathExpr),
   Try(Token![?]),
+  Cast(Token![as], CastType),
 }
 
 /// Argument list of function call.
@@ -675,6 +677,14 @@ pub enum Suffix {
 pub enum CallArgs {
   Implicit(ImplicitArgs, #[try_span] Option<Args>),
   Args(Args),
+}
+
+/// Type to be casted.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub enum CastType {
+  Infer(Token![_]),
+  Type(Type),
 }
 
 /// Identifier.
