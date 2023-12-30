@@ -397,7 +397,7 @@ pub struct TraitBound {
 pub struct TypeBound {
   pub ty: PathExpr,
   pub _colon: Token![:],
-  pub bound: PathExpr,
+  pub bound: Expr,
 }
 
 /// Type.
