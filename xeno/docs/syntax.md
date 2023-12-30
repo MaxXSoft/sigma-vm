@@ -6,11 +6,11 @@ Anno := "@" Ident {TOKEN};
 ItemWithSemicolon := Item {";"};
 Item := Pack | Import | Static | FuncDef | NativeDecl | Trait | Impl;
 
-Pack := ["pub"] "pack" Path "{" {ItemWithSemicolon} "}";
-Path := Ident {"." Ident};
+Pack := ["pub"] "pack" Ident "{" {ItemWithSemicolon} "}";
 
 Import := "import" (ImportPath | ImportPaths);
 ImportPath := Path ["." (ImportPaths | "*")];
+Path := Ident {"." Ident};
 ImportPaths := "{" ImportPath {"," ImportPath} [","] "}";
 
 Static := ["pub"] "static" ["mut"] Ident ":" Type "=" Expr;
