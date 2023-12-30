@@ -74,10 +74,11 @@ EnumPat := PathExpr [TuplePat];
 
 Expr := Prefix {Ident Prefix};
 Prefix := {Op} Factor {Suffix};
-Suffix := CallArgs | Access | Try;
+Suffix := CallArgs | Access | Try | Cast;
 CallArgs := ImplicitArgs [Args] | Args;
 Access := "." PathExpr;
 Try := "?";
+Cast := "as" (Underscore | Type);
 Ident := Op | IDENT;
 Op := PRE_DEF_OPS | OP_LIKE;
 
