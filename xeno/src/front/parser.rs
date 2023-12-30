@@ -66,7 +66,7 @@ token_ast! {
     [;] => { kind: TokenKind::PreDefOp(PreDefOp::Semicolon) },
     [op] => { kind: TokenKind::Op(_), prompt: "operator-like identifier" },
     [pub] => { kind: TokenKind::Ident(s) if s == "pub", prompt: "`pub`" },
-    [package] => { kind: TokenKind::Ident(s) if s == "package", prompt: "`package`" },
+    [pack] => { kind: TokenKind::Ident(s) if s == "pack", prompt: "`pack`" },
     [import] => { kind: TokenKind::Ident(s) if s == "import", prompt: "`import`" },
     [static] => { kind: TokenKind::Ident(s) if s == "static", prompt: "`static`" },
     [mut] => { kind: TokenKind::Ident(s) if s == "mut", prompt: "`mut`" },
@@ -135,7 +135,7 @@ pub struct ItemWithSemicolon {
 #[token(Token)]
 pub enum Item {
   /// Package.
-  Package(OptPub<Package>),
+  Package(OptPub<Pack>),
   /// Import.
   Import(Import),
   /// Static variable definition.
@@ -156,8 +156,8 @@ pub type OptPub<T> = OptTokenPrefix<Token![pub], T>;
 /// Package.
 #[derive(Debug, Parse, Spanned)]
 #[token(Token)]
-pub struct Package {
-  pub _package: Token![package],
+pub struct Pack {
+  pub _pack: Token![pack],
   pub path: Path,
   pub _lbr: Token![lbr],
   pub items: Vec<ItemWithSemicolon>,
