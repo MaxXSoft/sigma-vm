@@ -158,19 +158,10 @@ pub type OptPub<T> = OptTokenPrefix<Token![pub], T>;
 #[token(Token)]
 pub struct Pack {
   pub _pack: Token![pack],
-  pub path: Path,
+  pub name: Ident,
   pub _lbr: Token![lbr],
   pub items: Vec<ItemWithSemicolon>,
   pub _rbr: Token![rbr],
-}
-
-/// Path.
-#[derive(Debug, Parse, Spanned)]
-#[token(Token)]
-pub struct Path {
-  pub first: Ident,
-  #[try_span]
-  pub rest: Vec<TokenPrefix<Token![.], Ident>>,
 }
 
 /// Import.
@@ -196,6 +187,15 @@ pub struct ImportPath {
   pub path: Path,
   #[try_span]
   pub end: Option<PathsOrWildcard>,
+}
+
+/// Path.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub struct Path {
+  pub first: Ident,
+  #[try_span]
+  pub rest: Vec<TokenPrefix<Token![.], Ident>>,
 }
 
 /// Import paths or wildcard.
