@@ -38,7 +38,7 @@ Args := "(" [Expr {"," Expr} [","]] ")";
 Where := "where" Bound {"," Bound} [","];
 Bound := TraitBound | TypeBound;
 TraitBound := PathExpr ":" PathExpr {"+" PathExpr};
-TypeBound := PathExpr "=" PathExpr;
+TypeBound := PathExpr "=" Expr;
 
 Type := PrimType | StructType | EnumType | ArrayType | TupleType
       | FuncType | TypeOfType | TraitType | SelfType;
