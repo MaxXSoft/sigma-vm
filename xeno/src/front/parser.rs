@@ -371,8 +371,11 @@ pub struct Args {
 #[token(Token)]
 pub struct Where {
   pub _where: Token![where],
-  pub bounds: NonEmptyOptSepSeq<WhereBound, Token![,]>,
+  pub bounds: NonEmptyOptSepSeq<BoundOrExpanded, Token![,]>,
 }
+
+/// Bound or expanded bound.
+pub type BoundOrExpanded = OptPrefix<Token![...], WhereBound>;
 
 /// Bound of where clause.
 #[derive(Debug, Parse, Spanned)]
