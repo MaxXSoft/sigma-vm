@@ -135,19 +135,12 @@ pub struct ItemWithSemicolon {
 #[derive(Debug, Parse, Spanned)]
 #[token(Token)]
 pub enum Item {
-  /// Package.
   Package(OptPub<Pack>),
-  /// Import.
   Import(Import),
-  /// Static variable definition.
   Static(OptPub<Static>),
-  /// Function definition.
   FuncDef(FuncDef),
-  /// Native declarations.
   NativeDecl(NativeDecl),
-  /// Trait.
   Trait(OptPub<Trait>),
-  /// Implementation.
   Impl(Impl),
 }
 
@@ -223,6 +216,7 @@ pub struct Static {
   pub _static: Token![static],
   pub _mut: Option<Token![mut]>,
   pub ident: Ident,
+  // TODO: make type optional?
   pub _colon: Token![:],
   pub ty: Type,
   pub _assign: Token![=],
@@ -619,6 +613,7 @@ pub struct VarPat {
 #[token(Token)]
 pub struct TuplePat {
   pub _lpr: Token![lpr],
+  // TODO: OptSepList.
   pub pats: OptSepSeq<Pattern, Token![,]>,
   pub _rpr: Token![rpr],
 }
@@ -879,6 +874,7 @@ pub enum Literal {
 #[token(Token)]
 pub struct ParenOrTupleExpr {
   pub _lpr: Token![lpr],
+  // TODO: OptSepList.
   pub value: OptSepSeq<Expr, Token![,]>,
   pub _rpr: Token![rpr],
 }
