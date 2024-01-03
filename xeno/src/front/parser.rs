@@ -472,9 +472,15 @@ pub struct EnumType {
 pub struct EnumVariant {
   pub ident: Ident,
   #[try_span]
-  pub tuple: Option<TupleType>,
-  #[try_span]
-  pub value: Option<(Token![=], Expr)>,
+  pub data: Option<VariantData>,
+}
+
+/// Variant data of enumerate type.
+#[derive(Debug, Parse, Spanned)]
+#[token(Token)]
+pub enum VariantData {
+  Tuple(TupleType),
+  Expr(Token![=], Expr),
 }
 
 /// Array type.
